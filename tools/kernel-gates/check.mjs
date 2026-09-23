@@ -804,6 +804,38 @@ function runSelftest() {
       const g = gateK8({ root: root });
       st.check('K8: an action outside the ADR-0021 admission list is caught', g.status === STATUS.FAIL, g.detail);
     }
+    // injection: a workflow whose gate steps are unpaired, exercising K8's check/selftest rule. Round 141
+    // added that rule and proved it by hand; without this it would have been in the same position as the
+    // AR-03 branch in round 160 - passing ordinary runs with an unexercised failure path.
+    {
+      const root = tmpDir('kg-k8-pairing-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  b:\n    runs-on: windows-latest\n    steps:\n      - uses: actions/checkout@v4\n' +
+          '      - name: kernel:selftest (injected)\n        run: node tools/kernel-gates/check.mjs --selftest\n'
+      );
+      const g = gateK8({ root: root });
+      st.check('K8: an unpaired selftest step is caught (pairing rule)', g.status === STATUS.FAIL, g.detail);
+    }
+
+    // control: the same pair completed, plus the artifact upload K8 also requires, must pass - so the rule
+    // refuses an unpaired gate rather than every workflow.
+    {
+      const root = tmpDir('kg-k8-pairing-ok-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  b:\n    runs-on: windows-latest\n    steps:\n      - uses: actions/checkout@v4\n' +
+          '      - name: kernel:check (injected)\n        run: node tools/kernel-gates/check.mjs\n' +
+          '      - name: kernel:selftest (injected)\n        run: node tools/kernel-gates/check.mjs --selftest\n' +
+          '      - uses: actions/upload-artifact@v4\n        with:\n          retention-days: 14\n          if-no-files-found: error\n'
+      );
+      const g = gateK8({ root: root });
+      st.check('K8: a correctly paired workflow still passes (pairing control)', g.status === STATUS.PASS, g.detail);
+    }
 
     // injection 12: an upload that publishes build intermediates or runtime session logs.
     {
