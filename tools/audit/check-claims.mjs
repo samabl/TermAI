@@ -5,6 +5,12 @@
 // state it together, and rule 17 says to search for them afterwards; this is that search, run mechanically.
 //
 // It reports mismatches and exits non-zero when the stated count differs from the counted one, because here,
+//
+// Measured control (round 233), on the real documents rather than a fixture: with section 6.3 holding
+// eighteen rules and the register's entry stating seventeen, it prints
+//   MISMATCH docs/audit/debt-p0.md: states 十七 (17), section 6.3 has 18
+// and exits 1. Restoring the entry returns it to 'every stated count agrees' and exit 0. That is the exact
+// failure this session made twice, in rounds 171 and 212, reproduced and caught.
 // unlike the strikethrough linter, there is no judgement in the answer.
 import fs from 'node:fs';
 import path from 'node:path';
