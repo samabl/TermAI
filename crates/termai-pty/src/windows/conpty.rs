@@ -31,6 +31,45 @@
 //!    report. Fix: termai-vt answers DSR through Grid::take_responses (CPR / status) and the
 //!    caller writes it back to the pty.
 //!
+//! UPDATE 2026 (WS-H) - close semantics are now a kernel capability, superseding the
+//! workaround recorded in fault 2. That workaround lived in the caller (apps/termai): it
+//! closed the console only when no read was pending, so for a live session
+//! ClosePseudoConsole never ran while the parked reader kept the handle alive, and the
+//! pseudo console plus its conhost leaked for the life of the process. Measured here: after
+//! close() returned, the parked reader stayed parked and the F0 differential harness hit its
+//! 10 s hard timeout. The kernel now opens the pseudo-console OUTPUT as a named pipe with
+//! FILE_FLAG_OVERLAPPED (an anonymous pipe cannot carry overlapped I/O), and close() calls
+//! CancelIoEx on the output handle before ClosePseudoConsole. A parked read then returns EOF,
+//! so callers need no workaround and close() is safe to call unconditionally.
+//!
+//! Close semantics decision (WS-H). The problem: once close() is called, a read already
+//! parked in ReadFile must return promptly, so a caller needs no "only close while no read
+//! is pending" workaround. Four shapes were weighed.
+//!
+//!   A. Overlapped output plus CancelIoEx (CHOSEN). An anonymous pipe cannot carry
+//!      FILE_FLAG_OVERLAPPED, so the output becomes a named-pipe pair: the read end is
+//!      opened PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED and every read is issued with an
+//!      OVERLAPPED and its own event; close() cancels the pending read. Verified on this
+//!      host: CreatePseudoConsole accepts the named-pipe client handle as hOutput,
+//!      end-to-end output is unchanged, and a parked reader is released in well under a
+//!      second. No public API change, so no ADR is required.
+//!   B. CancelSynchronousIo against the reading thread. Rejected: it needs the reader's
+//!      thread handle and has no race-free form - if close() cancels while the reader is
+//!      between "about to read" and "inside ReadFile", the cancellation is lost and the
+//!      reader parks forever. Only a polling retry loop hides that, which is worse than A.
+//!   C. Move the reader-thread-plus-channel shape into termai-pty as a ReaderTask
+//!      abstraction. Rejected for now: it expands the nine-face PtyBackend (ADR-0018 D1),
+//!      which AR-28.1 treats as a contract change needing an ADR, to buy a capability A
+//!      provides with no API growth at all. Retained as the fallback if a future backend
+//!      cannot cancel reads.
+//!   D. Fix only the test harness and leave the kernel alone. Rejected: it is cheap but
+//!      leaves the real defect - a close() that cannot release a reader - in the kernel that
+//!      sessiond's long-lived sessions depend on (DC-18, kernel/04 reader task).
+//!
+//! Retained counter-argument (recorded, not hidden): A introduces a named pipe, which lives
+//! in the object namespace and is enumerable by a same-user process. The cost note on
+//! create_output_pipe states the exposure and why a restrictive DACL is a separate decision.
+//!
 //! Evidence after the fixes: cargo test -p termai --test e2e is 6/6, cargo test --workspace is
 //! clean and the kernel gates are 8/8. A live run reads the ConPTY init sequence, the program
 //! output, and exits 0 with F0 intact (77 bytes read equals 77 bytes fed to the parser).
@@ -94,16 +133,19 @@ use std::io::{Error as IoError, ErrorKind};
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GetLastError, SetHandleInformation, FALSE, FILETIME, HANDLE, HANDLE_FLAG_INHERIT,
-    INVALID_HANDLE_VALUE, TRUE, WAIT_OBJECT_0,
+    CloseHandle, GetLastError, SetHandleInformation, ERROR_IO_PENDING, FALSE, FILETIME,
+    GENERIC_WRITE, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, TRUE, WAIT_OBJECT_0,
+    WAIT_TIMEOUT,
 };
 use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
-use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile};
+use windows_sys::Win32::Storage::FileSystem::{
+    CreateFileW, ReadFile, WriteFile, FILE_FLAG_OVERLAPPED, OPEN_EXISTING, PIPE_ACCESS_INBOUND,
+};
 use windows_sys::Win32::System::Console::{
     ClosePseudoConsole, CreatePseudoConsole, GenerateConsoleCtrlEvent, GetConsoleCP,
     GetConsoleOutputCP, ResizePseudoConsole, SetConsoleCP, SetConsoleOutputCP, COORD,
@@ -116,15 +158,18 @@ use windows_sys::Win32::System::JobObjects::{
     JOB_OBJECT_LIMIT_ACTIVE_PROCESS, JOB_OBJECT_LIMIT_BREAKAWAY_OK,
     JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
-use windows_sys::Win32::System::Pipes::CreatePipe;
+use windows_sys::Win32::System::Pipes::{
+    CreateNamedPipeW, CreatePipe, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_WAIT,
+};
 use windows_sys::Win32::System::Threading::{
-    CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess, GetProcessTimes,
-    InitializeProcThreadAttributeList, OpenProcess, QueryFullProcessImageNameW, TerminateProcess,
-    UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NEW_PROCESS_GROUP,
+    CreateEventW, CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess,
+    GetProcessTimes, InitializeProcThreadAttributeList, OpenProcess, QueryFullProcessImageNameW,
+    TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NEW_PROCESS_GROUP,
     CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, PROCESS_INFORMATION,
     PROCESS_QUERY_LIMITED_INFORMATION, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, STARTF_USESTDHANDLES,
     STARTUPINFOEXW,
 };
+use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 
 /// CreatePseudoConsole flag: keep the old resize behaviour working on older Windows builds.
 const PSEUDOCONSOLE_RESIZE_QUIRK: u32 = 1;
@@ -152,6 +197,13 @@ const UTF8_CODE_PAGE: u32 = 65001;
 const JOB_ACTIVE_PROCESS_LIMIT: u32 = 256;
 /// How long kill() waits for the root process to be reaped.
 const JOB_WAIT_MS: u32 = 5_000;
+/// Input buffer for the named-pipe output channel. ConPTY can emit bursts of screen
+/// repaints, so an undersized buffer would make conhost block inside WriteFile.
+const OUTPUT_PIPE_BUFFER: u32 = 128 * 1024;
+/// Bound on one overlapped read wait. A parked read is normally woken by data or by
+/// close()'s CancelIoEx; this timeout is only a lost-wakeup guard and a re-check point,
+/// so it never adds latency to a read that has data.
+const OVERLAPPED_WAIT_MS: u32 = 100;
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|poison| poison.into_inner())
@@ -190,6 +242,107 @@ fn is_eof_error(err: &IoError) -> bool {
         }
         None => false,
     }
+}
+
+/// Map a failed pipe read onto the read contract: EOF is Ok(0), anything else is an error.
+fn classify_read_error(err: IoError) -> Result<usize, PtyError> {
+    if is_eof_error(&err) {
+        Ok(0)
+    } else {
+        Err(PtyError::Io(err))
+    }
+}
+
+/// One overlapped read on the pseudo-console output channel.
+///
+/// Returns Ok(0) for EOF, including the aborted-with-a-parked-reader case that close()
+/// produces. `cancelled` is the handle's closed flag; it is inspected before the read
+/// is issued and again as soon as the read is queued. That second check closes the race
+/// where close() sets the flag and calls CancelIoEx before ReadFile actually reached the
+/// kernel: the reader then cancels its own operation, so a parked read can never outlive
+/// close().
+fn overlapped_read(
+    handle: isize,
+    buf: &mut [u8],
+    cancelled: &AtomicBool,
+) -> Result<usize, PtyError> {
+    if cancelled.load(Ordering::SeqCst) {
+        return Ok(0);
+    }
+    // SAFETY: null attributes and name are the documented anonymous manual-reset event
+    // form; the returned handle is owned by this call.
+    let event = unsafe { CreateEventW(ptr::null(), TRUE, FALSE, ptr::null()) };
+    if event.is_null() {
+        return Err(PtyError::Io(IoError::last_os_error()));
+    }
+    // SAFETY: OVERLAPPED is a plain C struct; zeroed plus hEvent is a valid value. The
+    // `Anonymous` offset field is unused for a non-file handle.
+    let mut overlapped: OVERLAPPED = unsafe { std::mem::zeroed() };
+    overlapped.hEvent = event;
+    let mut transferred: u32 = 0;
+    // SAFETY: handle is a live overlapped pipe read handle owned by this session; buf is
+    // a valid writable slice; overlapped and its event outlive the operation (it is
+    // completed or cancelled before this function returns).
+    let issued = unsafe {
+        ReadFile(
+            handle as HANDLE,
+            buf.as_mut_ptr(),
+            buf.len().min(u32::MAX as usize) as u32,
+            &mut transferred,
+            &mut overlapped,
+        )
+    };
+    let outcome = if issued != 0 {
+        Ok(transferred as usize)
+    } else {
+        let err = IoError::last_os_error();
+        if err.raw_os_error() != Some(ERROR_IO_PENDING as i32) {
+            return finish_overlapped_read(event, classify_read_error(err));
+        }
+        if cancelled.load(Ordering::SeqCst) {
+            // SAFETY: handle is live; a null/this OVERLAPPED targets only this handle's I/O.
+            unsafe { CancelIoEx(handle as HANDLE, &overlapped) };
+        }
+        loop {
+            // SAFETY: event is a live handle owned by this call.
+            match unsafe { WaitForSingleObject(event, OVERLAPPED_WAIT_MS) } {
+                WAIT_OBJECT_0 => break,
+                WAIT_TIMEOUT => {
+                    if cancelled.load(Ordering::SeqCst) {
+                        // SAFETY: as above; cancel the operation this call owns.
+                        unsafe { CancelIoEx(handle as HANDLE, &overlapped) };
+                    }
+                }
+                _ => {
+                    // A failed wait must not leave an operation referencing buf alive.
+                    // SAFETY: as above.
+                    unsafe { CancelIoEx(handle as HANDLE, &overlapped) };
+                    break;
+                }
+            }
+        }
+        let mut done: u32 = 0;
+        // SAFETY: overlapped was issued on handle and has either completed or been
+        // cancelled above, so the blocking form cannot park indefinitely; done is a
+        // valid out-pointer. Blocking here (not polling) is what guarantees the kernel
+        // no longer references buf before we return.
+        let ok = unsafe { GetOverlappedResult(handle as HANDLE, &overlapped, &mut done, TRUE) };
+        if ok != 0 {
+            Ok(done as usize)
+        } else {
+            classify_read_error(IoError::last_os_error())
+        }
+    };
+    finish_overlapped_read(event, outcome)
+}
+
+/// Close a per-read event exactly once, whatever the read outcome was.
+fn finish_overlapped_read(
+    event: HANDLE,
+    outcome: Result<usize, PtyError>,
+) -> Result<usize, PtyError> {
+    close_handle(event as isize);
+    outcome
 }
 
 fn timeout_duration(to: WaitTimeout) -> Duration {
@@ -278,6 +431,94 @@ fn create_pipe() -> Result<(isize, isize), PtyError> {
     let ok = unsafe { CreatePipe(&mut read, &mut write, &attrs, 0) };
     if ok == 0 {
         return Err(PtyError::Io(IoError::last_os_error()));
+    }
+    Ok((read as isize, write as isize))
+}
+
+/// The Win32 named-pipe root (`\\.\pipe\`) built without backslash literals.
+///
+/// Constructing it from 0x5C keeps the source immune to escaping accidents and makes
+/// the exact byte sequence obvious at the point where it matters.
+fn pipe_root() -> String {
+    let backslash = char::from(0x5C_u8);
+    let mut root = String::new();
+    root.push(backslash);
+    root.push(backslash);
+    root.push('.');
+    root.push(backslash);
+    root.push_str("pipe");
+    root.push(backslash);
+    root
+}
+
+/// Create the output channel of the pseudo console as a named-pipe pair whose read end
+/// is opened for overlapped I/O.
+///
+/// Why not CreatePipe: an anonymous pipe cannot carry FILE_FLAG_OVERLAPPED, so a reader
+/// parked in ReadFile can only be woken by data or EOF. ClosePseudoConsole does NOT
+/// reliably wake it (measured: the F0 differential harness timed out at 10 s with the
+/// reader still parked after close() returned), which is why the old shape leaked a
+/// stuck reader. A named pipe supports FILE_FLAG_OVERLAPPED, and close() then cancels a
+/// parked read with CancelIoEx.
+///
+/// Direction: the server end is ours and is opened PIPE_ACCESS_INBOUND (read-only, what
+/// ReadFile needs); the write end is an ordinary client handle, which is exactly what
+/// CreatePseudoConsole wants for hOutput. CreateFileW connects the instance immediately,
+/// so no ConnectNamedPipe is needed (and it would be illegal with a null OVERLAPPED on
+/// an overlapped handle).
+///
+/// Cost, recorded rather than hidden: a named pipe lives in the object namespace, so a
+/// same-user process can enumerate `\.pipe` and connect to this instance, which would
+/// let it inject bytes into the session output. The trust boundary is unchanged in
+/// practice - a same-user process can already act with this process's rights - and our end
+/// is inbound (read-only) and lives only as long as the session. A restrictive DACL is
+/// deliberately not built here: it needs a hand-rolled SECURITY_DESCRIPTOR and is a
+/// separate decision, not a free addition.
+fn create_output_pipe() -> Result<(isize, isize), PtyError> {
+    static PIPE_COUNTER: AtomicU32 = AtomicU32::new(0);
+    let sequence = PIPE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let name = format!(
+        "{}termai-conpty-{}-{}",
+        pipe_root(),
+        std::process::id(),
+        sequence
+    );
+    let name_wide = wide(&name);
+    // SAFETY: name_wide is a NUL-terminated UTF-16 name; a null SECURITY_ATTRIBUTES asks
+    // for the default descriptor; every other argument is a plain value.
+    let read = unsafe {
+        CreateNamedPipeW(
+            name_wide.as_ptr(),
+            PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED,
+            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+            1,
+            0,
+            OUTPUT_PIPE_BUFFER,
+            0,
+            ptr::null(),
+        )
+    };
+    if read == INVALID_HANDLE_VALUE {
+        return Err(PtyError::Io(IoError::last_os_error()));
+    }
+    // SAFETY: name_wide names the instance just created; the client connects to it with
+    // write access only. A null security descriptor and null template are the documented
+    // defaults, and the returned handle is owned by this function.
+    let write = unsafe {
+        CreateFileW(
+            name_wide.as_ptr(),
+            GENERIC_WRITE,
+            0,
+            ptr::null(),
+            OPEN_EXISTING,
+            0,
+            ptr::null_mut(),
+        )
+    };
+    if write == INVALID_HANDLE_VALUE {
+        let err = IoError::last_os_error();
+        close_handle(read as isize);
+        return Err(PtyError::Io(err));
     }
     Ok((read as isize, write as isize))
 }
@@ -434,7 +675,7 @@ pub(crate) fn probe_available() -> bool {
     let Ok((input_read, input_write)) = create_pipe() else {
         return false;
     };
-    let Ok((output_read, output_write)) = create_pipe() else {
+    let Ok((output_read, output_write)) = create_output_pipe() else {
         close_handle(input_read);
         close_handle(input_write);
         return false;
@@ -513,7 +754,9 @@ fn spawn_conpty(cmd: &Command, sz: WinSize, o: SpawnOpts) -> Result<PtyHandle, P
 
     let (input_read, input_write) =
         create_pipe().map_err(|err| stage_error(err, SpawnStage::CreatePty))?;
-    let (output_read, output_write) = match create_pipe() {
+    // The output side must be an overlapped named pipe so close() can cancel a parked
+    // read; the input side stays an anonymous pipe (writes are synchronous).
+    let (output_read, output_write) = match create_output_pipe() {
         Ok(pair) => pair,
         Err(err) => {
             close_handle(input_read);
@@ -522,7 +765,6 @@ fn spawn_conpty(cmd: &Command, sz: WinSize, o: SpawnOpts) -> Result<PtyHandle, P
         }
     };
     set_non_inheritable(input_write);
-    set_non_inheritable(output_read);
 
     let mut hpc: HPCON = 0;
     let coord = COORD {
@@ -774,30 +1016,11 @@ impl HandleOps for ConPtyHandle {
         if handle == 0 {
             return Ok(0);
         }
-        let mut read: u32 = 0;
-        // SAFETY: handle is a live pipe read handle; buf is a valid writable slice and
-        // read is a valid out-pointer.
-        let ok = unsafe {
-            ReadFile(
-                handle as HANDLE,
-                buf.as_mut_ptr(),
-                buf.len().min(u32::MAX as usize) as u32,
-                &mut read,
-                ptr::null_mut(),
-            )
-        };
-        if ok == 0 {
-            let err = IoError::last_os_error();
-            if is_eof_error(&err) {
-                self.eof.store(true, Ordering::SeqCst);
-                return Ok(0);
-            }
-            return Err(PtyError::Io(err));
-        }
+        let read = overlapped_read(handle, buf, &self.closed)?;
         if read == 0 {
             self.eof.store(true, Ordering::SeqCst);
         }
-        Ok(read as usize)
+        Ok(read)
     }
 
     fn resize(&self, sz: WinSize) -> Result<ResizeEffect, PtyError> {
@@ -866,12 +1089,26 @@ impl HandleOps for ConPtyHandle {
         }
     }
 
+    /// Release the session. A read parked in read() is guaranteed to return promptly
+    /// (as EOF) because cancellation is issued here before anything else is torn down.
     fn close(&self) -> Result<(), PtyError> {
         if self.closed.swap(true, Ordering::SeqCst) {
             return Ok(());
         }
-        // ClosePseudoConsole aborts any in-flight ReadFile (ERROR_OPERATION_ABORTED),
-        // so a reader thread blocked in read() unblocks before we release handles.
+        // Wake a parked overlapped read first. Relying on ClosePseudoConsole to release
+        // the reader is not enough (measured: the F0 harness timed out at 10 s with the
+        // reader still parked after close() had returned). A null OVERLAPPED cancels
+        // every pending I/O on the handle; the reader then observes
+        // ERROR_OPERATION_ABORTED and reports EOF. The reader's own post-issue check
+        // covers the race where the read reached the kernel after this call.
+        let output = self.output.load(Ordering::SeqCst);
+        if output != 0 {
+            // SAFETY: output is this session's live overlapped pipe read handle; a null
+            // OVERLAPPED cancels only this handle's I/O from this process.
+            unsafe {
+                CancelIoEx(output as HANDLE, ptr::null_mut());
+            }
+        }
         let hpc = self.hpc.swap(0, Ordering::SeqCst);
         if hpc != 0 {
             // SAFETY: hpc is live and owned here.
@@ -880,7 +1117,7 @@ impl HandleOps for ConPtyHandle {
             }
         }
         // Release the pty-side pipe ends now that the console no longer needs them.
-        // Closing the write end makes the output pipe reach EOF for readers.
+        // Closing the output write end also makes the read side reach EOF.
         close_handle(self.pty_input.swap(0, Ordering::SeqCst));
         close_handle(self.pty_output.swap(0, Ordering::SeqCst));
         code_page_release();
@@ -1155,5 +1392,69 @@ impl TreeOps for ConPtyTree {
                 std::thread::sleep(Duration::from_millis(10));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The mechanism behind the close contract: a read parked on the named-pipe output
+    /// channel is released by the same CancelIoEx that close() issues, and it reports EOF.
+    #[test]
+    fn overlapped_read_is_released_by_cancel() {
+        let (read, write) = create_output_pipe().expect("named pipe pair");
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let worker_cancelled = Arc::clone(&cancelled);
+        let worker = std::thread::spawn(move || {
+            let mut buf = [0u8; 64];
+            let result = overlapped_read(read, &mut buf, &worker_cancelled);
+            (result, buf)
+        });
+        // Let the worker reach ReadFile and park there before cancelling.
+        std::thread::sleep(Duration::from_millis(150));
+        cancelled.store(true, Ordering::SeqCst);
+        // SAFETY: read is a live overlapped read handle owned by this session; this is the
+        // same cancellation close() performs.
+        unsafe {
+            CancelIoEx(read as HANDLE, ptr::null_mut());
+        }
+        let (result, _buf) = worker.join().expect("reader thread");
+        assert_eq!(result.expect("a cancelled read is EOF, not an error"), 0);
+        close_handle(read);
+        close_handle(write);
+    }
+
+    /// A read that completes normally still carries the bytes: cancellation did not change
+    /// the data path.
+    #[test]
+    fn overlapped_read_delivers_bytes() {
+        let (read, write) = create_output_pipe().expect("named pipe pair");
+        let cancelled = AtomicBool::new(false);
+        let writer = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            let payload = b"termai";
+            let mut written: u32 = 0;
+            // SAFETY: write is a live pipe write handle owned by this test; payload and
+            // written are valid.
+            let ok = unsafe {
+                WriteFile(
+                    write as HANDLE,
+                    payload.as_ptr(),
+                    payload.len() as u32,
+                    &mut written,
+                    ptr::null_mut(),
+                )
+            };
+            assert_ne!(ok, 0, "test writer must succeed");
+            (write, written)
+        });
+        let mut buf = [0u8; 64];
+        let got = overlapped_read(read, &mut buf, &cancelled).expect("read");
+        let (write, written) = writer.join().expect("writer thread");
+        assert_eq!(written as usize, got);
+        assert_eq!(&buf[..got], b"termai");
+        close_handle(read);
+        close_handle(write);
     }
 }

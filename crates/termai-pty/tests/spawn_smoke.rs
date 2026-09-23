@@ -1,10 +1,9 @@
 mod common;
 
-// Real spawn smoke test. The native ConPTY path is blocked on this host
-// (STATUS_DLL_INIT_FAILED 0xC0000142, zero readable bytes; see the handover block
-// in src/windows/conpty.rs), so the smoke test runs the same real command through
-// the pipe fallback, which is a genuine process spawn with a hard read timeout.
-// It must fail loudly if spawn fails, never skip silently.
+// Real spawn smoke test. It runs on the pipe fallback, which is a genuine process spawn
+// with a byte-exact channel and an immediate EOF; the native ConPTY path has its own
+// tests (f0_fidelity.rs, close_semantics.rs). It must fail loudly if spawn fails, never
+// skip silently.
 
 use std::time::Duration;
 

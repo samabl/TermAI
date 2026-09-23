@@ -407,18 +407,17 @@ pub fn run_session(args: &[String]) -> Result<i32, String> {
     if timed_out {
         let _ = backend.kill(&tree, KillMode::Force);
     }
-    // Only close the pseudo console when no read is pending. Closing behind a parked
-    // ReadFile would park this thread too, so when the reader is still blocked we leave it
-    // to process exit and report that honestly instead of claiming a clean close.
-    let closed = if reader_finished.load(Ordering::Relaxed) {
-        backend.close(pty.clone()).is_ok()
-    } else {
-        false
-    };
+    // close() releases a parked read on the native path (the ConPTY output is an overlapped
+    // pipe and close() cancels the pending read), so it is safe to call unconditionally. The
+    // previous shape skipped close() whenever the reader was still parked, which meant
+    // ClosePseudoConsole never ran for a live console and the pseudo console plus its conhost
+    // were only reclaimed at process exit. Dropping the join handle is enough now: the reader
+    // returns here and releases its handle clone.
+    let closed = backend.close(pty.clone()).is_ok();
     if dbg {
         eprintln!(
-            "[dbg] read loop exited timed_out={timed_out} closed={closed} reader_parked={}",
-            !reader_finished.load(Ordering::Relaxed)
+            "[dbg] read loop exited timed_out={timed_out} closed={closed} reader_finished={}",
+            reader_finished.load(Ordering::Relaxed)
         );
     }
     drop(reader);

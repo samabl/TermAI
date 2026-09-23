@@ -4,9 +4,8 @@ use termai_pty::{Sig, SignalOutcome};
 
 // SignalOutcome contract (kernel/02 section 3.5) exercised on the pipe fallback:
 // Int/Term fall back to the 0x03 byte and every other semantic signal is
-// Unsupported. The native ConPTY mapping is wired in src/windows/conpty.rs but is
-// blocked on this host (see the handover block there). Never claim delivery when the
-// platform cannot deliver.
+// Unsupported. The native ConPTY mapping is wired in src/windows/conpty.rs and covered
+// by the native tests. Never claim delivery when the platform cannot deliver.
 
 #[test]
 fn signal_outcomes_never_claim_unsupported_delivery() {

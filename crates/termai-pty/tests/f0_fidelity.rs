@@ -92,14 +92,12 @@ fn f0_pipe_fallback_is_byte_exact() {
 
 #[cfg(windows)]
 #[test]
-// Ignored with a MEASURED reason, not a guessed one. Native ConPTY itself works now (see the
-// RESOLVED banner in src/windows/conpty.rs) and this test does reach real ConPTY data: it
-// writes its probe, kills the tree and calls close(). What it cannot do yet is finish its own
-// read - the close does not unblock the reader thread, so the 10s hard timeout fires. That is
-// the same close-behind-a-pending-read class that used to deadlock the CLI, now inside this
-// harness. Fixing it means giving termai-pty a reader-thread plus EOF-safe-close shape (or
-// CancelSynchronousIo) and rewriting this harness around it, which is a task of its own.
-#[ignore = "harness-side: close() does not unblock this test's reader thread (10s hard timeout); ConPTY itself now works - see the RESOLVED banner in src/windows/conpty.rs"]
+// Measured, not guessed: native ConPTY delivers real data and close() now releases the
+// reader thread. termai-pty opens the pseudo-console output as an overlapped named pipe
+// and close() issues CancelIoEx, so a read parked in read() returns EOF promptly instead
+// of holding the 10s hard timeout (see the close-semantics addendum in
+// src/windows/conpty.rs). The registered differences stay registered; a difference
+// classified as a gate-failing rule still fails this test.
 fn f0_conpty_difference_is_registered() {
     let backend = common::native();
     let handle = backend

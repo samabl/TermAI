@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use termai_pty::KillMode;
 
-// PTY-ORPHAN-1 process-tree closure, exercised on the pipe fallback (the native
-// ConPTY path is blocked on this host; see src/windows/conpty.rs handover).
+// PTY-ORPHAN-1 process-tree closure, exercised on the pipe fallback (a byte-exact channel
+// with an immediate EOF); ConPTY's Job Object path is covered with the native tests.
 
 #[test]
 fn force_kill_leaves_no_live_children_within_two_seconds() {

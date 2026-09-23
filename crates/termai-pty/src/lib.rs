@@ -16,7 +16,9 @@
 //! Concurrency: PtyHandle and ProcessTree are cheap Arc clones over
 //! interior-mutable platform state. read/write take &PtyHandle, and wait runs on
 //! &ProcessTree, so a reader thread can block on read while another thread calls
-//! wait. Every handle is released exactly once and close is idempotent.
+//! wait. Every handle is released exactly once and close is idempotent. On the native
+//! backend close() also releases a read that is already parked in read(); see
+//! PtyBackend::close for the exact contract.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -477,6 +479,13 @@ pub trait PtyBackend: Send + Sync {
     }
 
     /// Release pty resources. Idempotent; does not implicitly kill the tree.
+    ///
+    /// On the native backend, a read that is already parked in `read` is released: it
+    /// returns EOF shortly after close() returns. The ConPTY output channel is an
+    /// overlapped pipe and close() cancels the pending read before closing the pseudo
+    /// console, so a reader thread can be joined and close() is safe to call
+    /// unconditionally. The pipe fallback has no cancellation path: its reader is released
+    /// when the child's stdout reaches EOF, that is, when the child exits.
     fn close(&self, pty: PtyHandle) -> Result<(), PtyError> {
         pty.ops.close()
     }

@@ -3,9 +3,9 @@ mod common;
 use std::time::Duration;
 
 // The interface invariants (kernel/02 section 3.1 / PTY-AC-07) are exercised on the
-// pipe fallback backend. The native ConPTY path is blocked on this host
-// (0xC0000142, zero readable bytes); see the handover block in
-// src/windows/conpty.rs. These invariants are backend-agnostic by construction.
+// pipe fallback backend because it reaches EOF without help. These invariants are
+// backend-agnostic by construction; the native ConPTY path is covered by
+// f0_fidelity.rs and close_semantics.rs.
 
 #[test]
 fn read_after_eof_keeps_returning_zero() {
