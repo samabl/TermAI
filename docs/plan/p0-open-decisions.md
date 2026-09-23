@@ -119,7 +119,7 @@
 | --- | --- |
 | **H17 视觉回归 diff** | **视觉基线作业**（ADR-0022 D1/D3，CI 中重生成并按 ADR-0022 上传） |
 | **H18 硬编码色值** | **`tokens:check`**（CI 步骤名即含 `hex debt`） |
-| **H19 双主题对比度（WCAG）** | **`tokens:check`**（CI 步骤名即含 `WCAG contrast`） |
+| ~~**H19 双主题对比度（WCAG）**~~ → **H19 = 网格对齐误差 ≤0.5px；双主题对比度是表外对照 `C1`** | **`tokens:check`**（CI 步骤名即含 `WCAG contrast`）——**第 255 轮更正**：对比度值属 **C1（表外对照，不计入 19 行）**；H19 需 RM-C 的 golden 像素渲染，**本机不可得** |
 | H13 安装包 | **无**（打包未做） |
 | H12 输入字节等价 | **部分**（`termai-core` 的 `InputEncoder` 有单元测试，未见全语料回放） |
 
@@ -151,25 +151,27 @@
 
 **因此实现步骤 ② 的人不必再踩这两处**：**① `selfcheck.*.verdict` 用 `INCONCLUSIVE`（不是 `SKIP`——`SKIP` 只存在于**指标**级枚举）；② `cost` 是必填对象 `{ minutes, runnerClass, estUsd }`（在 schema 末尾，容易漏读）。** **示例报告在 `target/bench/h17-h18-h19-partial.json`（构建目录、不入库）**；**其存在证明：本机可为 H18／H19 产出**符合 kernel/06 3.7 的报告**。**
 
+**⚠ 第 255 轮更正第 253／254 轮的两处标注（这是本轮最要紧的更正）**：**第 254 轮那份报告把 WCAG 对比度 5.17 标成了 metric `H19`——而 H19 是「网格对齐误差 ≤0.5px」（`unit: px`、`gate: 0.5`，判据 kernel/03 RP-05 / AR-24 第 3 条）**。**证据是权威原文，不是我的推断**：`HARNESS.md:485` 的 §5 行是「网格对齐误差 ｜ ≤0.5px ｜ — ｜ 渲染用例」，`docs/spec/kernel/06-performance-methodology.md:317` 的 H19 行同样写「网格对齐误差 ≤0.5px」，而**双主题对比度在 kernel/06 §3.9 里是**表外对照 `C1`**（该文件 :318，且注「非 §5 表行」）——**HARNESS §5 根本没有对比度这一行**。**因此 5.17 的正确身份是 `C1`，不是 H19。** **同时 `H18` 的值也错了**：`tokens:check` 第 5 关对**三个** HTML 文件给数（netcatty **27** / prototype **26** / terminal-first **0**），**第 253 轮只取了 prototype 一个文件的 26**——**§5 门禁写的是「= 0」，它不是某一个文件的属性。因此 H18 的量是 53。** **这条更正的直接后果**：**第 254 轮那份示例报告现在会被 `B8` 判 FAIL**（`H19: unit mismatch -- HARNESS section 5 says "px" but the report says "ratio"`；`H19: gate mismatch -- the registry says 0.5 but the report says 4.5`）——**而这是正确的行为**：**一个名字与内容不符的值不该被发表**。**修正后的示例报告 `target/bench/machine-free-values.json`（H18=53、C1=5.17、H17/H19 如实缺席）通过 `B8`。** **本机因此可产出的 §5 行只有 H18 一项，另加表外对照 C1——H17 需浏览器层、H19 需 RM-C 像素渲染。**
+
 | 行 | 值从哪来 | **本机实测结果** |
 | --- | --- | --- |
-| **H18 硬编码色值** | `tokens:check` 第 5 关 | **26 处硬编码色值（17 个不同）**，位于 `termai-ui-prototype.html`（**该关 warn-only，故 `result: PASS`**） |
-| **H19 双主题对比度** | `tokens:check` 第 3 关（真实 WCAG 公式） | **逐对给出比值**：`ghost-on-term-bg` 5.17／5.89、`text3-on-surface` 6.35、`text3-on-sunken` 5.47／6.66、`diff-ctx-on-sunken` 5.47／6.66——**均 `>=4.5`**；**H19 要记录的量应是**所有对中的最小值**，可从该关完整输出取得** |
+| **H18 硬编码色值** | `tokens:check` 第 5 关 | ~~**26 处硬编码色值（17 个不同）**，位于 `termai-ui-prototype.html`~~ → **第 255 轮更正：53 处**（三个 HTML 文件：netcatty 27 / prototype 26 / terminal-first 0；该关 warn-only，故 `result: PASS`） |
+| ~~**H19 双主题对比度**~~ → **C1 双主题对比度（表外对照，不是 H19）** | `tokens:check` 第 3 关（真实 WCAG 公式） | **逐对给出比值**：`ghost-on-term-bg` 5.17／5.89、`text3-on-surface` 6.35、`text3-on-sunken` 5.47／6.66、`diff-ctx-on-sunken` 5.47／6.66——**均 `>=4.5`**；**C1 要记录的量应是**所有对中的最小值**（深／浅两主题合取 = **5.17**），可从该关完整输出取得** |
 | **H17 视觉回归** | `tools/design-gates` 的 B4 | **本机取不到**（**浏览器层需要 Chrome**——第 250／252 轮实测：`--static` 下 10 关 SKIP，完整检查因无法比对而 FAIL） |
 
-**因此步骤 ① 在本机**可完成三分之二**：**H18 与 H19 的值可直接从 `tokens:check` 取得**（**且该工具已在 CI 中运行**），**H17 需 CI 的 design job 或一台有浏览器的机器**。
+**因此步骤 ① 在本机**只完成三分之一**（**第 255 轮更正**）：**H18 与表外对照 C1 的值可直接从 `tokens:check` 取得**（**且该工具已在 CI 中运行**）；**H17 需 CI 的 design job 或一台有浏览器的机器**；**H19（网格对齐误差）需 RM-C 的 golden 像素渲染，本机既无渲染管线也无 RM-C**。
 
-**因此**：**为 H17/H18/H19 产出一份含五个指标条目的 `bench-report.json` 是**现成格式**，不需要动 schema**——**B1–B3 逐字校验的是 schema 与 HARNESS §5 的转录，而这份报告填的是 schema 已允许的字段**。**这也让任务边界更干净**：**不碰任何被门禁校验的东西，只新增一条读取路径。**
+**因此**：~~**为 H17/H18/H19 产出一份含五个指标条目的 `bench-report.json`**~~ → **为机器无关行（第 255 轮实为 H18 + 表外对照 C1 两个条目）产出一份 `bench-report.json`** 是**现成格式**，不需要动 schema**——**B1–B3 逐字校验的是 schema 与 HARNESS §5 的转录，而这份报告填的是 schema 已允许的字段**。**这也让任务边界更干净**：**不碰任何被门禁校验的东西，只新增一条读取路径。**
 
 **D-6 的可行性至此闭合**：
 
 | 步骤 | 可行性 |
 | --- | --- |
 | ① 值的来源（写出 `bench-report.json`） | ✅ **schema 已支持多指标条目，无需改动** |
-| ② 值的进入（读取路径） | ❌ **要建的东西**（`--report` 现只校验 schema） |
-| ③ 值的呈现（标 NON_GATING） | ❌ 缺 |
-| ④ 计数器（从常量改为计算值） | ❌ 缺 |
-| ⑤ 验收（注入 + 对照 + 注入 gating 行使 `B7` FAIL） | ❌ 待写 |
+| ② 值的进入（读取路径） | ~~❌ **要建的东西**（`--report` 现只校验 schema）~~ → **✅ 第 255 轮已落地**：`tools/bench/values.mjs` + `B8` 扩展（schema 校验 + §5 行绑定） |
+| ③ 值的呈现（标 NON_GATING） | ~~❌ 缺~~ → **✅ 第 255 轮已落地**：机器无关行逐行呈现，**缺席者打印 `NOT REPORTED`（显式，不静默省略）**；表外对照 `C1` 单独一行 |
+| ④ 计数器（从常量改为计算值） | ~~❌ 缺~~ → **✅ 第 255 轮已落地**：`gatingNumbersProduced` 由读取到的、声明 `gating:true` 的 metric 计算 |
+| ⑤ 验收（注入 + 对照 + 注入 gating 行使 `B7` FAIL） | ~~❌ 待写~~ → **✅ 第 255 轮已落地**：`bench:selftest` **63/63**，含「去掉 H18 → 显式未报告」「H19 被误标 → unit+gate 不匹配」「`gating:true` → B7 FAIL」及其对照 |
 
 **结论**：**这是一件「不改动已冻结契约、只新增读取与呈现」的工作**——**在 P0 的出口里，这种性质的工作不多，而这也是它值得被排在「可立即开工」的原因。**
 **✅ 第 190 轮：D-6 的最后一处未知已查清——「值」的进入路径不存在，这是任务真正要建的东西**。**已核实**：**`--report <p>` 的用途在 `check.mjs:9` 的自述里写得很清楚**——「**additionally schema-validate a bench-report.json**」——**即：它**只做 schema 校验**，**不读取其中的测量值**（`:928`/`:927` 解析参数，`:696` 遍历 `status.reports` **只取 parseError 与校验错误**）。**结合前几轮**：**`bench` 能做的三件事是**——**① 校验报告的 schema（B8/B1–B3）**、**② 用合成夹具评估判定逻辑（B6）**、**③ 声明不产出 gating 数字（B7，其判据已死）**。**它不能做的事是**：**接收真实的测量值，并把它们作为 NON_GATING 列出来。**
@@ -178,7 +180,7 @@
 
 | 步骤 | 内容 | 已有基础 |
 | --- | --- | --- |
-| **① 值的来源** | 为 H17/H18/H19 产出值（H17←`tools/design-gates`、H18/H19←`tokens`），**写成一份 `bench-report.json`**——**schema 已经存在且被 B1–B3 逐字校验**，**所以这是复用而非新建格式** | ✅ schema 与校验在 |
+| **① 值的来源** | 为 H17/H18/H19 产出值（H17←`tools/design-gates`（需浏览器）、H18←`tokens` 第 5 关（**53**）、~~H18/H19←`tokens`~~ **C1←`tokens` 第 3 关（5.17，表外对照）**；**H19←design-gates（需 RM-C 像素渲染，本机无）**），**写成一份 `bench-report.json`**——**schema 已经存在且被 B1–B3 逐字校验**，**所以这是复用而非新建格式** | ✅ schema 与校验在；**第 255 轮实做**：`target/bench/machine-free-values.json` 过 `B8` |
 | **② 值的进入** | **`bench` 需要一条「读取报告中的值」的路径**——**而 `--report` 现在只校验 schema**，**所以这条路径要新建** | ❌ 缺 |
 | **③ 值的呈现** | 把五行标为 **NON_GATING** 列出 | ❌ 缺（第 184 轮已核实 JSON 里无逐行值） |
 | **④ 计数器** | **把 `gatingNumbersProduced` 从常量改为从结果计算**——**否则 `B7` 的沉睡判据不会醒来** | ❌ 缺（第 188 轮已核实） |
@@ -213,7 +215,7 @@
 | --- | --- | --- |
 | **H12** 输入字节等价 | **`partial`** | **部分受门禁**（不是我写的 `no`）——与它「已有 `InputEncoder` 单测、无全语料回放」的现状一致 |
 | **H13** 安装包 | **`yes`** | **它是门禁行，却 `machine: none`** |
-| H17 视觉回归 / H18 硬编码色值 / H19 对比度 | `no` | 非门禁 |
+| H17 视觉回归 / H18 硬编码色值 / ~~H19 对比度~~ **C1 对比度（表外对照）** | `no` | 非门禁 |
 
 **由此产生一个必须先解决的问题，而它不在实现者权限内**：**`B7`（`check.mjs:688`）的判据是 `status.gatingNumbersProduced !== 0` → FAIL**。**H13 是 `governed: yes` 的行**——**若它的数字被计为 gating，则在本机产出它就会让 `B7` 判 FAIL**；**而 H13 又是 `machine: none`，本不需要参考机**（`check.mjs:415` 的注释正写着 `// package bytes: not a machine gate`，说明工具侧已经知道这一点）。**即：一条「需要产出 gating 数字、却不需要参考机」的行，与一条「无参考机即禁止任何 gating 数字」的边界规则之间，存在需要澄清的张力。**
 
@@ -228,7 +230,7 @@
 | **对照** | **同一输入补齐后，该行的 NON_GATING 值必须出现**——**以排除「它只是什么都不报」** |
 | **不得越过 `B7`** | 上述两种情形下 `gatingNumbersProduced` **都必须保持 0** |
 
-**这三条与 `kernel-gates --selftest`（23/23）、`bench:selftest`、`conformance selftest`、`ci-cost --selftest` 是同一形态**：**新增呈现路径必须被证明「能报出它该报的东西」，而不只是「跑得通」**。
+**这三条与 `kernel-gates --selftest`（~~23/23~~ **24/24**）、`bench:selftest`（**63/63**）、`conformance selftest`、`ci-cost --selftest` 是同一形态**：**新增呈现路径必须被证明「能报出它该报的东西」，而不只是「跑得通」**。
 **✅ 第 184 轮：E-P0-3 在本机的可执行任务，现在是完全指定的（D-6 的收束）**。**已核实**：`node tools/bench/check.mjs --json` 目前**只报状态与计数**——`"state": "INCONCLUSIVE"`、`"gatingNumbersProduced": 0`、`"detail": "no reference machine on this host: every discovered value is NON_GATING / INCONCLUSIVE and 0 gating…"`——**没有任何逐行的 NON_GATING 值**（JSON 里不存在 `values` / `nonGating` 数组）。
 
 **因此任务定义为**：
@@ -236,7 +238,7 @@
 | 项 | 内容 |
 | --- | --- |
 | **做什么** | **为 `machine: none` 且 `governed: no` 的五行（H12/H13/H17/H18/H19）产出并**标注 NON_GATING** 的值**，使 `bench` 的报告里出现这五行的数字（**而不是 gating 数字**） |
-| **输入来自哪里** | **H17 ← `tools/design-gates`**（`registry.owner` 已如此标注；其阈值默认 `maxDiffPct=0`，即零个不同像素）；**H18/H19 ← `tokens:check`**（现为 **hex warn-only** + **WCAG 对比度真实计算**）；**H12 ← `termai-core` 的 `InputEncoder`**（现仅单测）；**H13 ← 无**（打包未做） |
+| **输入来自哪里** | **H17 ← `tools/design-gates`**（`registry.owner` 已如此标注；其阈值默认 `maxDiffPct=0`，即零个不同像素；**本机需浏览器层**）；**H18 ← `tokens:check` 第 5 关 hex debt（本机可得 = 53，warn-only）**；~~**H18/H19 ← tokens:check**（现为 hex warn-only + WCAG 对比度真实计算）~~ **C1（表外对照）← `tokens:check` 第 3 关 WCAG（本机可得 = 5.17）**；**H19 ← `tools/design-gates` 的 RM-C golden 像素测量（本机不可得）**；**H12 ← `termai-core` 的 `InputEncoder`**（现仅单测）；**H13 ← 无**（打包未做） |
 | **硬边界（不可越过）** | **`B7` 要求本机 `gatingNumbersProduced === 0`**——**产出任何 gating 数字即判 FAIL**。**因此实现必须是「NON_GATING 值的呈现」**，**且不得让 `B7` 的数字变为非零** |
 | **副产品** | **H18 若要从「只警告」变成「阻断」，那是**收紧门禁**（不需 TSC），但**会改变 CI 行为**，须单独记录**——**不属于本任务，但本任务会暴露它** |
 | **不在本任务内** | **H1–H11（需 RM-A/RM-C 与 UI 宿主）**、**H14–H16（外部）**——**它们在 `B7` 与 E-P0-2 的限制下不可能在本机产出** |
@@ -263,7 +265,7 @@
 | H 行 | 更正后的准确状态 |
 | --- | --- |
 | **H18 硬编码色值** | **扫描存在，但门禁是 `warn only`**——**它观察，不阻断**。**§5 的 H18 是 `family: exact`**，**因此「有扫描」≠「有等价强度的实现」**；**绑定之外还须决定是否把 warn 提升为 fail**（**收紧门禁不是放宽，不需要 TSC；但它改变 CI 行为，须记录**） |
-| **H19 双主题对比度** | **门禁列（正文 ≥4.5:1）确已强制**（`thresholds = { text: 4.5, ui: 3.0 }`，真实计算）；**目标列（官方主题 ≥7:1）未被强制**——**而按 HARNESS §5 的「门禁 / 目标」两列口径，目标列本就不阻断，故此点正确，不是缺口** |
+| ~~**H19 双主题对比度**~~ → **C1（表外对照）双主题对比度** | **门禁列（正文 ≥4.5:1）确已强制**（`thresholds = { text: 4.5, ui: 3.0 }`，真实计算）；**目标列（官方主题 ≥7:1）未被强制**——**而按 HARNESS §5 的「门禁 / 目标」两列口径，目标列本就不阻断，故此点正确，不是缺口** |
 | **H17 视觉回归 diff** | 视觉基线作业（ADR-0022）**阻断**；**本轮未核实其阈值是否等于 H17 的门禁值**——**留待核实，不预先声称等价** |
 
 **本节此前的「已有实现」是**粗判**；**准确表述是「已有测量，强度不一」**——**这正是第 165 轮那条教训的又一次应用：按名字找到的东西，不等于具备了它名字所声称的能力**。

@@ -14,7 +14,7 @@
 node tools/bench/check.mjs              # 运行 B1-B7（npm run bench:check）
 node tools/bench/check.mjs --selftest   # 注入故障，证明判定逻辑不是恒绿（npm run bench:selftest）
 node tools/bench/check.mjs --json       # 仅输出机器可读 JSON
-node tools/bench/check.mjs --report <p> # 额外对一个真实 bench-report.json 做 schema 校验（B8）
+node tools/bench/check.mjs --report <p> # 校验 schema（B8）**并读取其中的值**，把每个 metric 绑定到它的 §5 行
 node tools/bench/check.mjs --machine <p># 显式声明本机为已登记的 RM-A / RM-C（默认不声明）
 ```
 
@@ -27,7 +27,8 @@ node tools/bench/check.mjs --machine <p># 显式声明本机为已登记的 RM-A
 | `lib.mjs` | schema 引擎 + bench-report / machine-fingerprint schema、稳定 JSON 与 sha256 指纹、§3.1 判定状态机 `evaluate()`、`regression()`（G4-PR / G4-REL）、`gateAndRegression()`、`assertReproducible()`（AR-27 自证）、指标族阈值策略、`classifyMachine()` 诚实边界 |
 | `registry.mjs` | HARNESS §5 的机器可读登记：H1…H19（19 条）+ 表外对照 C1；每条含 owner / 测量定义落点 / 门禁载体 / 是否 kernel/06 管辖 / 指标族 / 参考机；`mappingIntegrity()` 做缺号与重复校验 |
 | `fixtures.mjs` | **合成逻辑夹具（不是测量值）**：只用于把状态机推过每个分支，绝不当结果上报、绝不与基线比对 |
-| `check.mjs` | 门禁入口 B1–B8 + `--selftest` 54 条注入 |
+| `values.mjs` | **值的读取与呈现**（D-6 第 ②–④ 步）：把报告里的每个 metric **绑定到它声称的 §5 行**（unit / gate 必须等于 registry 的转录）；机器无关行的「未报告」是**显式**的；`gatingNumbersProduced` 从读取到的值计算 |
+| `check.mjs` | 门禁入口 B1–B8 + `--selftest` 63 条注入 |
 
 ## 门禁 B1–B8
 
@@ -39,8 +40,8 @@ node tools/bench/check.mjs --machine <p># 显式声明本机为已登记的 RM-A
 | B4 | 阈值转写对照 | 解析 kernel/06 §3.6 的 `eps_self` 表与 §3.1 代码块，核对本工具中的每个常量 | kernel/06 §3.1/§3.6、AR-31 第 9 条 |
 | B5 | 指纹确定性 | 同输入同哈希；41 个叶子字段**逐个**改动都改变哈希；键序无关 | kernel/06 §3.4、§3.7 |
 | B6 | §3.1 状态机分支覆盖 | 6 条对照分支 + 21 条故障分支全部产出文档规定的裁决 | kernel/06 §3.1 |
-| B7 | 机器绑定诚实边界 | 无参考机时必须 NON_GATING / INCONCLUSIVE 且产出 0 个门禁数字 | ADR-0014 铁律 5、kernel/06 §6、AR-31 第 8 条 | **⚠ 第 202 轮注**：**「产出 0 个门禁数字」这一条目前是**恒真**的——`gatingNumbersProduced` 是 `check.mjs:672` 的**字面常量 0**，没有任何代码从结果计算它（第 188/189 轮核实）。** `B7` 的另外两条判据是活的（机器分类、无指纹情形）。**因此本行描述的是**要求**，不是**当下被强制的事实**；把计数器做成计算值是 `docs/plan/p0-open-decisions.md` D-6 的第 ④ 步。**
-| B8 | 外部报告 schema 校验（`--report`） | 对指定 bench-report.json 做 §3.7 校验；文件不存在则 SKIP | kernel/06 §3.7、spec 07 §3.8.2 |
+| B7 | 机器绑定诚实边界 | 无参考机时必须 NON_GATING / INCONCLUSIVE 且产出 0 个门禁数字 | ADR-0014 铁律 5、kernel/06 §6、AR-31 第 8 条 | **⚠ 第 202 轮注**：**「产出 0 个门禁数字」这一条目前是**恒真**的——`gatingNumbersProduced` 是 `check.mjs:672` 的**字面常量 0**，没有任何代码从结果计算它（第 188/189 轮核实）。** `B7` 的另外两条判据是活的（机器分类、无指纹情形）。**因此本行描述的是**要求**，不是**当下被强制的事实**；把计数器做成计算值是 `docs/plan/p0-open-decisions.md` D-6 的第 ④ 步。** **✅ 第 255 轮：该步已完成**——`gatingNumbersProduced` 现由 `values.mjs` 读取到的 metric 计算（声明 `gating:true` 者计入），注入一个产出 gating 数字的行会被 `B7` 判 FAIL；该注入与对照已进 `bench:selftest`（63/63）。**
+| B8 | 报告 schema 校验 **+ §5 行绑定**（`--report`，或树中存在报告时） | ① 对 bench-report.json 做 §3.7 校验；② 每个 metric 若指名某个 §5 行，其 `unit` / `gate` 必须等于 registry 的转录（否则 FAIL）；③ 机器无关行的「未报告」显式列出；文件不存在则 SKIP | kernel/06 §3.7、spec 07 §3.8.2、HARNESS §5 |
 
 ## bench-report 字段对照（kernel/06 §3.7 逐字）
 
@@ -92,6 +93,27 @@ runner / commit / toolchain / ts + 顶层 commit）逐字保留」）。任一�
 
 共 48 个字段名，`computeFingerprintSha256()` 对**全部叶子字段**（41 个）做稳定 JSON 序列化后取 sha256：
 同输入同哈希，任一字段变化即哈希变化（因此任一变更触发 ADR-0014 铁律 2 的基线重设）。
+
+## 值的读取与 §5 行绑定（D-6 第 ②–④ 步，第 255 轮落地）
+
+`--report <p>` 不再只是 schema 校验：`values.mjs` 读取报告中的 `metrics[]`，并把每个 metric **绑定到它指名的 §5 行**。
+
+| 读什么 | 规则 |
+| --- | --- |
+| **行集合** | 由 registry 推导「不需要参考机即可给出值」的行：`machine === 'none'` 且 `governed === 'no'` 且 `family !== 'external'` → **H17 / H18 / H19**（推导，不硬编码） |
+| **绑定** | metric 指名某 H 行时，其 `unit` 与 `gate` **必须逐字等于 registry 的转录**（registry 由 B1/B3 每次从文档重新推导）——不等即 `B8` FAIL |
+| **呈现** | 每行给出值 + registry 门禁 + owner + 来源；**报告没带的行打印为 `NOT REPORTED` 并给出 owner / carrier，绝不静默省略** |
+| **表外对照** | `C1`（双主题对比度）作为**表外对照**呈现，**不计入 19 行** |
+| **计数器** | `gatingNumbersProduced` = 读取到的、声明 `gating: true` 的 metric 数；非参考机上非 0 即 `B7` FAIL |
+
+**第 255 轮的两处更正（本工具现在会抓出来）**：
+
+1. **WCAG 对比度不是 H19**。H19 是**网格对齐误差 ≤0.5px**（`unit: px`、`gate: 0.5`、判据 kernel/03 RP-05）；**双主题对比度是表外对照 `C1`**（HARNESS §5 无此行，kernel/06 §3.9 记为 C1）。第 254 轮的示例报告把 5.17 标成 `H19`（`unit: ratio`、`gate: 4.5`），本工具现在以 **unit + gate 两处不匹配**判 `B8` FAIL。
+2. **H18 的值是 53 而不是 26**。`tokens:check` 第 5 关对**三个** HTML 文件给数（netcatty 27 / prototype 26 / terminal-first 0），只取其中一个不是 §5 门禁「= 0」所指的量。
+
+**本机可得性（环境问题，不是排期问题）**：**H18** 的值在本机可得（`tokens:check` 第 5 关，warn-only）；**H17** 需 `design:check` 的浏览器层（本机无 `CHROME_PATH`）；**H19** 需 RM-C 的 golden 像素渲染（本机无渲染管线）。**因此本机可产出的 §5 行目前只有 H18，另加表外对照 C1**——其余行在报告里缺席是如实的 `NOT REPORTED`，不是失败。
+
+**SD-24（已登记）**：kernel/06 §3.4 把「网格对齐 / 视觉 golden」的**测量**绑到 **RM-C**，而 registry 对 H17 / H19 写 `machine: 'none'`（因为它们的**门禁判定**归 `tools/design-gates`）。本工具跟随 registry；这条「测量机器 vs 判定机器」的分歧见 `docs/plan/p0-spec-defects.md` SD-24。
 
 ## 判定状态机落点（kernel/06 §3.1）
 
@@ -170,7 +192,10 @@ runner / commit / toolchain / ts + 顶层 commit）逐字保留」）。任一�
 - **产出门禁数字**：需要 RM-A（计算类：H1、H5、H6、H7、H8、H9、H10、H11）与 RM-C
   （显示 / 延迟类：H2、H3、H4），并且内核侧 `cargo xtask bench` 落地（M0 未实现）。
   在此之前，本工具的输出一律 `INCONCLUSIVE(REFERENCE_MACHINE_UNAVAILABLE)`。
-- **H1–H19 的实测**：本工具只校验「测量定义已登记且与正文一致」，不执行任何一项测量。
+- **§5 机器无关行的值**：读取路径已落地（D-6 第 ②–④ 步）；本机可产出者只有 **H18** 与**表外对照 C1**，
+  其余行如实 `NOT REPORTED`（H17 需浏览器层、H19 需 RM-C 像素渲染）。
+- **H1–H19 的实测**：本工具只校验「测量定义已登记且与正文一致」，不执行任何一项测量
+  （机器无关行的值由 `--report` **读入**，不是本工具测出来的）。
 - **`bench-repro-report.json`（A-PM-01）**：`assertReproducible()` 已实现判定，但真正跑两次 G4 全集
   需要参考机与 xtask。
 - **D0 场景冻结**：`scene.frozen` 由调用方（xtask / scene 工具）提供；本工具只消费与判定。

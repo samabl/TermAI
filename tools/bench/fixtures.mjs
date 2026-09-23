@@ -135,6 +135,44 @@ export function syntheticReport(opts) {
   return report;
 }
 
+// One metric row of the shape tools/bench/values.mjs reads. Only the fields the reader consults are
+// meaningful here; the schema envelope (fingerprint / selfcheck / cost) is exercised by the B8
+// schema checks elsewhere, and values.mjs does not validate it.
+export function syntheticMetricRow(id, overrides) {
+  const base = {
+    metric: id,
+    value: 0,
+    unit: 'count',
+    samples: 1,
+    runner: 'synthetic',
+    commit: 'synthetic-commit',
+    toolchain: 'synthetic-rustc',
+    ts: '1970-01-01T00:00:00Z',
+    statistic: 'exact',
+    runs: 1,
+    runStat: 'exact',
+    madOverMedian: 0,
+    gate: 0,
+    target: null,
+    gating: false,
+    verdict: 'SKIP',
+    method: 'synthetic',
+    dCalibrationMs: null,
+    artifacts: [],
+  };
+  return Object.assign(base, overrides || {});
+}
+
+// A minimal report body carrying metric rows, for the D-6 value-reading checks.
+export function syntheticMetricsReport(rows) {
+  return {
+    schemaVersion: '1.0.0',
+    reportId: 'synthetic-values',
+    generatedAt: '1970-01-01T00:00:00Z',
+    metrics: rows,
+  };
+}
+
 // A deep clone so selftest mutations can never leak between injections.
 export function clone(value) {
   return JSON.parse(JSON.stringify(value));

@@ -117,6 +117,13 @@
 - **本 P0 处置**：**采读法 B 作为工作口径**（否则 P0 自相矛盾），但把它登记为**待 owner 追认**的冲突，而不是我单方面改判出口标准——**E-P0-1 的对外状态在追认前保持「未判定」**。
 - **需要的动作**：① `kernel/01` owner 明确「esctest 全通过」的判定域（是全集还是子集），并在 §5 V-04 写清；② 若是子集，则必须给出**子集外序列的差异登记流程**（K-04 已有双签与期限机制）与**通过率的分母口径**；③ 在第 41 轮之后的账里，把 40 条颜色失败**按颜色族单独列账**，标注「子集外，待读法 B 追认」，**不得混入产品缺陷数**。
 
+## SD-24｜H17 / H19 的「测量机器」与「判定机器」：registry 写 `machine: none`，kernel/06 §3.4 把测量绑到 RM-C
+
+- **证据**：`tools/bench/registry.mjs` 的 H17 / H19 两行写 `machine: 'none'`（注释理由：它们的**门禁判定**归 `tools/design-gates`，`evaluate()` 返回 `SKIP(NOT_MACHINE_GATE)`）；而 `docs/spec/kernel/06-performance-methodology.md` §3.4 把**测量**机器写死为「显示与延迟类（帧时、key-to-photon、**网格对齐**、**视觉 golden**）→ **RM-C**」，§3 的过渡句也把「网格对齐 ≤0.5px」列为「RM-C 上 100%/125%/150%/200% DPI 渲染用例」。
+- **影响**：同一个 H 行在两处得到两种机器分类。它直接决定「没有参考机时这一行是 `NON_GATING` 还是 `SKIP`」，也决定 H19 是否属于 D-6 所说的「machine-free 行」。第 255 轮的 `tools/bench/values.mjs` 按 **registry**（`machine === 'none'`）把 H17/H18/H19 列为「不需要参考机即可给出值」的行——**而 H19 的测量在 RM-C 上，因此本机不可能给出它的值**；工具对此的表述是如实的 `NOT REPORTED`，**不声称「与机器无关」**。
+- **本 P0 处置**：**跟随 registry**（它是被 B1/B3 每次从文档重新校验的转录），并让缺席显式化；**不自行改判**机器归属。
+- **需要的动作**：kernel/06 owner 区分并写明两个概念——① **测量机器**（§3.4：H17 / H19 的像素测量在 RM-C 上做）；② **门禁判定归属**（§3.9：判定载体是 `tools/design-gates`）。若维持 registry 的 `machine: none`，应在 §3.9 的 H17 / H19 行明文写出「`machine: none` 指判定归属，测量仍在 RM-C」；否则应把 registry 改为 `RM-C` 并同步 `evaluate()` 的读法。
+
 ## 处置总表
 
 | 编号 | 落点 | 类型 | 本 P0 处置 | 需要动作 |
@@ -125,6 +132,7 @@
 | SD-10 | kernel/06 §4 | 枚举缺成员 | `GATE_BREACH` 扩展项 + `origin:'extension'` | kernel/06 §4 增列 |
 | SD-11 | kernel/06 §3.2 | 定义缺失 | 按与 H2 共用注入流读作 `isTail`/≥1e5，标为**读数** | kernel/06 owner 确认或改判 |
 | SD-12 | kernel/06 §3.4/§6 | 原因码越界 | 标 `origin:'extension'` 并写明推导链 | owner 认可后并入枚举 |
+| SD-24 | kernel/06 §3.4 vs registry H17/H19 | 机器归属两义 | 跟随 registry；缺席显式 `NOT REPORTED`；不自行改判 | kernel/06 owner 区分「测量机器」与「判定归属」并写明 |
 
 ## 与前序登记的关系
 

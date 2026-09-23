@@ -30,6 +30,7 @@ import { fileURLToPath } from 'node:url';
 import * as B from './lib.mjs';
 import * as R from './registry.mjs';
 import * as F from './fixtures.mjs';
+import * as V from './values.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(HERE, '..', '..');
@@ -636,9 +637,27 @@ function discoverReports(root) {
   return out;
 }
 
-function gatingStatus(root, explicitMachinePath) {
+function loadReportFile(rel, abs) {
+  const item = { rel: rel, path: abs, exists: fs.existsSync(abs), json: null, parseError: null };
+  if (!item.exists) return item;
+  try { item.json = JSON.parse(fs.readFileSync(abs, 'utf8')); } catch (e) { item.parseError = String(e.message || e); }
+  return item;
+}
+
+// Every report this run reads: the ones discovered in the tree plus the one --report points at.
+function buildReportSet(root, explicitPath) {
+  const discovered = discoverReports(root);
+  let explicit = null;
+  if (explicitPath) explicit = loadReportFile(explicitPath, path.resolve(explicitPath));
+  const all = explicit && explicit.exists ? discovered.concat([explicit]) : discovered.slice();
+  return { discovered: discovered, explicit: explicit, all: all };
+}
+
+function gatingStatus(root, explicitMachinePath, reportSet) {
   const fingerprints = discoverFingerprints(root);
-  const reports = discoverReports(root);
+  const reports = reportSet.discovered;
+  // D-6 step 4: the counter is computed from the values this run presents, not a literal constant.
+  const values = V.collectValues(reportSet.all);
   let attested = null;
   if (explicitMachinePath) {
     const abs = path.resolve(explicitMachinePath);
@@ -663,13 +682,16 @@ function gatingStatus(root, explicitMachinePath) {
   return {
     fingerprints: fingerprints,
     reports: reports,
+    reportSet: reportSet,
+    values: values,
     attested: attested,
     machine: machine,
     gating: cls.gating,
     state: cls.state,
     reason: cls.reason,
     detail: cls.detail,
-    gatingNumbersProduced: 0,
+    gatingNumbersProduced: values.gatingNumbersProduced,
+    gatingSources: values.gating,
   };
 }
 
@@ -685,7 +707,10 @@ function gateB7(root, status) {
   if (noFp.gating || noFp.state !== 'INCONCLUSIVE' || noFp.reason !== 'REFERENCE_MACHINE_UNAVAILABLE') {
     problems.push('a host with no registered fingerprint must be INCONCLUSIVE(REFERENCE_MACHINE_UNAVAILABLE), got ' + JSON.stringify(noFp));
   }
-  if (status.gatingNumbersProduced !== 0) problems.push('this tool produced ' + status.gatingNumbersProduced + ' gating number(s); it must produce zero on a non-reference host');
+  if (status.gatingNumbersProduced !== 0) {
+    const where = (status.gatingSources || []).map(function (s) { return s.source + '#' + s.id; }).join(', ');
+    problems.push('this tool presented ' + status.gatingNumbersProduced + ' gating number(s) from ' + where + '; on a non-reference host it must present zero (ADR-0014 iron law 5)');
+  }
   for (const f of status.fingerprints) {
     if (f.parseError) problems.push(f.rel + ': cannot be parsed (' + f.parseError + ')');
     else {
@@ -717,6 +742,32 @@ function summarize(gates) {
   return c;
 }
 
+// D-6 step 3: present the values. A machine-free section 5 row that the report does not carry is
+// printed as NOT REPORTED with its owner and carrier -- it is never silently omitted.
+function formatValues(values) {
+  if (!values) return [];
+  const sources = values.sources || [];
+  if (!sources.length) {
+    return ['section 5 machine-free values: 0 of ' + values.expected.length + ' reported (' + values.expected.join(', ') + '); no bench-report.json was read -- pass --report <p>'];
+  }
+  const lines = ['section 5 machine-free values (a value here is never a gate number; read from ' + sources.join(', ') + '):'];
+  for (const r of values.rows) {
+    if (r.status === V.REPORTED) {
+      lines.push('  ' + r.id + ' = ' + r.value + ' ' + String(r.reportedUnit) + '  [' + String(r.verdict) + '; registry gate ' + r.gateOp + ' ' + r.gate + ' ' + r.unit + '; owner ' + r.owner + '; source ' + r.source + ']');
+    } else {
+      lines.push('  ' + r.id + ' NOT REPORTED -- ' + r.reason + '  [owner ' + r.owner + '; carrier ' + r.carrier + ']');
+    }
+  }
+  for (const c of values.controls) {
+    lines.push('  ' + c.id + ' (out-of-table control, not one of the 19) = ' + c.value + ' ' + String(c.reportedUnit) + '  [' + String(c.verdict) + '; source ' + c.source + ']');
+  }
+  for (const e of values.extra) {
+    lines.push('  ' + e.id + ' = ' + e.value + ' ' + String(e.reportedUnit) + '  [' + String(e.verdict) + '; ' + (e.machine === 'none' ? 'not a machine gate' : 'machine ' + e.machine) + '; source ' + e.source + ']');
+  }
+  if (values.unbound.length) lines.push('  not bound to a section 5 row: ' + values.unbound.map(function (u) { return u.id + ' (' + u.source + ')'; }).join(', '));
+  return lines;
+}
+
 function formatHuman(report) {
   const lines = [];
   lines.push('=== bench (kernel/06 performance methodology: schema / fingerprint / verdicts / H1-H19) ===');
@@ -724,6 +775,7 @@ function formatHuman(report) {
     lines.push('[' + g.id + '] ' + g.status.padEnd(4) + ' ' + g.title + (g.detail ? ' - ' + g.detail : ''));
     for (const n of g.notes) lines.push('      ' + n);
   }
+  for (const v of formatValues(report.values)) lines.push(v);
   lines.push('honesty boundary: ' + report.gating.state + ' (' + report.gating.reason + ')');
   lines.push('  ' + report.gating.detail);
   lines.push('  gating numbers produced by this run: ' + report.gating.gatingNumbersProduced);
@@ -744,6 +796,7 @@ function buildReport(root, gates, status) {
     schema_version: 1,
     root: root,
     authority: 'AR-24.3 / AR-27 / AR-30 / AR-31; docs/spec/kernel/06-performance-methodology.md section 1-3; ADR-0014',
+    values: status.values,
     result: failed.length === 0 ? 'PASS' : 'FAIL',
     counts: c,
     gating: {
@@ -796,7 +849,7 @@ function errorCodes(result) {
 function runSelftest(root) {
   const st = makeSelftest();
   const docs = loadDocs(root);
-  const status = gatingStatus(root, null);
+  const status = gatingStatus(root, null, buildReportSet(root, null));
 
   // --- schema faults
   const goodReport = F.syntheticReport({ metric: 'latency.key_to_photon.p99', value: 1, gate: 16 });
@@ -900,6 +953,39 @@ function runSelftest(root) {
   })(), 'FLOOR_MACHINE_ONLY');
   st.check('control: this run produced zero gating numbers', status.gatingNumbersProduced === 0, 'no measurement was performed');
 
+  // --- D-6 steps 2-5: reading values out of a report and binding them to section 5 rows
+  const freeIds = V.machineFreeRows().map(function (r) { return r.id; });
+  st.check('control: the machine-free section 5 rows are derived from the registry', freeIds.join(',') === 'H17,H18,H19', 'derived: ' + freeIds.join(',') + ' (machine=none, governed=no, family!=external)');
+
+  const h18Good = F.syntheticMetricRow('H18', { value: 53, unit: 'count', gate: 0, gating: false, verdict: 'SKIP' });
+  const withH18 = V.collectValues([{ rel: 'synthetic-a.json', json: F.syntheticMetricsReport([h18Good]) }]);
+  const h18Row = withH18.rows.filter(function (r) { return r.id === 'H18'; })[0];
+  st.check('control: an H18 row carrying the registered unit and gate binds and is presented', !!h18Row && h18Row.status === V.REPORTED && h18Row.value === 53 && withH18.problems.length === 0, 'H18=' + (h18Row ? h18Row.value + ' ' + h18Row.reportedUnit : 'absent') + ', problems=' + withH18.problems.length);
+  st.check('control: the rows a partial report does not carry are named', V.notReportedIds(withH18).join(',') === 'H17,H19', 'not reported: ' + V.notReportedIds(withH18).join(',') + ' (never silently omitted)');
+
+  const h19AsContrast = F.syntheticMetricRow('H19', { value: 5.17, unit: 'ratio', gate: 4.5, target: 7, gating: false, verdict: 'NON_GATING' });
+  const mislabelled = V.collectValues([{ rel: 'synthetic-b.json', json: F.syntheticMetricsReport([h19AsContrast]) }]);
+  st.check('inject: the WCAG contrast value labelled H19 is caught as a unit + gate mismatch', mislabelled.problems.length >= 2 && /unit mismatch/.test(mislabelled.problems[0]) && /gate mismatch/.test(mislabelled.problems[1]), mislabelled.problems.join(' | '));
+
+  const h19Good = F.syntheticMetricRow('H19', { value: 0.25, unit: 'px', gate: 0.5, gating: false, verdict: 'SKIP' });
+  const h19Ok = V.collectValues([{ rel: 'synthetic-c.json', json: F.syntheticMetricsReport([h19Good]) }]);
+  st.check('control: an H19 row carrying px / 0.5 binds cleanly (the checker does not reject everything)', h19Ok.problems.length === 0 && V.reportedIds(h19Ok).indexOf('H19') >= 0, 'problems=' + h19Ok.problems.length);
+
+  const noH18 = V.collectValues([{ rel: 'synthetic-d.json', json: F.syntheticMetricsReport([h19Good]) }]);
+  st.check('inject: dropping H18 from the report makes its absence explicit', V.notReportedIds(noH18).indexOf('H18') >= 0 && V.reportedIds(noH18).indexOf('H18') < 0, 'not reported: ' + V.notReportedIds(noH18).join(','));
+
+  const controlC1 = V.collectValues([{ rel: 'synthetic-e.json', json: F.syntheticMetricsReport([h18Good, F.syntheticMetricRow('C1', { value: 5.17, unit: 'ratio', gate: 4.5, target: 7, gating: false, verdict: 'NON_GATING' })]) }]);
+  st.check('control: an out-of-table control is presented as a control, not as one of the 19', controlC1.controls.length === 1 && controlC1.controls[0].id === 'C1' && controlC1.problems.length === 0, 'controls=' + controlC1.controls.map(function (c) { return c.id; }).join(','));
+
+  const gatingValue = V.collectValues([{ rel: 'synthetic-f.json', json: F.syntheticMetricsReport([F.syntheticMetricRow('H1', { value: 100, unit: 'ms', gate: 150, gating: true, verdict: 'PASS' })]) }]);
+  const gatingStatusInjected = Object.assign({}, status, { gatingNumbersProduced: gatingValue.gatingNumbersProduced, gatingSources: gatingValue.gating, values: gatingValue });
+  st.check('inject: a metric declaring gating=true is counted and makes B7 fail', gatingValue.gatingNumbersProduced === 1 && gateB7(root, gatingStatusInjected).status === STATUS.FAIL, 'counter=' + gatingValue.gatingNumbersProduced + ', B7=' + gateB7(root, gatingStatusInjected).status);
+  st.check('control: the same value with gating=false keeps B7 green', (function () {
+    const v = V.collectValues([{ rel: 'synthetic-g.json', json: F.syntheticMetricsReport([F.syntheticMetricRow('H1', { value: 100, unit: 'ms', gate: 150, gating: false, verdict: 'NON_GATING' })]) }]);
+    const s = Object.assign({}, status, { gatingNumbersProduced: v.gatingNumbersProduced, gatingSources: v.gating, values: v });
+    return v.gatingNumbersProduced === 0 && gateB7(root, s).status === STATUS.PASS;
+  })(), 'counter=0, B7=PASS');
+
   // --- the real gates must still be green on the real tree
   const realGates = [
     gateB1(root, docs), gateB2(root, docs), gateB3(root, docs), gateB4(root, docs),
@@ -932,11 +1018,50 @@ function parseArgs(argv) {
   return out;
 }
 
+// B8: schema validation plus the D-6 value binding. It runs when --report points at a file or when a
+// report is discovered; with neither it is an explicit SKIP, never a silent PASS.
+function gateB8(status) {
+  const TITLE = 'bench-report schema validation + section 5 row binding';
+  const set = status.reportSet;
+  const targets = set.explicit ? [set.explicit] : set.discovered;
+  if (!targets.length) {
+    return gate('B8', TITLE, STATUS.SKIP, 'no bench-report.json was supplied (--report <p>) or discovered; a missing report is an explicit SKIP, never a silent PASS');
+  }
+  if (set.explicit && !set.explicit.exists) {
+    return gate('B8', TITLE, STATUS.SKIP, 'the requested report ' + set.explicit.rel + ' does not exist; a missing report is an explicit SKIP, never a silent PASS');
+  }
+  const problems = [];
+  const notes = [];
+  for (const f of targets) {
+    if (f.parseError) { problems.push(f.rel + ': report is not valid JSON: ' + f.parseError); continue; }
+    const v = B.validateBenchReport(f.json);
+    if (!v.ok) {
+      problems.push(f.rel + ': ' + v.errors.length + ' schema violation(s)');
+      for (const e of v.errors.slice(0, 6)) problems.push(f.rel + ': ' + e.code + ' ' + e.path + ': ' + e.message);
+      continue;
+    }
+    notes.push(f.rel + ': satisfies kernel/06 3.4 / 3.7 schemaVersion ' + B.BENCH_REPORT_SCHEMA_VERSION);
+    notes.push('  legacy fields missing: ' + (v.legacyMissing.length ? v.legacyMissing.join(', ') : 'none')
+      + '; flat projection applicable: ' + v.flatProjection.applicable + ', ok: ' + v.flatProjection.ok
+      + '; unknown (forward-compatible) fields: ' + (v.extras.length ? v.extras.join(', ') : 'none'));
+  }
+  for (const p of status.values.problems) problems.push('row binding: ' + p);
+  const reported = V.reportedIds(status.values);
+  const missing = V.notReportedIds(status.values);
+  notes.push('section 5 machine-free row(s) carrying a value: ' + (reported.length ? reported.join(', ') : 'none') + ' of ' + status.values.expected.join(', '));
+  notes.push('not reported (explicit, never silently omitted): ' + (missing.length ? missing.join(', ') : 'none'));
+  if (status.values.controls.length) notes.push('out-of-table control value(s): ' + status.values.controls.map(function (c) { return c.id; }).join(', '));
+  if (status.values.gatingNumbersProduced) notes.push('gating number(s) presented: ' + status.values.gatingNumbersProduced + ' (B7 fails on a non-reference host)');
+  if (problems.length) return gate('B8', TITLE, STATUS.FAIL, problems.length + ' problem(s)', problems.slice(0, 12));
+  return gate('B8', TITLE, STATUS.PASS, "report satisfies kernel/06 3.4 / 3.7 and every metric that names a section 5 row carries that row's registered unit and gate", notes);
+}
+
 function main(argv) {
   const args = parseArgs(argv);
   const root = args.root ? path.resolve(args.root) : DEFAULT_ROOT;
   const docs = loadDocs(root);
-  const status = gatingStatus(root, args.machine);
+  const reportSet = buildReportSet(root, args.report);
+  const status = gatingStatus(root, args.machine, reportSet);
 
   const gates = [
     gateB1(root, docs),
@@ -948,30 +1073,9 @@ function main(argv) {
     gateB7(root, status),
   ];
 
-  // Optional: schema-validate a real report when one exists (or was pointed at).
-  if (args.report) {
-    const abs = path.resolve(args.report);
-    let extra = null;
-    if (!fs.existsSync(abs)) {
-      extra = gate('B8', 'external bench-report schema validation (' + args.report + ')', STATUS.SKIP, 'the requested report does not exist; a missing report is an explicit SKIP, never a silent PASS');
-    } else {
-      let parsed = null;
-      let parseError = null;
-      try { parsed = JSON.parse(fs.readFileSync(abs, 'utf8')); } catch (e) { parseError = String(e.message || e); }
-      if (parseError) {
-        extra = gate('B8', 'external bench-report schema validation (' + args.report + ')', STATUS.FAIL, 'report is not valid JSON: ' + parseError);
-      } else {
-        const v = B.validateBenchReport(parsed);
-        const notes = ['legacy fields missing: ' + (v.legacyMissing.length ? v.legacyMissing.join(', ') : 'none'),
-          'flat projection applicable: ' + v.flatProjection.applicable + ', ok: ' + v.flatProjection.ok,
-          'unknown (forward-compatible) fields: ' + (v.extras.length ? v.extras.join(', ') : 'none')];
-        extra = v.ok
-          ? gate('B8', 'external bench-report schema validation (' + args.report + ')', STATUS.PASS, 'report satisfies kernel/06 3.4 / 3.7 schemaVersion ' + B.BENCH_REPORT_SCHEMA_VERSION, notes)
-          : gate('B8', 'external bench-report schema validation (' + args.report + ')', STATUS.FAIL, v.errors.length + ' schema violation(s)', v.errors.slice(0, 10).map(function (e) { return e.code + ' ' + e.path + ': ' + e.message; }));
-      }
-    }
-    gates.push(extra);
-  }
+  // The report gate runs when --report was given or a report was discovered; the default run on a
+  // tree with no report keeps the seven structural gates B1-B7.
+  if (args.report || status.reports.length) gates.push(gateB8(status));
 
   const report = buildReport(root, gates, status);
   if (args.json) {
