@@ -16,6 +16,15 @@
 // record of one, so the extension was reverted rather than shipped crying wolf.
 //
 // The scope is therefore stated counts, where the pattern has no such ambiguity, and not ranges.
+//
+// Round 242 adds a second exclusion, for the same reason as the first. A completeness check was run by hand -
+// does each decision in the brief carry its blocked cases, its options, a recommendation and the line saying
+// what the owner must supply - and it reported D-1 as having no options. It has them: the section calls them
+// 'two readings' and puts them in a table. The pattern looked for one word and the section used another.
+//
+// So structural completeness cannot be mechanized here either, though for a different cause than ranges: not
+// because a pattern cannot tell an assertion from a quotation, but because the phrasing space is open. Counts
+// and the gate count stay in scope, because there the phrasing is closed.
 // eighteen rules and the register's entry stating seventeen, it prints
 //   MISMATCH docs/audit/debt-p0.md: states 十七 (17), section 6.3 has 18
 // and exits 1. Restoring the entry returns it to 'every stated count agrees' and exit 0. That is the exact
