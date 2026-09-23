@@ -143,6 +143,16 @@ P0 只启用三条现有团队线，其余（T3 Agent / T4 生态）在 P2/P3 �
 3. **`ci-cost.json` 与 $3,000/月上限（ADR-0014 决策 6）仍未实现**，登记为 WS-06 的 T5 待办。新增 macOS runner 会显著抬高成本，**在该看板落地前不得声称「CI 成本受控」**。
 4. **`rust-toolchain.toml` 不新增跨平台 target**：两个新作业在原生平台运行，不应强迫所有开发机下载他平台 std。W1-A 为验证临时安装了 `aarch64-apple-darwin` target，属本机环境变化，不入库。
 
+#### Wave 2 回报（截至本轮）
+
+| 编号 | 状态 | 已验证证据 | 未验证边界（诚实） |
+| --- | --- | --- | --- |
+| WS-05a | **完成**（T1） | attach 族从「已冻结数值」变成可用握手：`termai-ipc` 的 CBOR `AttachRequest`/`AttachAck` + 冻结 golden 字节向量、POD `DetachNotice`；`sessiond` 的 `ATTACH_REQUEST`/`DETACH_NOTICE` 状态机；版本求交复用同一 `chosen_version`；**Interactive attach 不授予写权**（须显式 `LEASE_ACQUIRE`，AR-03）。实跑：`kernel-gates` 8 PASS；`cargo test -p termai-ipc` 44；`-p sessiond` 25 + 17 | **`TAIL_REPLAY` 未实现**（WS-05b：需要 Log 事件流重放）——它仍回 `UnsupportedMsg` 且有测试锁住，**未伪造空重放**；多端扇出、lease renew/takeover、shm 路径未做 |
+| WS-03 第一刀 | **完成**（T1） | 新增 `crates/termai-render`（ADR-0024）：UI 侧网格镜像，应用 `GridSnapshot`/`GridDelta`、单调 rev、**缺口即失效并要求快照**（不信任流）；应用顺序固定 scroll → payload → cursor；被拒 delta **不部分应用**。依赖**仅** `termai-core`，**零新增第三方依赖**（wgpu/winit/rustybuzz/swash 仍未准入）。实跑：`cargo test -p termai-render` 8/8；K4 允许边 `termai-render -> [termai-core]` | **不产生任何像素**：E-P0-2 / E-P0-3 状态未变；**VRM（软换行/裁剪）未实现**，因 SD-13（core DTO 缺逐行 LineFlags）——**未用宽度近似替代**，以保复制保真 |
+
+**本轮新增登记**：**SD-15**（快照不带 rev → 快照后 rev 基线无定义）、**SD-16**（`kernel/04` §3.4 首个 Interactive attach 自动授予租约 **与 AR-03 冲突 → 裁决：显式授权优先**）、**SD-17**（`proto_range` vs `proto_min/proto_max` 命名）、**SD-18**（attach 暴露的会话域错误码未登记 → 已在 `kernel/07` §3.8 补登 `NoSuchSession` / `AttachStateInvalid`；`Corrupt` 表达「未 attach」列为 WS-05b 待切换项）。
+
+**新增 ADR**：**ADR-0024**（渲染第一刀：crate 依赖位置 + 第三方依赖**零准入**）。
 ### Wave 2（W1 收口后开，目标是「让 P0 可看见」）
 
 1. **WS-03 起桩**：`crates/termai-render` + `crates/termai-gpu`（新 crate 走 ADR-0019 追认 + K4 依赖白名单 + CODEOWNERS），先做 damage→shaping→atlas→present 的最小闭环与 T0 后端探测。
