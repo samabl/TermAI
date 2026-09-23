@@ -238,10 +238,10 @@ pub fn run_session(args: &[String]) -> Result<i32, String> {
     };
     let dbg = std::env::var("TERMAI_DEBUG").is_ok();
     if dbg {
-        eprintln!(
-            "[dbg] program={program:?} argv={argv:?} shell={:?}",
-            opts.shell
-        );
+        // AGENTS section 6 and AR-12 forbid printing command text or terminal content, and the rule is
+        // not conditional on an opt-in flag: whoever enables TERMAI_DEBUG would otherwise get argv, and
+        // argv is where tokens and paths live. Only the program and the shell policy are recorded.
+        eprintln!("[dbg] program={program:?} shell={:?}", opts.shell);
     }
 
     // An interactive shell with no command must never be killed by a default timer;
@@ -350,7 +350,7 @@ pub fn run_session(args: &[String]) -> Result<i32, String> {
                 if dbg {
                     eprintln!("[dbg] read n={n} total={}", read_bytes + n);
                     if read_bytes < 64 {
-                        let esc: String = chunk
+                        let _esc: String = chunk
                             .iter()
                             .map(|b| {
                                 if b.is_ascii_graphic() || *b == b' ' {
@@ -360,7 +360,8 @@ pub fn run_session(args: &[String]) -> Result<i32, String> {
                                 }
                             })
                             .collect();
-                        eprintln!("[dbg] chunk={esc}");
+                        // Deliberately no content here: this is a terminal output chunk, and chunk contents are
+                        // exactly what AR-11/AR-12 keep out of logs. The byte count is already reported above.
                     }
                 }
                 read_bytes += n;
