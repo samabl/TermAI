@@ -1,0 +1,36 @@
+{
+  "$comment": "CI cost manifest required by spec 06 A-PM-12 / ADR-0014 decision 6. Schema (pipeline / minutes / runner_class / est_usd) per spec 06 line 277; unit prices per spec 07 line 172; cap split per ADR-0014 line 235. Every minutes_per_run and runs_per_month below is an ORDER-OF-MAGNITUDE ASSUMPTION, not a measurement - spec 06 A-PM-12 asks for the manifest to be complete and for the month to be under the cap, and ADR-0014 frames the estimate as order-of-magnitude. Replace the assumptions with runner telemetry once available.",
+  "schema_version": 1,
+  "currency": "USD",
+  "unit_prices_usd_per_minute": {
+    "cloud-linux-2core": 0.008,
+    "cloud-windows-2core": 0.016,
+    "cloud-macos": 0.08,
+    "self-hosted-per-core-hour": { "low": 0.04, "high": 0.08 }
+  },
+  "caps_usd_per_month": { "cloud": 1200, "self_hosted": 1800, "total": 3000 },
+  "thresholds": { "warn_at_fraction": 0.8, "downsample_at_fraction": 1.0 },
+  "assumptions": {
+    "runs_per_month": 200,
+    "runs_per_month_basis": "push + pull_request on active development; not a measured figure",
+    "fuzz_and_soak": "self-hosted only, so their cloud cost contribution is 0 (ADR-0014 line 220)"
+  },
+  "pipelines": [
+    { "pipeline": "tokens",          "runner_class": "cloud-windows-2core", "minutes_per_run": 2,  "runs_per_month": 200, "unit_usd_per_min": 0.016, "est_usd_per_run": 0.032, "est_usd_month": 6.4 },
+    { "pipeline": "rust",            "runner_class": "cloud-windows-2core", "minutes_per_run": 8,  "runs_per_month": 200, "unit_usd_per_min": 0.016, "est_usd_per_run": 0.128, "est_usd_month": 25.6 },
+    { "pipeline": "design",          "runner_class": "cloud-windows-2core", "minutes_per_run": 3,  "runs_per_month": 200, "unit_usd_per_min": 0.016, "est_usd_per_run": 0.048, "est_usd_month": 9.6 },
+    { "pipeline": "design-baseline", "runner_class": "cloud-windows-2core", "minutes_per_run": 3,  "runs_per_month": 200, "unit_usd_per_min": 0.016, "est_usd_per_run": 0.048, "est_usd_month": 9.6 },
+    { "pipeline": "kernel",          "runner_class": "cloud-windows-2core", "minutes_per_run": 6,  "runs_per_month": 200, "unit_usd_per_min": 0.016, "est_usd_per_run": 0.096, "est_usd_month": 19.2 },
+    { "pipeline": "windows-build",   "runner_class": "cloud-windows-2core", "minutes_per_run": 10, "runs_per_month": 200, "unit_usd_per_min": 0.016, "est_usd_per_run": 0.16,  "est_usd_month": 32.0 },
+    { "pipeline": "linux-x64",       "runner_class": "cloud-linux-2core",   "minutes_per_run": 12, "runs_per_month": 200, "unit_usd_per_min": 0.008, "est_usd_per_run": 0.096, "est_usd_month": 19.2 },
+    { "pipeline": "macos-arm64",     "runner_class": "cloud-macos",         "minutes_per_run": 10, "runs_per_month": 200, "unit_usd_per_min": 0.08,  "est_usd_per_run": 0.8,   "est_usd_month": 160.0 }
+  ],
+  "estimated_monthly_usd": 281.6,
+  "estimated_monthly_vs_caps": { "cloud_cap": 1200, "cloud_fraction": 0.2347, "total_cap": 3000, "total_fraction": 0.0939, "state": "UNDER_WARN" },
+  "not_included": [
+    "signing and notarisation fixed fees (spec 07 line 172 lists them separately)",
+    "storage and egress",
+    "self-hosted depreciation, power and bandwidth (the 1800 self-hosted cap)",
+    "the 12-combination matrix and nightly fuzz, which do not exist yet; wiring them is what the estimate must be revisited for"
+  ]
+}
