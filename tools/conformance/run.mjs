@@ -33,7 +33,13 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(HERE, '..', '..');
 const ID_RE = /^[a-z0-9][a-z0-9._-]*$/;
 const LANES = ['L0', 'L1', 'L2'];
-const ORACLES = ['ecma48', 'xterm-ctlseqs', 'kernel-01-spec', 'termai-corpus', 'invariant'];
+const ORACLES = ['ecma48', 'xterm-ctlseqs', 'kernel-01-spec', 'termai-corpus', 'invariant', 'pinned-baseline'];
+// K-03 fixes the oracle order: ECMA-48 > xterm ctlseqs doc > xterm implementation > esctest.
+// A real capture whose expectation is our own observed grid is a REGRESSION baseline (G2),
+// not a G1 conformance oracle. Counting it toward the AR-31 real-corpus floor would be
+// circular, so only external oracles count below.
+const PINNED_ORACLE = 'pinned-baseline';
+const EXTERNAL_ORACLES = ['ecma48', 'xterm-ctlseqs', 'kernel-01-spec', 'termai-corpus'];
 const ARTIFACT_ROOT = 'target/conformance';
 const TAB = String.fromCharCode(9);
 
@@ -117,6 +123,14 @@ function loadCases(root) {
       const gating = meta.gating === undefined ? true : meta.gating === true;
       if (meta.oracle === 'invariant' && gating) {
         problems.push(where + ': oracle "invariant" cases must set gating:false (fail-closed)');
+        continue;
+      }
+      if (meta.oracle === PINNED_ORACLE && meta.real_corpus !== true) {
+        problems.push(where + ': oracle "pinned-baseline" is by definition a real capture, so real_corpus must be true');
+        continue;
+      }
+      if (meta.real_corpus === true && meta.oracle === 'invariant') {
+        problems.push(where + ': a real capture cannot use the "invariant" oracle');
         continue;
       }
       if (gating && lane !== 'L0') {
@@ -445,6 +459,8 @@ function main() {
   }
 
   const realCorpus = evaluated.filter(function (e) { return e.entry.real_corpus; });
+  const externalReal = realCorpus.filter(function (e) { return EXTERNAL_ORACLES.indexOf(e.entry.oracle) >= 0; });
+  const pinnedReal = realCorpus.filter(function (e) { return e.entry.oracle === PINNED_ORACLE; });
   const findings = failures.filter(function (e) { return e.entry.gating; }).map(function (e) {
     return {
       case_id: e.entry.id,
@@ -498,15 +514,22 @@ function main() {
       structural_failures: structuralFailed.length,
       l0_r_strict: ratio(gatingPassed.length, gating.length),
       l0_r_gate: ratio(gatingPassed.length, gating.length),
-      real_corpus_cases: realCorpus.length,
-      real_corpus_ratio: ratio(realCorpus.length, evaluated.length),
+      real_corpus_cases: externalReal.length,
+      real_corpus_ratio: ratio(externalReal.length, evaluated.length),
+      pinned_baseline_cases: pinnedReal.length,
+      pinned_baseline_excluded_from_ar31: true,
     },
     coverage: coverage,
     findings: findings,
     known_gaps: [
       'G1 is NOT judged: vttest and esctest are not integrated and are not runnable on this host.',
       'AR-31 item 1 floor not met: ' + evaluated.length + ' cases (< 2000) and '
-        + String(realCorpus.length) + ' real-world captures (0% < 20%).',
+        + String(externalReal.length) + ' external-oracle real-world captures ('
+        + Math.round(100 * externalReal.length / Math.max(1, evaluated.length)) + '% < 20%).',
+      'Pinned-baseline captures (' + pinnedReal.length + ') are regression corpus (G2) and are'
+        + ' excluded from the AR-31 real-corpus ratio on purpose (K-03: a G1 oracle must be external).',
+      'The real-corpus floor needs the kernel/01 K-03 oracle environment (Xvfb + pinned xterm'
+        + ' + fixed locale/font) and the vim/htop/neovim/fzf/tmux/less/btop captures; neither exists on this host.',
       'Coverage-only cases (oracle "invariant") assert kernel/01 K-06/K-03 structure and are NOT an xterm oracle.',
       'L1 (transport/ConPTY) and L2 (e2e replay) lanes have no suites in this wave; their closure is enforced by the lane probe only.',
       'Byte offsets of the first divergence are unavailable for the pinned vte backend (SD-08.3).',
@@ -535,7 +558,10 @@ function main() {
       console.log('ctlseqs coverage: ' + coverage.entries_with_cases + '/' + coverage.entries_resolved
         + ' resolved entries have >=1 case; ' + coverage.entries_with_gating_cases + ' have a gating case');
     }
-    console.log('real-world captures: ' + realCorpus.length + '/' + evaluated.length + ' (AR-31 needs >=20%)');
+    console.log('real-world captures (external oracle): ' + externalReal.length + '/' + evaluated.length + ' (AR-31 needs >=20%)');
+  if (pinnedReal.length > 0) {
+    console.log('pinned-baseline captures (regression only, NOT counted toward AR-31): ' + pinnedReal.length);
+  }
     console.log('determinism: ' + determinism);
     console.log('gate: NON_GATING (not on RM-A/T0)   G1: NOT_JUDGED');
     if (failures.length) {

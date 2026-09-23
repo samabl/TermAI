@@ -191,6 +191,12 @@ P0 只启用三条现有团队线，其余（T3 Agent / T4 生态）在 P2/P3 �
 **复测**：`npm run conformance` → L0 gating **64/64，R_strict = R_gate = 1.0**，失败 0，报告 sha256 `e4296839…`；`--determinism-check` → **byte-identical**；`cargo test -p termai-vt` 全绿；`kernel-gates` **8 PASS / 0 FAIL**。
 
 > **这仍然不是 G1 通过**：① 用例 275 / AR-31 的 ≥2000；② 真实语料 0% / ≥20%；③ 运行在**非参考机**（`NON_GATING`）。此外 esctest2 全量仍有 325 failed（大量是 `CSI … t` 窗口尺寸查询、颜色族、DECRQM/DECRQSS 未实现——**真实缺口**，不得算作 G1 通过）。
+
+**真实语料 ≥20% 的 oracle 归属（本轮结论，防止把门禁刷成假绿）**：`kernel/01` §5 的 **V-04 明确 `oracle = xterm + Xvfb`**，K-03 固定仲裁顺序（ECMA-48 > xterm ctlseqs 文档 > xterm 实现 > esctest 期望），真实语料的应用集合是 **vim/htop/neovim/fzf/tmux/less/btop**。三点合起来的含义是：
+
+1. **真实捕捉的期望值必须来自外部 oracle**。把「我们自己解析出来的网格」钉成期望值是**循环验证**——它只能算 **G2 回放基线**，不能计入 G1 的 ≥20%。
+2. 该 oracle 环境（Xvfb + 钉定 xterm 版本 + 固定 locale/字体 + 上述 TUI 应用）**本机不存在**，因此真实语料路径是**环境阻塞**，不是「还没排期」；它需要 ADR-0014 的 **RM-A/RM-B**。
+3. 为此在 `tools/conformance/run.mjs` 加了**机器强制**的区分：`oracle: 'pinned-baseline'` 的用例必须 `real_corpus: true`，但**被排除在 AR-31 的真实语料比例之外**（报告新增 `pinned_baseline_cases` 与 `pinned_baseline_excluded_from_ar31`），并有 fail-closed 校验：真实捕捉**不得**使用 `invariant` oracle。当前实测 `real-world captures (external oracle): 0/275`。
 ### Wave 2（W1 收口后开，目标是「让 P0 可看见」）
 
 1. **WS-03 起桩**：`crates/termai-render` + `crates/termai-gpu`（新 crate 走 ADR-0019 追认 + K4 依赖白名单 + CODEOWNERS），先做 damage→shaping→atlas→present 的最小闭环与 T0 后端探测。
