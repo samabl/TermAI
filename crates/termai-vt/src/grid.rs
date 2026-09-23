@@ -1027,6 +1027,9 @@ impl Grid {
                 self.cursor_col = 0;
                 self.line_feed_explicit();
             }
+            // HTS (ESC H): set a tab stop at the cursor. Its absence left the escape ignored, so
+            // a test that set a custom stop and then tabbed landed on a default one.
+            b'H' => self.set_tab_stop(),
             b'M' => self.reverse_index(),
             b'c' => self.reset(),
             b'=' => self.set_bit(MODE_APP_KEYPAD, true),
@@ -1861,6 +1864,13 @@ impl Grid {
             b'u' if intermediates.is_empty() => self.restore_cursor(),
             b't' if intermediates.is_empty() => self.window_op(params),
             _ => {}
+        }
+    }
+
+    /// HTS (`ESC H`): set a tab stop at the current column.
+    fn set_tab_stop(&mut self) {
+        if let Some(slot) = self.tab_stops.get_mut(usize::from(self.cursor_col)) {
+            *slot = true;
         }
     }
 
