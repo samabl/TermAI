@@ -35,6 +35,7 @@ for (const line of lines) {
 console.log('triage: ' + names.length + ' failing test(s) matching ' + classPrefix);
 let contaminated = 0;
 let real = 0;
+const verdicts = [];
 for (const id of names) {
   const safe = id.split('.').pop().replace(/[^A-Za-z0-9]/g, '_');
   const out = path.join(outRoot, safe);
@@ -53,10 +54,30 @@ for (const id of names) {
   const nFailed = failed ? Number(failed[1]) : 0;
   if (passed && nFailed === 0) {
     contaminated += 1;
+    verdicts.push({ id: id, verdict: 'CONTAMINATED' });
     console.log('CONTAMINATED  ' + id + '  (passes alone)');
   } else {
     real += 1;
+    verdicts.push({ id: id, verdict: 'REAL' });
     console.log('REAL          ' + id + '  (still fails alone)');
   }
 }
 console.log('triage: real=' + real + ' contaminated=' + contaminated + ' of ' + names.length);
+
+// Write the census out. Console output alone is not an artifact: the first suite-wide run was lost
+// because the harness keeps only a job's final output, and a number this register cites has to be
+// reproducible and citable on disk.
+const md = [];
+md.push('# Per-test triage: ' + classPrefix + ' over ' + logPath);
+md.push('');
+md.push('- failing tests examined: ' + names.length);
+md.push('- contaminated (pass alone): ' + contaminated);
+md.push('- real (still fail alone): ' + real);
+md.push('');
+md.push('| test | verdict |');
+md.push('| --- | --- |');
+for (const line of verdicts) md.push('| ' + line.id + ' | ' + line.verdict + ' |');
+md.push('');
+fs.mkdirSync(outRoot, { recursive: true });
+fs.writeFileSync(path.join(outRoot, 'triage.md'), md.join(NL) + NL);
+console.log('triage: wrote ' + path.join(outRoot, 'triage.md'));
