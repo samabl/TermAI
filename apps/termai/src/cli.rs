@@ -236,6 +236,13 @@ pub fn run_session(args: &[String]) -> Result<i32, String> {
         (None, false) => (opts.argv[0].clone(), opts.argv[1..].to_vec()),
         (None, true) => (default_shell(), Vec::new()),
     };
+    let dbg = std::env::var("TERMAI_DEBUG").is_ok();
+    if dbg {
+        eprintln!(
+            "[dbg] program={program:?} argv={argv:?} shell={:?}",
+            opts.shell
+        );
+    }
 
     // An interactive shell with no command must never be killed by a default timer;
     // a one-shot command gets a hard deadline so a blocking PTY read cannot hang.
@@ -268,12 +275,24 @@ pub fn run_session(args: &[String]) -> Result<i32, String> {
         None
     };
 
+    // Field diagnostics behind TERMAI_DEBUG=1. A pseudoconsole does not always signal EOF
+    // and ClosePseudoConsole can block behind a pending read, so when a session appears to
+    // hang it matters a great deal WHERE it hung.
+    if dbg {
+        eprintln!("[dbg] spawning program={program}");
+    }
     let pty = backend
         .spawn(&cmd, sz, spawn_opts)
         .map_err(|e| format!("spawn failed: {e:?}"))?;
+    if dbg {
+        eprintln!("[dbg] spawned");
+    }
     let tree = backend
         .process_tree(&pty)
         .map_err(|e| format!("process tree unavailable: {e:?}"))?;
+    if dbg {
+        eprintln!("[dbg] tree live_children={}", tree.live_children());
+    }
 
     if let Some(w) = writer.as_mut() {
         let _ = w.append(
@@ -288,81 +307,121 @@ pub fn run_session(args: &[String]) -> Result<i32, String> {
         let _ = w.flush(FlushMode::FsyncData);
     }
 
-    // Watchdog: force-kill the process tree after the deadline, which closes the pty
-    // and guarantees the read loop terminates. Without it a blocking read can hang.
-    let stop = Arc::new(AtomicBool::new(false));
-    let timed_out = Arc::new(AtomicBool::new(false));
-    // ConPTY does not signal EOF when the child exits: the pseudo console has to be
-    // closed before a blocked read returns. The watchdog therefore watches the process
-    // tree, not just a deadline:
-    //   - children gone  -> close the pty, which turns the pending read into EOF
-    //   - deadline hit   -> force-kill the tree, then close the pty
-    // This keeps a one-shot command from hanging and still lets an interactive shell
-    // own the terminal until it exits (timeout 0 means no deadline, not no watchdog).
-    let watchdog = {
-        let backend_wd = Arc::clone(&backend);
-        let tree_wd = tree.clone();
-        let handle_wd = pty.clone();
-        let stop_wd = Arc::clone(&stop);
-        let fired_wd = Arc::clone(&timed_out);
+    // A pseudoconsole never signals EOF while the console lives, and closing it from a
+    // second thread blocks behind a pending read - a watchdog that calls close() while the
+    // main thread sits in ReadFile parks BOTH threads forever (measured). So the read runs
+    // on its own thread and hands chunks over a channel while the main thread owns the
+    // parser and the Log. This mirrors kernel/04's "start a reader task" wording.
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    let reader_finished = Arc::new(AtomicBool::new(false));
+    let reader = {
+        let backend_r = Arc::clone(&backend);
+        let handle_r = pty.clone();
+        let done_r = Arc::clone(&reader_finished);
         std::thread::spawn(move || {
-            let step = Duration::from_millis(50);
-            let grace = Duration::from_millis(300);
-            let mut waited = Duration::ZERO;
+            let mut buf = [0u8; 16 * 1024];
             loop {
-                if stop_wd.load(Ordering::Relaxed) {
-                    return;
-                }
-                std::thread::sleep(step);
-                waited += step;
-                if waited >= grace && tree_wd.live_children() == 0 {
-                    let _ = backend_wd.close(handle_wd);
-                    return;
-                }
-                if !timeout.is_zero() && waited >= timeout {
-                    fired_wd.store(true, Ordering::Relaxed);
-                    let _ = backend_wd.kill(&tree_wd, KillMode::Force);
-                    let _ = backend_wd.close(handle_wd);
-                    return;
+                match backend_r.read(&handle_r, &mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        if tx.send(buf[..n].to_vec()).is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
                 }
             }
+            done_r.store(true, Ordering::Relaxed);
         })
     };
 
     let mut term = Terminal::new(opts.cols, opts.rows);
-    let mut buf = [0u8; 16 * 1024];
     let mut read_bytes = 0usize;
     let mut fed_bytes = 0usize;
+    let mut timed_out = false;
+    let started = std::time::Instant::now();
+    let mut last_data = std::time::Instant::now();
+    let drain_grace = Duration::from_millis(500);
 
     loop {
-        match backend.read(&pty, &mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
+        match rx.recv_timeout(Duration::from_millis(50)) {
+            Ok(chunk) => {
+                let n = chunk.len();
+                if dbg {
+                    eprintln!("[dbg] read n={n} total={}", read_bytes + n);
+                    if read_bytes < 64 {
+                        let esc: String = chunk
+                            .iter()
+                            .map(|b| {
+                                if b.is_ascii_graphic() || *b == b' ' {
+                                    (*b as char).to_string()
+                                } else {
+                                    format!("\\x{b:02x}")
+                                }
+                            })
+                            .collect();
+                        eprintln!("[dbg] chunk={esc}");
+                    }
+                }
                 read_bytes += n;
                 // F0: the bytes read are handed to the parser unmodified, and the Log
                 // stores exactly the same bytes (kernel/02 section 3.6).
-                term.feed(&buf[..n]);
+                term.feed(&chunk);
                 fed_bytes += n;
+                // Answer the terminal queries the application is waiting on (DSR/CPR).
+                // These bytes are terminal-generated, not user input, but they still reach
+                // the pty through this single app-layer write path.
+                for response in term.take_responses() {
+                    let _ = backend.write(&pty, &response);
+                }
                 if let Some(w) = writer.as_mut() {
                     let _ = w.append(
                         &Record::PtyOut {
                             pane: 0,
-                            bytes: buf[..n].to_vec(),
+                            bytes: chunk,
                         },
                         now_ns(),
                     );
                 }
+                last_data = std::time::Instant::now();
+                continue;
             }
-            Err(e) => {
-                eprintln!("run: pty read stopped: {e:?}");
-                break;
-            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+        // The reader thread saw EOF or a pipe error: that is the clean end of session.
+        if reader_finished.load(Ordering::Relaxed) {
+            break;
+        }
+        if !timeout.is_zero() && started.elapsed() >= timeout {
+            timed_out = true;
+            break;
+        }
+        // Backstop when the console host outlives the client: no more output and the tree
+        // is empty for a full drain grace.
+        if tree.live_children() == 0 && last_data.elapsed() >= drain_grace {
+            break;
         }
     }
 
-    stop.store(true, Ordering::Relaxed);
-    let _ = watchdog.join();
-    let timed_out = timed_out.load(Ordering::Relaxed);
+    if timed_out {
+        let _ = backend.kill(&tree, KillMode::Force);
+    }
+    // Only close the pseudo console when no read is pending. Closing behind a parked
+    // ReadFile would park this thread too, so when the reader is still blocked we leave it
+    // to process exit and report that honestly instead of claiming a clean close.
+    let closed = if reader_finished.load(Ordering::Relaxed) {
+        backend.close(pty.clone()).is_ok()
+    } else {
+        false
+    };
+    if dbg {
+        eprintln!(
+            "[dbg] read loop exited timed_out={timed_out} closed={closed} reader_parked={}",
+            !reader_finished.load(Ordering::Relaxed)
+        );
+    }
+    drop(reader);
 
     let exit = backend
         .wait(&tree, WaitTimeout::Millis(10_000))

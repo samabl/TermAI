@@ -169,7 +169,14 @@ push 即构建已生效：run #35808461735（首次）与 run #35809183560（修
 1. **Rust 工具链未锁定**：CI 解析 `stable` 得到 **1.98.0**，比本地 1.94.0 多出 `clippy::byte_char_slices` 等 lint，K2 在 `crates/termai-vt/src/vte_adapter.rs` 上因 10 处报错而失败。已加 **`rust-toolchain.toml` 锁定 1.94.0**（M0 全部门禁实际验证过的版本），并把 workflow 里的「安装 stable」步骤改为只读 `rustup show`。run #2 中 K2 转为 PASS，证明修复有效。
 2. **Node 版本不足**：CI 固定 Node 20，而设计门禁的 CDP 客户端需要**全局 `WebSocket`（Node ≥22）**。本地是 Node 26 所以从未暴露。已将 CI 与 `package.json engines` 统一提升到 **≥22**。run #2 中浏览器层不再崩溃并真正产出了 20 项门禁判定。
 
-**剩余两个失败（均非配置问题，需决策或需修产品）：**
+> **更新（后续修复轮）：K3 已修复。本地 8/8 门禁全绿、e2e 6/6 通过。** 根因是三层独立缺陷，且先前「宿主限制」的结论是错的：
+> 1. **UpdateProcThreadAttribute 传了栈地址而非 HPCON 值**。该属性的 lpValue 必须是 HPCON 本身（Microsoft 样例传 hPC，wezterm 的 portable-pty 直接传其 HPCON）。Windows 于是把栈地址当成伪控制台句柄 → 属性失效 → 子进程**根本没有控制台** → 控制台初始化失败 → 0xC0000142、0 字节。
+> 2. **阻塞读 + 看门狗线程调用 ClosePseudoConsole 互锁**：关闭控制台要等挂起的读结束，两个线程永久阻塞，连硬超时都无法结束会话。已改为**读线程 + 通道**，且只在**无挂起读**时才关闭 pty。
+> 3. **CSI 6 n（DSR）被当空操作**，客户端启动后一直等光标位置回报而永久阻塞。已补**终端响应通道**（Grid::take_responses → 调用方写回 pty）。
+>
+> 方法论教训：E1–E4 变动的都不是真因，而那个「复刻 Microsoft 样例的独立探针」**与本 crate 共享缺陷 1**，所以一起失败、错误地指向宿主。真正定性的是**独立 oracle**：在仓库外用 portable-pty 搭一次性项目（AR-28.3 拒绝它作为产品依赖，但作为参照实现合法），证明**本机 ConPTY 完全可用**，才把方向拨回我方接线。
+
+**修复前剩余的两个失败（均非配置问题，需决策或需修产品）：**
 
 - **K3：ConPTY 在 GitHub 的 windows-latest 上以完全相同的方式失败**（子进程 `0xC0000142`、读到 0 字节、`live_children=0`），与本地一致。这**推翻**了「仅本机环境问题」的结论：两个相互独立的 Windows 主机（本机 + 干净 runner）同样复现，因此更可能是 **ConPTY 在 Windows Server / 非交互会话下的实现问题**，而不是参数接线。这是主平台（DC-16）的**真实产品缺陷**，不能用测试豁免掩盖。
 - **B4 视觉回归：7 个基线全部 MISMATCH**，diff 0.044%–1.245%（门禁要求 ≤0.1%，AA 容差为逐通道 ±2 且不允许有超差像素），`bbox` 覆盖整块卡片区域，属**基线来源环境不一致**（字体光栅化/Chrome 版本/DPI 差异）。B4 的比对必须由**与验证同一环境**生成基线才成立，而当前基线是开发机产物。修法明确：在 runner 上跑一次 `npm run design:baseline` 生成并入库，但这需要把产物从 runner 取回——现有 workflow 契约只允许 `actions/checkout` 与 `actions/setup-node`，加 `actions/upload-artifact` 需要一次 ADR 决策。

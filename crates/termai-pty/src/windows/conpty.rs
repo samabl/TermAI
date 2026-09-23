@@ -11,7 +11,38 @@
 //! child's process group. Hup/Quit/Usr1/Usr2/Winch/Stop/Cont are Unsupported and we
 //! never fold CTRL_CLOSE_EVENT into Sig::Int (C-W6).
 //!
-//! KNOWN DEFECT / HANDOVER (recorded 2026-03, WS-C; see docs/plan/m0-delivery-report.md 6.2)
+//! RESOLVED (was: KNOWN DEFECT / HANDOVER, recorded 2026-03 by WS-C). The analysis below is
+//! kept verbatim as the historical record, per the project rule that history is not rewritten.
+//! ---------------------------------------------------------------------------------------
+//! The native ConPTY path now works. There were THREE independent faults, in the order they
+//! blocked progress:
+//!
+//! 1. UpdateProcThreadAttribute passed the ADDRESS of the HPCON variable as lpValue.
+//!    PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE expects the HPCON VALUE itself (the Microsoft sample
+//!    passes hPC; wezterm's portable-pty passes its HPCON directly). Windows therefore read a
+//!    stack address as the pseudoconsole handle, the attribute was worthless, the client was
+//!    created with NO console, and it died in console initialisation with 0xC0000142 having
+//!    written zero bytes. Fix: pass the handle value.
+//! 2. A blocking ReadFile plus a ClosePseudoConsole issued from a watchdog thread deadlocked:
+//!    closing the console waits behind the pending read, so BOTH threads parked forever and
+//!    even a hard timeout could not end the session. Fix: the read runs on a worker thread and
+//!    hands chunks over a channel; the pty is closed only when no read is pending.
+//! 3. CSI 6 n (DSR) was a no-op, so the client blocked forever waiting for its cursor position
+//!    report. Fix: termai-vt answers DSR through Grid::take_responses (CPR / status) and the
+//!    caller writes it back to the pty.
+//!
+//! Evidence after the fixes: cargo test -p termai --test e2e is 6/6, cargo test --workspace is
+//! clean and the kernel gates are 8/8. A live run reads the ConPTY init sequence, the program
+//! output, and exits 0 with F0 intact (77 bytes read equals 77 bytes fed to the parser).
+//!
+//! Why the earlier conclusion was wrong (worth remembering): E1-E4 varied parameters that were
+//! never at fault, and the standalone probe that mirrored the Microsoft sample shared fault 1
+//! with this crate, so it failed identically and appeared to confirm a host limitation. An
+//! INDEPENDENT oracle - a throwaway project built on portable-pty, outside this repository
+//! because AR-28.3 refuses it as a product dependency - proved ConPTY works on this host, which
+//! is what redirected the investigation to our own wiring.
+//!
+//! HISTORICAL RECORD (unchanged) - the original handover follows.
 //! ---------------------------------------------------------------------------------------
 //! Symptom: CreatePseudoConsole returns S_OK (hpc != 0) and CreateProcessW succeeds
 //! (pid set), but the client process cannot initialise its console host and
@@ -91,8 +122,15 @@ use windows_sys::Win32::System::Threading::{
     InitializeProcThreadAttributeList, OpenProcess, QueryFullProcessImageNameW, TerminateProcess,
     UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NEW_PROCESS_GROUP,
     CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, PROCESS_INFORMATION,
-    PROCESS_QUERY_LIMITED_INFORMATION, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, STARTUPINFOEXW,
+    PROCESS_QUERY_LIMITED_INFORMATION, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, STARTF_USESTDHANDLES,
+    STARTUPINFOEXW,
 };
+
+/// CreatePseudoConsole flag: keep the old resize behaviour working on older Windows builds.
+const PSEUDOCONSOLE_RESIZE_QUIRK: u32 = 1;
+/// CreatePseudoConsole flag: put the pseudoconsole input side into classic Win32 console
+/// input mode, which is what cmd.exe and PowerShell expect (wezterm sets it too).
+const PSEUDOCONSOLE_WIN32_INPUT_MODE: u32 = 2;
 
 use crate::{
     Command, DetachPolicy, EnvPolicy, ExitInfo, Fidelity, HandleOps, KillMode, ProcEntry,
@@ -497,7 +535,7 @@ fn spawn_conpty(cmd: &Command, sz: WinSize, o: SpawnOpts) -> Result<PtyHandle, P
             coord,
             input_read as HANDLE,
             output_write as HANDLE,
-            0,
+            PSEUDOCONSOLE_RESIZE_QUIRK | PSEUDOCONSOLE_WIN32_INPUT_MODE,
             &mut hpc,
         )
     };
@@ -556,7 +594,14 @@ fn spawn_conpty(cmd: &Command, sz: WinSize, o: SpawnOpts) -> Result<PtyHandle, P
             list,
             0,
             PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE as usize,
-            (&hpc as *const HPCON).cast(),
+            // THE BUG. lpValue for PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE IS the HPCON
+            // value, not a pointer to it: the Microsoft sample passes hPC and wezterm's
+            // portable-pty passes its HPCON directly. Passing `&hpc` (the address of a
+            // stack slot) makes Windows read that address AS the pseudoconsole handle, so
+            // the attribute is worthless, the client is created without any console, and
+            // it dies in console initialisation with 0xC0000142 having written 0 bytes.
+            // That was the whole defect; the surrounding wiring was already correct.
+            hpc as *const core::ffi::c_void,
             std::mem::size_of::<HPCON>(),
             ptr::null_mut(),
             ptr::null(),
@@ -580,6 +625,18 @@ fn spawn_conpty(cmd: &Command, sz: WinSize, o: SpawnOpts) -> Result<PtyHandle, P
     let mut startup: STARTUPINFOEXW = unsafe { std::mem::zeroed() };
     startup.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
     startup.lpAttributeList = list;
+    // THE FIX for the 0xC0000142 defect. With bInheritHandles = FALSE and no
+    // STARTF_USESTDHANDLES, the child receives the PARENT's standard handle values, which
+    // were never inherited and are therefore invalid in the child. When the parent has
+    // redirected stdio - cargo test, a CI runner, a daemonised process - cmd.exe is handed
+    // dead standard handles, its CRT initialisation fails, and it dies with
+    // STATUS_DLL_INIT_FAILED having written nothing. Pinning them to INVALID_HANDLE_VALUE
+    // makes Windows wire the client's stdio to the pseudo console instead. wezterm's
+    // portable-pty documents this exact failure mode.
+    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    startup.StartupInfo.hStdInput = INVALID_HANDLE_VALUE;
+    startup.StartupInfo.hStdOutput = INVALID_HANDLE_VALUE;
+    startup.StartupInfo.hStdError = INVALID_HANDLE_VALUE;
 
     let mut command_line = wide(&build_command_line(cmd));
     let cwd = o.cwd.as_ref().map(|path| wide_path(path));

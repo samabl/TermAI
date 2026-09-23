@@ -210,6 +210,9 @@ pub struct Grid {
     notification_count: u64,
     progress_count: u64,
     rejected_links: u64,
+    /// Responses the terminal owes the application (DSR/CPR). Without these a
+    /// pseudoconsole client blocks forever waiting for its cursor report.
+    responses: Vec<Vec<u8>>,
 }
 
 impl Grid {
@@ -257,6 +260,7 @@ impl Grid {
             notification_count: 0,
             progress_count: 0,
             rejected_links: 0,
+            responses: Vec::new(),
         };
         grid.mark_full();
         grid
@@ -447,6 +451,32 @@ impl Grid {
 
     /// Number of OSC 8 links rejected by the scheme whitelist.
     #[must_use]
+    /// Drain the responses the terminal owes the application (DSR/CPR today). The caller
+    /// writes them back to the pty; they are terminal-generated, not user input.
+    pub fn take_responses(&mut self) -> Vec<Vec<u8>> {
+        std::mem::take(&mut self.responses)
+    }
+
+    /// DSR (CSI n / CSI ? n). A pseudoconsole client issues ESC[6n during startup and then
+    /// blocks until the terminal answers with a cursor position report, so leaving this a
+    /// no-op deadlocks the client before it produces any output.
+    fn device_status(&mut self, params: &Params, private: bool, ignore: bool) {
+        if ignore || private {
+            return;
+        }
+        match params.get(0) {
+            // Status report: ready, no malfunction.
+            0 | 5 => self.responses.push(b"\x1b[0n".to_vec()),
+            6 => {
+                let row = self.cursor_row.saturating_add(1);
+                let col = self.cursor_col.saturating_add(1);
+                self.responses
+                    .push(format!("\x1b[{row};{col}R").into_bytes());
+            }
+            _ => {}
+        }
+    }
+
     pub fn rejected_links(&self) -> u64 {
         self.rejected_links
     }
@@ -1497,7 +1527,7 @@ impl Grid {
             b'h' => self.set_modes(params, private, true),
             b'l' => self.set_modes(params, private, false),
             b'm' if intermediates.is_empty() => self.sgr(params),
-            b'n' => {}
+            b'n' => self.device_status(params, private, ignore),
             b'r' if intermediates.is_empty() => self.set_scroll_region(params),
             b's' if intermediates.is_empty() => self.save_cursor(),
             b'u' if intermediates.is_empty() => self.restore_cursor(),

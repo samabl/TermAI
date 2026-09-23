@@ -104,6 +104,13 @@ impl Terminal {
         self.grid.take_delta(rev)
     }
 
+    /// Drain the terminal responses the application is waiting for (DSR/CPR). A caller
+    /// driving a real pty MUST write these back, or a pseudoconsole client blocks forever
+    /// on its first cursor position request.
+    pub fn take_responses(&mut self) -> Vec<Vec<u8>> {
+        self.grid.take_responses()
+    }
+
     /// Backend identity label (for example vte-0.15).
     #[must_use]
     pub fn backend_label(&self) -> String {
