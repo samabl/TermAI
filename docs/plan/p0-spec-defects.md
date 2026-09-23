@@ -33,7 +33,7 @@
 - **证据**：`kernel/03` §3.8 定义「逻辑行 = 由 `LineFlags::WRAPPED` 串起来的网格行链」，§3.3 的 `LineRecord` 亦带 `LineFlags`；而 core DTO v1（`crates/termai-core/src/grid.rs`）的 `GridSnapshot` 只有全局 `wrap_pending`，`RowPayload` 只有 `row` + `cells`，**没有任何逐行标志**。
 - **影响**：软换行/裁剪（VisualRowMap，AR-23 §6 / kernel/03 K-10 / **RP-08**）无法实现——无法把网格行链成逻辑行；UX-G17「软换行开关下复制逐字节相同」因此不可判定。这是**对外契约级**缺口。
 - **本 P0 处置**：不实现近似替代（不许按列宽猜折行，那会破坏复制保真）；`termai-render` 先落地镜像切片，VRM 等字段补充后落地。归属见 **ADR-0024 D2**。
-- **需要的动作**：按 **ADR-0023 D3**（字段集以 `kernel/03` §3.3 为准）为 `GridSnapshot` / `RowPayload` 增加逐行 `flags`（至少 WRAPPED 位），并同步 `canonical_bytes` / golden / digest 的版本处理与 `kernel/01` 的 golden 规则。属**实现对齐已冻结设计**（minor 字段新增），须与 golden 哈希兼容性一并验证。
+- **需要的动作**：按 **ADR-0023 D3**（字段集以 `kernel/03` §3.3 为准）为 `GridSnapshot` / `RowPayload` 增加逐行 `flags`（至少 WRAPPED 位），并同步 `canonical_bytes` / golden / digest 的版本处理与 `kernel/01` 的 golden 规则。属**实现对齐已冻结设计**（minor 字段新增），须与 golden 哈希兼容性一并验证。 **已裁决：ADR-0025**——D1 定义字段与 `LINE_WRAPPED`；D2 把逐行 flags 纳入 `canonical_bytes` 并把 `GRID_DTO_MINOR` 升到 2（golden 保持 `TERMAI-GRID 1` 可解析、缺字段视为 0）；D3 由 `termai-vt` 产生、`termai-render` 消费。**实现待 W1-B 的 G1 语料收口后执行**，避免两边同时改 golden。
 
 ## SD-14｜GridDelta 的 scroll 字段重复承载
 

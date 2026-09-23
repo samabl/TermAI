@@ -93,6 +93,7 @@ proposed ──accept──▶ accepted ──supersede──▶ superseded
 | ADR-0022 | 视觉回归基线的权威来源与生成机制 | Accepted | AR-11、AR-12、DC-14 | 像素基线是环境指纹，必须由与验证同一 runner 镜像/浏览器生成；新增仅 workflow_dispatch 的 design-baseline 作业，产物范围 = prototype/baseline 的 PNG + 溯源清单；机器人不写 main，基线经人工 PR 入库 |
 | ADR-0023 | P0 契约 errata 与字段集冻结 | Accepted | AR-04、AR-13、AR-25、AR-26、AR-28 第 1 条、AR-29、AR-31 | attach 族新增 0x05xx 段（AttachRequest/AttachAck/TailReplay/DetachNotice）；字符串态上限冻结为 OSC·SOS·PM 1 MiB / DCS·APC 16 MiB；GridSnapshot/GridDelta 字段集正式冻结并含 clusters: ClusterTable（golden/digest 必须覆盖） |
 | ADR-0024 | 渲染管线第一刀：termai-render 的依赖位置与零新增依赖切片 | Accepted | AR-01、AR-03、AR-19、AR-23 §6、AR-24、DC-17、DC-21 | 新增 crates/termai-render，本切片仅依赖 termai-core（镜像 + rev 自愈 + damage 帧输入，零像素）；软换行/裁剪归本 crate 且必须零 GridDelta；第三方依赖本次**零准入**（wgpu/winit/rustybuzz/swash 待后续 ADR 附 cargo-deny） |
+| ADR-0025 | GridSnapshot / RowPayload 的逐行 LineFlags 与 golden/digest 兼容 | Accepted | AR-04、AR-19、AR-23 §6、DC-23、DC-40、ADR-0023 D3、ADR-0024 D2 | 增 `row_flags` / `RowPayload.flags` 与 `LINE_WRAPPED`；canonical_bytes 纳入逐行 flags，`GRID_DTO_MINOR` 1→2（解 SD-13，是 VRM/RP-08 的前置）；golden 保持 `TERMAI-GRID 1` 可解析，缺字段视为全 0；零新增依赖 |
 
 ## 7. 命名与文件约定
 
