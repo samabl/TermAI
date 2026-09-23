@@ -68,7 +68,7 @@ node tools/conformance/triage-single.mjs <log> <ClassPrefix 或 ALL> <outRoot>
 
 1. 协议层：用探针确认行为变了。
 2. 单元/工作区：cargo test；cargo fmt；clippy -D warnings。
-3. 契约层：node tools/kernel-gates/check.mjs（8 PASS）。
+3. 契约层：node tools/kernel-gates/check.mjs（8 PASS）。**⚠ 若你的改动**改动了门禁本身**（新增判据、改判据、改阈值），还必须跑该门禁的 selftest，并**为改动的那条分支加一条注入 + 一条对照**——`kernel-gates --selftest`（23/23）、`bench:selftest`、`conformance selftest`、`ci-cost --selftest` 是四个现成范例。理由是本会话三次抓到的同一件事**：**一个「通过」的门禁不等于一个「能失败」的门禁**——`ci-cost` 的上限分支从未执行、`K4` 的 AR-03 检查因 TDZ 假绿、`B7` 的第三条判据由字面常量承担。**第 5 步管的是「被测对象」的对照，本句管的是「门禁自身」的对照，两者不可互替。**
 4. 计数层：跑 esctest 并与改动前对比；变差就回滚（不留无收益改动）。
 5. 锁死：给收益写回归测试，且含负例对照（否则会退化成恒绿）。
 6. 记账：更新登记表与出口总表（改数字必须同时改总表——第 98 轮的漂移就是这么来的）。
