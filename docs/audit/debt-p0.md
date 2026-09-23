@@ -12,7 +12,7 @@
 >
 > **四条出口**：E-P0-1 **未判定** ｜ E-P0-2 **未实现** ｜ E-P0-3 **未判定** ｜ E-P0-4 **部分**。
 >
-> **全部门禁（第 144 轮实跑复核：六个 check 与四个 selftest 全绿）**：`kernel-gates` **8 PASS / 0 FAIL**；`conformance` **gating 64/64（R=1.0）**、ctlseqs 208/208、**G1: NOT_JUDGED**；`bench:check` **7 PASS / 0 FAIL** 但 **gating INCONCLUSIVE / REFERENCE_MACHINE_UNAVAILABLE**（`gatingNumbersProduced: 0`）。
+> **全部门禁（~~第 144 轮实跑复核：六个 check 与四个 selftest 全绿~~ **第 243 轮更正：七对 check/selftest**——**tokens／design／kernel／bench／conformance／ci-cost／audit-claims**，与 `GATE_PAIRS` 一致；第 232 轮加入 `audit-claims` 后未同步本行）**：`kernel-gates` **8 PASS / 0 FAIL**；`conformance` **gating 64/64（R=1.0）**、ctlseqs 208/208、**G1: NOT_JUDGED**；`bench:check` **7 PASS / 0 FAIL** 但 **gating INCONCLUSIVE / REFERENCE_MACHINE_UNAVAILABLE**（`gatingNumbersProduced: 0`）。
 >
 > **E-P0-1 当前口径（已过 AR-27 自检；**第 145 轮在当前树上第三次确认——失败集合与第 97 轮逐字节相同**，说明第 98–144 轮的全部改动（CI 接线、`A10` 三部件、四个 selftest、K8 配对强制）**没有引入任何回归**）**：**267 passed / 41 known-bug / 259 failed / substitutions 0**，调用必须带 `-- --expected-terminal xterm --xterm-checksum 336`（缺它会得到 110/117 一类**伪失败**，见计划 §6.3 规则 8）。
 >
