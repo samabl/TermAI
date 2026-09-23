@@ -25,6 +25,27 @@
           "reason": "OSC 4 / 10 / 11 / 12 are not implemented in v1 and are never answered. There is no colour rendering yet, so answering with a palette would be an unprovable capability claim (AR-20). Declaring the capability absent is the static precondition; it is not a difference entry and it expires when colour rendering lands.",
           "excluded_case_count_measured": 47,
           "excluded_case_count_source": "docs/audit/esctest-failing-index.md: the five prefixes above account for 13+13+14+2+5 = 47 located failing cases"
+        },
+        {
+          "capability": "xterm-window-ops",
+          "test_prefixes": [
+            "XtermWinopsTests."
+          ],
+          "citation": "ADR-0032 D1; AR-14 (pixels stay out of the VT layer); E-P0-2 not implemented; kernel/01 K-01 S_cap",
+          "reason": "Window manipulation (iconify/deiconify, move, push/pop icon and window titles, report icon/window label, DECSLPP, pixel resize) is a property of a window host that v1 does not have. The VT layer answers 11t/13t truthfully as normal and 0;0, so pretending a window was moved would be a lie (AR-20). Static precondition, not a runtime skip and not a difference entry. Revoke when E-P0-2 lands.",
+          "excluded_case_count_measured": 17,
+          "excluded_case_count_source": "docs/audit/esctest-level1-triage.md: the XtermWinopsTests failures that fail in isolation"
+        },
+        {
+          "capability": "deccolm-132",
+          "test_prefixes": [
+            "DECSETTests.test_DECSET_Allow80To132",
+            "RISTests.test_RIS_ResetDECCOLM"
+          ],
+          "citation": "ADR-0032 D2/D3; kernel/03 (cols change only on resize, reflow writeback is rejected by V-06); kernel/01 K-03",
+          "reason": "DECCOLM (CSI ? 3 h, 80/132 columns) is not implemented in v1: the grid's column count is fixed and reflow writeback is frozen out by kernel/03 V-06. DA1 bit 1 keeps its DEC/ECMA meaning (VT100 + AVO) under the K-03 arbitration order, so it is not a promise of 132-column support. Static precondition; revoke with E-P0-2.",
+          "excluded_case_count_measured": 2,
+          "excluded_case_count_source": "docs/audit/esctest-level1-triage.md"
         }
       ]
     }

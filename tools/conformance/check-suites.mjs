@@ -77,8 +77,10 @@ export function validate(doc) {
         push('EXCLUSION_PREFIXES', eat + '.test_prefixes', 'test_prefixes must be a non-empty array of "<Class>." prefixes');
       } else {
         e.test_prefixes.forEach(function (p, k) {
-          if (typeof p !== 'string' || !/^[A-Za-z0-9_]+\.$/.test(p)) {
-            push('EXCLUSION_PREFIX_SHAPE', eat + '.test_prefixes[' + k + ']', 'a prefix must look like "SomeClass." (esctest names its cases <Class>.<test>)');
+          // Either a class prefix ("SomeClass.", excludes the whole class) or an exact case name
+          // ("SomeClass.test_name", excludes one case while its siblings keep running).
+          if (typeof p !== 'string' || !/^[A-Za-z0-9_]+\.([A-Za-z0-9_]+\.?)?$/.test(p)) {
+            push('EXCLUSION_PREFIX_SHAPE', eat + '.test_prefixes[' + k + ']', 'a prefix must be "SomeClass." or an exact "SomeClass.test_name"');
           }
         });
       }
