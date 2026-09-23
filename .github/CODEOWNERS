@@ -1,0 +1,78 @@
+# CODEOWNERS
+#
+# 权威来源：docs/spec/07-engineering-quality-and-release.md 第 3.1.2 节
+# 「团队拓扑 <-> CODEOWNERS 映射（Conway 落地）」。
+# 规则（同节）：每个 crate / package 恰有一个 owner 团队；跨 owner 目录的 PR 两侧各一名
+# reviewer 批准（E4）；无 owner 目录一律拒绝合并；目录覆盖率必须为 100%。
+#
+# 匹配规则：GitHub 采用「最后一条命中的规则生效」，因此本文件由宽到窄排列，越具体越靠后。
+#
+# ---------------------------------------------------------------------------
+# 引导状态（bootstrap）必读
+# ---------------------------------------------------------------------------
+# 1. spec 07 指定的团队为 @termai/{core-kernel,shell-ux,agent,platform,devex}。
+#    GitHub 对**未知的用户或团队会静默忽略该条目**（不报错、不告警）。为避免规则退化为
+#    空操作，每条规则在 spec 团队之后额外列出引导维护者 @samabl。
+# 2. 团队与 TSC 成立后：删除 @samabl，并让分支保护承担 E4 的「两侧各一名 reviewer」。
+#    在此之前 E4 **无法被强制执行**——同一人无法构成双签（见 HARNESS 第 11 节 OQ-19）。
+# 3. 改动目录结构时必须同步本文件，否则出现无 owner 目录即视为合并阻断。
+# 4. 若 @samabl 或 @termai/* 在本仓库不可解析，GitHub 会忽略对应条目；
+#    请在仓库 Settings 或任一 PR 页面确认 CODEOWNERS 无报错后再依赖它。
+
+# ---- 默认：兜底覆盖，防止出现无 owner 目录 ----
+*                                   @samabl
+
+# ---- 交付与过程文档 ----
+/README.md                          @samabl
+/docs/                              @samabl
+/docs/plan/                         @samabl
+/docs/spec/                         @samabl
+
+# ---- 内核分册：契约真源，改动须与实现同步（比 /docs/spec/ 更具体，故在其后）----
+/docs/spec/kernel/                  @termai/core-kernel @samabl
+
+# ---- 项目宪法与冻结证据 ----
+# 变更需 TSC 2/3 多数 + 90 天公示（AGENTS 第 5 节）；docs/roles 为冻结证据，禁止改写。
+/HARNESS.md                         @samabl
+/AGENTS.md                          @samabl
+/docs/roles/                        @samabl
+/docs/adr/                          @samabl
+
+# ---- T1 Core Kernel（spec 07 第 3.1.2 节）----
+# 双签触发：termai-ipc 消息布局 / Session Log 格式 / L0 渲染契约。
+/crates/termai-core/                @termai/core-kernel @samabl
+/crates/termai-ipc/                 @termai/core-kernel @samabl
+/crates/termai-vt/                  @termai/core-kernel @samabl
+/crates/termai-pty/                 @termai/core-kernel @samabl
+/crates/termai-session/             @termai/core-kernel @samabl
+# 生成物（DC-09）：由 tools/tokens/build.mjs 产出，禁止手改，改动以生成器为准。
+/crates/termai-tokens/              @termai/core-kernel @samabl
+
+# ---- T2 Shell & UX（spec 07 第 3.1.2 节）----
+# 双签触发：token schema / L2 桥接接口。
+/tokens/                            @termai/shell-ux @samabl
+/packages/tokens/                   @termai/shell-ux @samabl
+/prototype/                         @termai/shell-ux @samabl
+
+# ---- T5 DevEx & Release（spec 07 第 3.1.2 节）----
+# 双签触发：门禁阈值 / 签名流程 / CI 拓扑。
+/.github/                           @termai/devex @samabl
+/tools/                             @termai/devex @samabl
+# 依赖准入：根 manifest 的 [workspace.dependencies] 即链接边界准入清单（ADR-0019）。
+/Cargo.toml                         @termai/devex @samabl
+/Cargo.lock                         @termai/devex @samabl
+/package.json                       @termai/devex @samabl
+/.gitattributes                     @termai/devex @samabl
+/.gitignore                         @termai/devex @samabl
+
+# ---- app 层装配 ----
+# 说明：spec 07 第 3.1.2 节列的是 apps/termai-desktop 与 packages/webview-shell，
+# 与 M0 实际树（apps/sessiond、apps/termai）不一一对应；此处按职责映射，
+# 待内核 P1 与 GUI 落地后按 spec 07 重新对齐（差异已登记在 docs/plan/m0-delivery-report.md）。
+/apps/sessiond/                     @termai/core-kernel @samabl
+/apps/termai/                       @termai/core-kernel @termai/shell-ux @samabl
+
+# ---- T3 Agent & Context / T4 Platform & Ecosystem ----
+# M0 未落地 crates/termai-agent、crates/termai-plugin-host、crates/termai-xtask、
+# packages/{plugin-sdk-ts,plugin-ui-runtime}、plugins/；这些路径一旦出现，
+# 必须在本文件登记 owner，否则触发「无 owner 目录即阻断」。
