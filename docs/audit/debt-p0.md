@@ -8,7 +8,7 @@
 >
 > **可运行的操作手册**：`docs/plan/p0-verification-runbook.md`——门禁命令、esctest 的**必备参数**、两个协议探针、分诊三件套、**改动的六步验收顺序**，以及六条环境缺口。**每条命令都标注它防的坑**（缺 `--xterm-checksum 336`、陈旧二进制、按类分诊、空输出误读）；**这三条铁律各由本会话的一次事故换来**。
 >
-> **自第 100 轮以来的变化（第 107 轮补记）**：① **E-P0-3 的「进 CI」一半已完成**——`bench:check`、`conformance L0`、`ci-cost` 三项检查已接入 Windows/Linux 两个 job（**结构性门禁阻断；§5 数字与成本读数在未触顶时不阻断**，依 ADR-0014）；② **C4 三件套齐全**（`ci-cost.json` 数据 + `tools/ci-cost/check.mjs` 读数检查 + CI 接线），**并做过负例对照**（改错总额 → exit 1）；③ **C1/C2/C3 仍需发起人**（TSC 未成立、CODEOWNERS 双签不可执行、分支保护未启用），**C5 需真实 CI 运行**（macOS/Linux 作业从未跑过），**C6 是周期性流程**。**四项治理前置里，唯一能在仓库内实现的 C4 已落地。**
+> **自第 100 轮以来的变化（第 107 轮补记；⚠ 第 200 轮更正：本条写于第 107 轮，早于第 132–163 轮的四项 selftest 与「check 必须配 selftest」的 `K8` 强制——CI 现状请以下一行「全部门禁」与 `docs/plan/p0-verification-runbook.md` 为准）**：① **E-P0-3 的「进 CI」一半已完成**——`bench:check`、`conformance L0`、`ci-cost` 三项检查已接入 Windows/Linux 两个 job（**结构性门禁阻断；§5 数字与成本读数在未触顶时不阻断**，依 ADR-0014）；② **C4 三件套齐全**（`ci-cost.json` 数据 + `tools/ci-cost/check.mjs` 读数检查 + CI 接线），**并做过负例对照**（改错总额 → exit 1）；③ **C1/C2/C3 仍需发起人**（TSC 未成立、CODEOWNERS 双签不可执行、分支保护未启用），**C5 需真实 CI 运行**（macOS/Linux 作业从未跑过），**C6 是周期性流程**。**四项治理前置里，唯一能在仓库内实现的 C4 已落地。**
 >
 > **四条出口**：E-P0-1 **未判定** ｜ E-P0-2 **未实现** ｜ E-P0-3 **未判定** ｜ E-P0-4 **部分**。
 >
