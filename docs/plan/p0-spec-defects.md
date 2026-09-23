@@ -70,6 +70,14 @@
 - **本 P0 处置**：已在 **kernel/07 §3.8 补登** `NoSuchSession` 与 `AttachStateInvalid`（字符串码即契约，新增走 minor）；版本拒绝复用既有 `VerUnsupported`，不新增码。
 - **需要的动作**：WS-05b 把「未 attach / 状态非法」从 `Corrupt` 切到 `AttachStateInvalid`（或在 kernel/07 §3.8 明确写成 `Corrupt` 的合法用法并给出理由）。在此切换完成前，不得声称 attach 的错误分支已冻结。
 
+## SD-19｜`CSI Ps t`（XTWINOPS）窗口/文本区查询超出 kernel/01 §3.5 的扩展子集
+
+- **证据**：esctest2 的 `reset()` 在每个用例前查询 `CSI 11/13/18/19 t` 并**阻塞等待答复**；`kernel/01` §3.5 的扩展协议子集表**未登记 XTWINOPS**，M0 的实现是 `b't' => {}`（静默忽略），迫使 esctest 做 **687 次传输替换**（逐条公示于 `tools/conformance/upstream/README.md`）。
+- **影响**：不答复 → 真实应用（shell / 编辑器查询终端尺寸）会阻塞或退化；esctest 的通过率也无法在**无替换**前提下读取。
+- **本 P0 处置（实验后已回滚，以保基线诚实）**：曾实现 `11 t` → `CSI 1 t`（normal）、`13 t` → `CSI 3 ; 0 ; 0 t`、`18 t` → `CSI 8 ; rows ; cols t`、`19 t` → `CSI 9 ; rows ; cols t`，并同步让适配器**不再代答**这四项。实测（esctest2 全量 567 条）：**替换次数 687 → 0**（harness 不再代答，测量变诚实），但**通过数 201 → 110**（失败 325 → 414，feeds 34366 → 34024）。
+- **回滚理由（不发布无法解释的回归）**：`esctest_adapter.py` **既把查询转发给终端、又自己排队注入答复**（`Write(sequence)` 之后 `link.queue.extend(...)`）。终端一旦实现，同一次查询就有两个答复；即使适配器停答，终端的答复经 `--server` harness 的 response 通道回写，其时序/交错与适配器同步注入不同，于是 `reset()` 读到错位的答复。**该时序问题定位清楚之前，不改产品代码**；改动已回滚，基线仍是 201 passed / 41 known-bug / 325 failed / 687 substitutions。
+- **需要的动作（合并为一个工作项，禁止只做一半）**：① kernel/01 §3.5 扩展子集表补登 XTWINOPS 的已实现子集与「像素类不答复」的边界；② 在 `termai-vt` 实现 11/13/18/19 t；③ **同时**修 `esctest_adapter.py` 的代答策略与 harness 的 response 回写路径（两端只能有一端答复）；④ 重跑全量，通过判据为 **≥201 passed 且 substitutions=0**。像素类（14/15/16 t）仍由适配器按固定 window model 代答，并继续在 `substitutions.txt` 公示。
+
 ## 处置总表
 
 | 编号 | 落点 | 类型 | 本 P0 处置 | 需要动作 |
