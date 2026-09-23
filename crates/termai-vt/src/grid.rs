@@ -185,6 +185,9 @@ pub struct Grid {
     sgr: Sgr,
     saved: SavedCursor,
     alt_saved: SavedCursor,
+    /// DECSC's saved cursor for the alternate screen; separate from `alt_saved`, which belongs
+    /// to `set_alt` (mode 1049's cursor across the switch).
+    alt_decsc: SavedCursor,
     modes: u64,
     wrap_pending: bool,
     /// Last graphic character printed, which REP (CSI Ps b) repeats.
@@ -241,6 +244,7 @@ impl Grid {
             sgr: Sgr::default(),
             saved: SavedCursor::default(),
             alt_saved: SavedCursor::default(),
+            alt_decsc: SavedCursor::default(),
             modes: MODE_AUTOWRAP | MODE_CURSOR_VISIBLE,
             wrap_pending: false,
             last_graphic: ' ',
@@ -791,6 +795,7 @@ impl Grid {
         self.sgr = Sgr::default();
         self.saved = SavedCursor::default();
         self.alt_saved = SavedCursor::default();
+        self.alt_decsc = SavedCursor::default();
         self.charset_g1 = false;
         self.last_graphic = ' ';
         self.cursor_visible = true;
@@ -1524,18 +1529,24 @@ impl Grid {
         self.wrap_pending = false;
         self.mark_cursor();
     }
-
     fn save_cursor(&mut self) {
-        self.saved = SavedCursor {
+        // xterm keeps DECSC's saved cursor separately for the main and alternate screens, so that
+        // switching back restores the position that screen had.
+        let saved = SavedCursor {
             row: self.cursor_row,
             col: self.cursor_col,
             sgr: self.sgr,
             origin: self.origin(),
         };
+        if self.alt {
+            self.alt_decsc = saved;
+        } else {
+            self.saved = saved;
+        }
     }
 
     fn restore_cursor(&mut self) {
-        let saved = self.saved;
+        let saved = if self.alt { self.alt_decsc } else { self.saved };
         self.cursor_row = saved.row.min(self.rows.saturating_sub(1));
         self.cursor_col = saved.col.min(self.cols.saturating_sub(1));
         self.sgr = saved.sgr;
@@ -1543,7 +1554,6 @@ impl Grid {
         self.wrap_pending = false;
         self.mark_cursor();
     }
-
     fn set_modes(&mut self, params: &Params, private: bool, enable: bool) {
         let mut i = 0;
         while i < params.len() {
