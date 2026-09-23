@@ -52,3 +52,29 @@
 
 **为什么我（编排者）本轮没直接改**：旧行为的精确落点依赖逐格移动 + 上下边距绕行 + `wrap_pending` 取消三者的组合，而 `test_BS_WrapsInWraparoundMode`（空行从 (1,3) 反绕到 (80,2)）与 `test_BS_AfterNoWrappedInlines`（同样 mode 45 却不越硬换行）**只有把完整测试体读全才不矛盾**；盲改会把「顺序污染」与「真实语义」再搅在一起。**下一轮的验收判据**：逐条单跑 9 条全绿 + `esctest-report` 的 `failed_real` 从 **18** 继续下降，且**不得**改动已被 triage 判为污染的那 10 条。
 
+
+## 第 268 轮结果：反绕实现已落地（`01b1ead`），9 条目标全绿
+
+**同一调用、同一级别（level 1）、新构建的 harness**：
+
+| 指标 | 第 263 轮（旧） | 第 268 轮（新） |
+| --- | --- | --- |
+| passed | 103 | **123** |
+| failed_raw | 86 | **68** |
+| excluded_by_capability | 68 | **66** |
+| **failed_real** | **39 → 18** | **2** |
+
+- **9 条目标用例逐条单跑全部通过**（BS ×4、CUB ×2、DECSET 反绕 ×3）——`failed_real` 从 18 降到 2，其余下降来自那 10 条顺序污染在修复后也一并通过。
+- **但代价必须写明**：`BSTests.test_BS_InitialReverseWraparound` 之前**是通过的**，本轮**转为失败**。它断言「CUP(1,1) → NEL → BS 之后光标不动（不跨到未软换行的上一行）」，而当前实现在列 0 **无条件**反绕。
+
+### 剩余 2 条的真实性质
+
+| 用例 | 性质 |
+| --- | --- |
+| `DECIDTests.test_DECID_Basic` | **已决定不实现**（8-bit C1，OQ-VT-14 / ADR-0030 §6） |
+| `BSTests.test_BS_InitialReverseWraparound` | **真实缺口 1 条**：mode 45 的**收窄语义**（只在软换行处反绕）与本实现的无条件反绕冲突。**注意**：esctest 注释说明 xterm 在 2023 年把 **45 收窄**、另立 **1045 保留旧广义行为**；而 `test_BS_WrapsInWraparoundMode`（空行也从 (1,3) 反绕到 (80,2)）与 `test_BS_InitialReverseWraparound`（NEL 后不反绕）在**同一次调用（默认 `--xterm-reverse-wrap 0`，即 45）下看似互斥**。**因此这 1 条不能靠猜**：需要 xterm 的 `CursorBack` 源码（或 ctlseqs 条款）才能裁定两条断言的分界；在此之前保留失败，不通过改断言或扩大排除来「通过」。 |
+
+### 本轮我自己的流程违规（记下来）
+
+**反绕实现是被 `git add -A` 卷进 `01b1ead`（`feat(gpu)`）的**，提交信息里**没有**它，而我当时以为该提交只含 GPU 切片。成因：我中断了仍在写文件的 subagent 后，**它仍在步进边界写入了 `grid.rs`**，随后我为 GPU 切片执行 `git add -A` 时把它一起扫走。**判据（已写入 runbook 第 5 条铁律）**：提交必须按**显式路径**；在 subagent 可能仍在写文件时**不得**用 `git add -A`；提交前后都要能逐条说出每个文件的来路。
+
