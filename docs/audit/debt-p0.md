@@ -11,7 +11,7 @@
 | A1 | **G1 语料仅 275 / ≥2000**；ctlseqs 208/208 有映射，但只有 26 条有门禁期望 | T1 | **进行中**：已派单「+20 条门禁用例」小切片（oracle 必须为 `xterm-ctlseqs` 文档语义，**新增用例若失败不许改弱期望**，须交期望 vs 实际原文）。补 182 条条目的真实期望用例（oracle = xterm ctlseqs 文档 / ECMA-48） | AR-31 第 1 条、kernel/01 §5 V-04。**已核实**：现有语料只断言行/计数器/不变量，**没有一条钉 grid digest**，因此 ADR-0025 的 digest 变更未在语料里留下陷阱；扩充时若想钉 digest 必须显式决定并登记 |
 | A2 | **真实语料 0% / ≥20%**，且**环境阻塞**：需 Xvfb + 钉定 xterm + 固定 locale/font 的 oracle 环境与 vim/htop/neovim/fzf/tmux/less/btop 捕捉 | T1 + 平台 | 起 RM-A/RM-B 后才能做；**自钉基线不计入**（`tools/conformance/run.mjs` 已机器强制） | kernel/01 K-03、V-04、ADR-0014 |
 | A3 | **vttest 本机无法构建**（无 C 编译器、无 WSL 分发版） | T5 + 平台 | configure 报 `no acceptable cc found in $PATH`；需 RM-A/RM-B + kernel/01 §3.9 driver | §8.1-1、OQ-VT-12 |
-| A4 | **esctest 当前 110 passed / 414 failed**（逐 commit 可复现，SD-20）；剩余失败簇：`CSI … t` 窗口尺寸（SD-19）、颜色族、DECRQM 余项、DECRQSS、DECDSR、DECSET、左右边距/原点模式 | T1 | 逐簇修复并在**同一 commit** 重测；接入门禁前须两次自证 | §8.1-1、AR-27 |
+| A4 | **esctest 当前 **117 passed / 407 failed / substitutions 0**（SD-19 落地后两次实测一致）；剩余失败簇：`CSI … t` 窗口尺寸（SD-19）、颜色族、DECRQM 余项、DECRQSS、DECDSR、DECSET、左右边距/原点模式 | T1 | 逐簇修复并在**同一 commit** 重测；接入门禁前须两次自证 | §8.1-1、AR-27 |
 | A5 | **无原生窗口 / GPU / IME 宿主**（E-P0-2 完全未实现） | T1 + T2 | 需先过 wgpu/winit/rustybuzz/swash 的依赖准入（ADR-0015） | §7 E-P0-2、DC-17、ADR-0024 D3 |
 | A6 | **渲染依赖在本环境无法取得 SPDX 证据**（网络受限、无本地 cargo 缓存）→ 只能落地零依赖切片 | T5 | 在可联网环境跑 `cargo-deny` 输出后补 ADR | AR-21、ADR-0015 P3 |
 | A7 | **§5 每条指标的测量实现未做**；**无 RM-A/RM-C** → `tools/bench` 打印 `gating numbers produced: 0` | T1 | 先起 RM-A；再逐指标实现（H1…H19） | B-10、AR-24.3、AR-27、ADR-0014 |
@@ -32,7 +32,7 @@
 | SD-16 | kernel/04 §3.4 首个 Interactive attach 自动授予租约与 AR-03 冲突 | **已裁决**（显式授权优先）；分册待修订 |
 | SD-17 | `proto_range` vs `proto_min/proto_max` | 已接受实现命名；分册待补注 |
 | SD-18 | attach 错误码未登记即暴露 | 已补登；`Corrupt`→`AttachStateInvalid` 切换已完成 |
-| SD-19 | XTWINOPS（`CSI Ps t`）超出 kernel/01 §3.5 子集 | **已实现后回滚**；可与 SD-20 结论一起重做 |
+| SD-19 | XTWINOPS（`CSI Ps t`）超出 kernel/01 §3.5 子集 | **已重做并落地**（`b772f1e`）：`termai-vt` 回答 `11/13/18/19 t`，`14/15/16 t`（像素类）**故意不答**并写明理由（AR-14）；适配器只代答像素类。**实测**：substitutions **688 → 0**、passed **110 → 117**、failed 414 → 407，两次运行逐字段相同 |
 | SD-20 | esctest 记录值 201 不可复现 | **已二分定位 = 记录错误**；跨 commit 必须重测 |
 | SD-21 | Context 事件 `confidence` 单位未定义（线上 f32 / Log u8） | 未处置；kernel/04 owner 待确认 |
 | SD-01…SD-12 | 见 [m0-spec-defects](../plan/m0-spec-defects.md) / [p0-spec-defects](../plan/p0-spec-defects.md) | M0 部分已由 ADR-0020/0023 处置 |
