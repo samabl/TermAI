@@ -112,6 +112,7 @@
 | A11 | **TailReplay 事件只投影 5 类** → **不能替代 GRID_SNAPSHOT** | T1 | 新增 tag 须先出 ADR | ADR-0026 D5 |
 | A12 | **IPC fuzz smoke 已落地**（`c495e07`：确定性 xorshift64*、固定种子、≥20000 次、随机帧头极端 `len` 不分配、CBOR 不 panic、含**正例对照组**）。**仍缺**：① **24h / ≥10⁸ 次**的持续 fuzz（G6 门禁本体，需 CI 排期）；② PTY 与 VT 侧的持续 fuzz；③ 8 MiB 上限端到端实跑与 broker 的 `FRAME_TOO_LARGE` 分支单测 | T1 | AGENTS §6；G6 = 24h 无 crash | §8.1-6、DC-37 |
 | A13 | **VRM**：**映射 + 模式切换均已落地**（`1055f0f` 映射；`14bedbb` `VrmState` 持有/切换 + **RP-08 操作面断言**：`Fold→Clip→Fold` 后 `mirror.rev()`、`canonical_bytes()` 不变且 `take_damage()` 为空）。**仍缺**：`ScrollAnchor`、命中测试、a11y 投影、显示行总数、从配置读模式；另有一处已知粗化——`VisualRow.clipped` 是**单一 bool**，无法区分「遮住头/尾/两端」，而 kernel/03 §3.8 的 `VRowKind` 信息更多（按切片边界未做） | T1 | 每一步都不得改变列数与复制字节 | AR-23 §6、kernel/03 K-10、RP-08 |
+| A14 | **`HARNESS.md:686` 的目录清单仍写「ADR-0001…ADR-0027」**，而 `ADR-0028` 已于第 177 轮落地（其 README 索引行也已于第 192 轮补上） | 文档 | **是否更新该行**：**AGENTS §5 规定「不修改历史：HARNESS 的既有 AR 只追加不篡改」**——**但该行是目录清单、不是 AR 条目**，**故需 owner 判定它属于「事实更新」还是「HARNESS 变更」**。**倾向：属事实更新，可改；但在判定前保持保守（AGENTS §7.4）** | — |
 
 **第 44 轮按同法复核 `DL` / `SD`**：两簇的**首个失败用例**分别是 `test_DL_ClearOutLeftRightAndTopBottomScrollRegion` 与 `test_SD_BigScrollLeftRightAndTopBottomScrollRegion`（`dl.py:215`、`sd.py:194`），名字里的 **LeftRight** 指向**左右边距**（`DECSLRM` / 使能模式 69）——**同样不在 §3.5 表内**，`set_private_mode` 无 69、`set_scroll_region` 只处理 `CSI r`。→ 这两个失败用例属 **(b) 子集外偏差候选**，**不是核心 DL/SD 错**。
 

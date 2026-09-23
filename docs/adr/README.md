@@ -96,6 +96,7 @@ proposed ──accept──▶ accepted ──supersede──▶ superseded
 | ADR-0025 | GridSnapshot / RowPayload 的逐行 LineFlags 与 golden/digest 兼容 | Accepted | AR-04、AR-19、AR-23 §6、DC-23、DC-40、ADR-0023 D3、ADR-0024 D2 | 增 `row_flags` / `RowPayload.flags` 与 `LINE_WRAPPED`；canonical_bytes 纳入逐行 flags，`GRID_DTO_MINOR` 1→2（解 SD-13，是 VRM/RP-08 的前置）；golden 保持 `TERMAI-GRID 1` 可解析，缺字段视为全 0；零新增依赖 |
 | ADR-0026 | TAIL_REPLAY 的传输形态、floor 语义与错误码（WS-05b errata） | Accepted | AR-04、AR-13、AR-26、AR-30、DC-22、DC-23、ADR-0023 D1 | `0x0502` 扩充为**双向**（C→S 请求 / S→C 重放）；floor **排他**且**无 floor 即拒绝**（不回退 watermark）；窗口不可满足（BelowWindow/AheadOfHead/TailUnreadable）一律**拒绝 + DROP_NOTICE**，绝不给短重放；复用 `AttachStateInvalid` 不新增码；事件子集只投影 5 类，新增 tag 须先出 ADR；线上 `confidence` 保持 f32（单位映射见 SD-21） |
 | ADR-0027 | 渲染/字体的第三方依赖准入（SPDX 待补） | **Proposed** | AR-01、AR-03、AR-14、AR-21、AR-24、DC-17、DC-21 | wgpu / winit / rustybuzz / swash / fontdb 及传递依赖的**候选清单 + 判定档位 + 验收程序**；**SPDX 列留空**（本环境无法取得许可证元数据）；表填满前任何 crate **不得进入 workspace 依赖**（ADR-0015 P3「未知即拒绝」）；同时登记 `termai-gpu` 新 crate 与 `termai-render → vt/gpu` 两条边 |
+| ADR-0028 | §5 测量与门禁的实现位置：以 `tools/bench` 为准 | Accepted | AR-19、AR-27、DC-23、ADR-0014 | ADR-0014 声明的 `crates/termai-xtask` 不存在；实际存在、且已被 B1–B8 逐字校验并已自证能失败（`bench:selftest`）的是 Node `tools/bench`。把实现与校验分属两处会立刻产生两套「有效测量」的定义。本 ADR 取代 ADR-0014 的两处实现位置引用。 |
 
 ## 7. 命名与文件约定
 
