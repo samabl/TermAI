@@ -4,6 +4,25 @@
 > **依据**：spec 07 §3.9（每版本偿还 ≥1 项 P1 债、性能达标余量入登记）+ AR-19（达标余量必须记账）+ AGENTS §5（未决问题不得用 TODO 代替）。
 > **口径**：每条给出 owner / 触发条件 / 依据编号。**未验证的一律写「未验证」**。
 
+> **入口（第 100 轮状态，先读这段）**
+>
+> **四条出口**：E-P0-1 **未判定** ｜ E-P0-2 **未实现** ｜ E-P0-3 **未判定** ｜ E-P0-4 **部分**。
+>
+> **全部门禁（第 100 轮实跑）**：`kernel-gates` **8 PASS / 0 FAIL**；`conformance` **gating 64/64（R=1.0）**、ctlseqs 208/208、**G1: NOT_JUDGED**；`bench:check` **7 PASS / 0 FAIL** 但 **gating INCONCLUSIVE / REFERENCE_MACHINE_UNAVAILABLE**（`gatingNumbersProduced: 0`）。
+>
+> **E-P0-1 当前口径（已过 AR-27 两次运行自检，失败集合逐字节相同）**：**267 passed / 41 known-bug / 259 failed / substitutions 0**，调用必须带 `-- --expected-terminal xterm --xterm-checksum 336`（缺它会得到 110/117 一类**伪失败**，见计划 §6.3 规则 8）。
+>
+> **现在还剩什么、以及为什么**：
+> 1. **要决策的（不在实现者权限内）**：`docs/plan/p0-open-decisions.md` 三项——**D-1 判定域**（约 69 条 + 颜色 45 + `XtermWinops` 19 的归属；**建议子集读法**）、**D-2 颜色能力声明**（建议 P0 不应答）、**D-3 设备身份**（建议报真实身份）。**一次评审可推进 118+ 条。**
+> 2. **要设计的**：`XtermWinops` 19 条需 **resize + reflow 策略**（连动 kernel/03）。
+> 3. **要取证的**：`DECRQM` 25 条（SD-22）需 xterm 实现或 ctlseqs 条款；**本环境拿不到**。
+> 4. **环境缺口（非排期缺口）**：vttest（无 C 编译器）、G1 真实语料 oracle（需 Xvfb + 钉定 xterm）、渲染依赖 SPDX 证据（网络受限）、RM-A/B/C 参考机（E-P0-3 判定）。
+>
+> **本会话新增的机器产物**：`docs/audit/esctest-classification.md` + `docs/audit/esctest-failing-index.md`（268→259 条失败的全量定位与分类，由 `tools/conformance/{failing-index,classify-esctest}.mjs` 生成）。
+>
+> **可复用的两个探针**（定性用，比跑套件快且不看 harness 脸色）：`FEED <hex>` 直驱 `termai-vt-conformance --server`；**用 `DECRQM` 读终端自身状态**（无需新增访问器）。
+>
+> **方法纪律**：[docs/plan/p0-delivery-plan.md](../plan/p0-delivery-plan.md) §6.3（十条）。其中四条由本会话的失败直接换来：**先取状态再谈语义**、**协议层优先于套件**、**验证与提交分离**、**改数字必须同时改总表**。
 ## A. 阻塞 P0 出口的四条（E-P0-1…E-P0-4）
 
 | # | 未闭合项 | owner | 触发条件 / 判定 | 依据 |
