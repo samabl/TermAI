@@ -243,6 +243,16 @@ impl Registry {
             .ok_or(RegistryError::NoSuchSession)
     }
 
+    /// Current Log position as (segment_id, next seq). `seq` is the exclusive upper
+    /// bound of appended records, i.e. the watermark an attach snapshot is taken at:
+    /// a client whose `resume_from <= seq` already holds everything before it.
+    #[must_use]
+    pub fn log_position(&self, id: SessionId) -> Option<(u32, u64)> {
+        self.sessions
+            .get(&id.0)
+            .map(|e| (e.writer.segment_id(), e.writer.seq()))
+    }
+
     pub fn acquire_lease(
         &mut self,
         id: SessionId,
@@ -251,6 +261,25 @@ impl Registry {
     ) -> Result<LeaseId, LeaseError> {
         let e = self.sessions.get_mut(&id.0).ok_or(LeaseError::NoLease)?;
         e.lease.acquire(client, now)
+    }
+
+    /// Release a lease through the explicit revoke path (never a silent state edit).
+    /// Only the current holder may release, so the CAP-1 invariant holds for
+    /// DETACH_NOTICE just as it does for stdin writes. Works even after the deadline
+    /// passed, because the holder is still the one asking to let go.
+    pub fn release_lease(
+        &mut self,
+        id: SessionId,
+        lease: LeaseId,
+        client: ClientId,
+        now: MonoTime,
+    ) -> Result<(), LeaseError> {
+        let e = self.sessions.get_mut(&id.0).ok_or(LeaseError::NoLease)?;
+        if e.lease.holder() != Some(client) {
+            return Err(LeaseError::NotHolder);
+        }
+        e.lease
+            .revoke(lease, termai_session::state::Actor::system(), now)
     }
 
     pub fn flush(&mut self, id: SessionId) -> Result<(), RegistryError> {

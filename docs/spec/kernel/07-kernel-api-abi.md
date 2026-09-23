@@ -298,6 +298,7 @@ consumer.consume():
 | kernel/07 | `AuthzError` → `code` | `TERMAI-E-AUTHZ-{MISSING\|EXPIRED\|REVOKED\|SCOPE\|TAINT\|APPROVAL\|POLICY\|MALFORMED}` | capability 校验失败 | 对外契约；每次决策恰好一条 `AuditRecord` |
 | kernel/07 | `IpcError` | `ReservedNonZero` / `FrameTooLarge` / `CrcMismatch` / `EncodingMismatch` / `Corrupt` / `NeedMore` / `UnsupportedMsg` / `ReservedMsgType` | 帧层与消息层错误 | 帧层错误断连，消息层错误不断连（§3.2） |
 | kernel/07 | 握手 `reason` | `VerUnsupported` / `CapUnknown` / `PeerDenied` / `HandshakeReplay` / `HandshakeTimeout` | 握手失败分类（CLI 退出码见 §3.3） | 数值即契约；新增走 minor |
+| kernel/04 | `Error{code}` 会话域字符串码（经 IPC 暴露） | `NoSuchSession` / `AttachStateInvalid` | attach 与快照请求的会话域拒绝（会话不存在；未 attach 或 attach 状态非法） | **字符串码即契约**：新增走 minor，改语义 = major（§3.7）；attach 的版本拒绝**复用** kernel/07 握手 `VerUnsupported`，不新增码。实现见 ADR-0023 D1 与 `docs/plan/p0-spec-defects.md` SD-18 |
 | kernel/07 | JSON-RPC 错误码 | `-32030` | Local API capability 拒绝 | 对外契约（`code` 字段结构化 + 可操作提示） |
 
 **缺口说明（kernel/03 / 05 / 06：显式「暂不登记」+ 理由 + 触发条件，L-18）**

@@ -8,6 +8,7 @@ use sessiond::registry::{testing::TextEngine, Registry};
 
 use termai_core::capability::{CAP_AUDIT_READ, CAP_SESSION_READ, CAP_STDIN_WRITE};
 use termai_core::SessionId;
+use termai_ipc::cbor::Value;
 use termai_ipc::codec;
 use termai_ipc::frame::{self, flag, DecodeCfg, FrameHeader};
 use termai_ipc::handshake::{AuthState, ClientKind, Hello, Limits, ServerPolicy};
@@ -113,6 +114,35 @@ impl Harness {
         )
         .expect("hello")
     }
+
+    fn attach_payload_range(
+        &self,
+        mode: codec::AttachMode,
+        resume_from: Option<u64>,
+        min: u16,
+        max: u16,
+    ) -> Vec<u8> {
+        codec::to_bytes(&codec::attach_request_to_value(&codec::AttachRequest {
+            proto_min: min,
+            proto_max: max,
+            client_kind: ClientKind::Cli,
+            session_id: self.session,
+            mode,
+            resume_from,
+            capabilities: vec![CAP_SESSION_READ, CAP_STDIN_WRITE],
+        }))
+    }
+
+    fn attach_payload(&self, mode: codec::AttachMode, resume_from: Option<u64>) -> Vec<u8> {
+        self.attach_payload_range(mode, resume_from, 1, 3)
+    }
+}
+
+/// Decode the single ATTACH_ACK frame produced by a successful attach.
+fn decode_attach_ack(frames: &[OutFrame]) -> codec::AttachAck {
+    assert_eq!(frames.len(), 1, "ATTACH_ACK is a single frame");
+    assert_eq!(frames[0].msg_type, msg::ATTACH_ACK);
+    codec::attach_ack_from_value(&codec::from_bytes(&frames[0].payload).unwrap()).unwrap()
 }
 
 #[test]
@@ -128,15 +158,27 @@ fn full_wire_sequence_handshake_lease_input_snapshot() {
     assert!(!ack.degraded);
     assert_eq!(h.broker.state(), ConnState::Negotiated);
 
-    // 2. Read-only attach succeeds before any lease (AR-26/ADR-0009 semantics).
-    let chunks = h.send(msg::GRID_SNAPSHOT, 0, 2, &[]).unwrap();
+    // 2. Read-only attach succeeds before any lease (kernel/04 section 3.4; the attach
+    //    family is the only attach path since ADR-0023 D1).
+    let payload = h.attach_payload(codec::AttachMode::ReadOnly, None);
+    let out = h.send(msg::ATTACH_REQUEST, flag::ENC, 2, &payload).unwrap();
+    let ack = decode_attach_ack(&out);
+    assert_eq!(ack.chosen_ver, 3);
+    assert_eq!(ack.limits.max_frame, codec::ATTACH_MAX_FRAME);
+    assert_eq!(
+        ack.snapshot_ref.grid_digest,
+        h.broker.registry().digest(h.session).unwrap()
+    );
+    assert!(h.broker.read_only_attached());
+    assert_eq!(h.broker.state(), ConnState::Negotiated, "no lease yet");
+
+    // 2b. The snapshot is the transport leg of the attach flow.
+    let chunks = h.send(msg::GRID_SNAPSHOT, 0, 20, &[]).unwrap();
     assert!(!chunks.is_empty());
     let (bytes, digest) = reassemble_snapshot(&chunks).unwrap();
     assert_eq!(digest, *blake3::hash(&bytes).as_bytes());
     let snap = codec::grid_snapshot_from_value(&codec::from_bytes(&bytes).unwrap()).unwrap();
     assert_eq!(snap, h.broker.registry().snapshot(h.session).unwrap());
-    assert!(h.broker.read_only_attached());
-    assert_eq!(h.broker.state(), ConnState::Negotiated);
 
     // 3. Writer acquisition.
     let out = h
@@ -247,30 +289,46 @@ fn the_frame_header_is_24_bytes_on_the_wire() {
     );
 }
 
-/// ADR-0023 D1 allocated the 0x05xx attach family. Until the attach state machine
-/// lands (WS-05) the broker must answer UnsupportedMsg and keep the link - it must
-/// NOT be treated as a reserved section, because the section is now known.
+/// ADR-0023 D1 allocated the 0x05xx attach family; WS-05a implements its handshake.
+/// Before WS-05a this test asserted ATTACH_REQUEST answered UnsupportedMsg. It is
+/// renamed (not deleted) and now asserts the implemented behaviour: a valid request
+/// gets ATTACH_ACK. The original "unknown value inside the known section still answers
+/// UnsupportedMsg and keeps the link" assertion is preserved below (0x0502 and 0x05FF),
+/// so the ADR-0023 D1 boundary stays covered.
 #[test]
-fn the_attach_family_is_a_known_section_not_a_reserved_one() {
+fn the_attach_family_is_implemented_per_adr_0023_d1() {
     let mut h = Harness::new("attach");
     h.hello();
 
-    let out = h.send(msg::ATTACH_REQUEST, 0, 11, &[]).unwrap();
-    assert_eq!(out[0].msg_type, msg::ERROR);
-    assert_eq!(h.broker.state(), ConnState::Negotiated, "link survives");
-    let body = codec::from_bytes(&out[0].payload).unwrap();
+    let payload = h.attach_payload(codec::AttachMode::ReadOnly, None);
+    let out = h
+        .send(msg::ATTACH_REQUEST, flag::ENC, 11, &payload)
+        .unwrap();
+    let ack = decode_attach_ack(&out);
+    assert_eq!(ack.state, codec::SessionState::Created);
     assert_eq!(
-        body.get("code").and_then(|v| v.as_text()),
-        Some(termai_core::error::ipc::UNSUPPORTED_MSG)
+        ack.snapshot_ref.grid_digest,
+        h.broker.registry().digest(h.session).unwrap()
+    );
+    assert_eq!(
+        h.broker.state(),
+        ConnState::Negotiated,
+        "link survives, no lease"
     );
 
-    // Values inside the allocated section but not yet assigned behave the same way.
-    let out = h.send(0x05FF, 0, 12, &[]).unwrap();
-    let body = codec::from_bytes(&out[0].payload).unwrap();
-    assert_eq!(
-        body.get("code").and_then(|v| v.as_text()),
-        Some(termai_core::error::ipc::UNSUPPORTED_MSG)
-    );
+    // 0x0502 TAIL_REPLAY is deliberately NOT implemented in WS-05a (it needs the Log
+    // event-stream replay that is WS-05b), so it must answer UnsupportedMsg rather than
+    // fake an empty replay. 0x05FF is unassigned inside the known 0x05xx section.
+    for (ty, corr) in [(msg::TAIL_REPLAY, 12u64), (0x05FF, 13)] {
+        let out = h.send(ty, 0, corr, &[]).unwrap();
+        assert_eq!(out[0].msg_type, msg::ERROR);
+        assert_eq!(h.broker.state(), ConnState::Negotiated, "link survives");
+        let body = codec::from_bytes(&out[0].payload).unwrap();
+        assert_eq!(
+            body.get("code").and_then(|v| v.as_text()),
+            Some(termai_core::error::ipc::UNSUPPORTED_MSG)
+        );
+    }
 }
 
 /// The next unallocated section still answers ReservedMsgType, so D1 did not turn
@@ -287,4 +345,278 @@ fn a_still_unallocated_section_still_answers_reserved_msg_type() {
         body.get("code").and_then(|v| v.as_text()),
         Some(termai_core::error::ipc::RESERVED_MSG_TYPE)
     );
+}
+
+/// Read-only attach succeeds and the ACK's snapshot_ref matches the registry: the grid
+/// digest is the live digest and segment_id/seq come from the real Log segment.
+#[test]
+fn read_only_attach_reports_the_log_position_and_registry_grid_digest() {
+    let mut h = Harness::new("attach-digest");
+    h.hello();
+    h.broker
+        .registry_mut()
+        .feed_pty_out(h.session, b"attached", 5)
+        .unwrap();
+
+    let payload = h.attach_payload(codec::AttachMode::ReadOnly, None);
+    let out = h
+        .send(msg::ATTACH_REQUEST, flag::ENC, 20, &payload)
+        .unwrap();
+    let ack = decode_attach_ack(&out);
+    assert_eq!(
+        ack.snapshot_ref.grid_digest,
+        h.broker.registry().digest(h.session).unwrap()
+    );
+    assert_eq!(
+        (ack.snapshot_ref.segment_id, ack.snapshot_ref.seq),
+        h.broker.registry().log_position(h.session).unwrap()
+    );
+    assert_eq!(ack.snapshot_ref.seq, 1, "one PtyOut record was appended");
+    assert!(ack.lease.is_none(), "a read-only attach never has a lease");
+    assert!(h.broker.read_only_attached());
+}
+
+/// Interactive mode expresses intent, not write rights. Without an explicit
+/// LEASE_ACQUIRE the client is still denied and the CAP-1 gate is untouched.
+#[test]
+fn interactive_attach_without_a_lease_does_not_grant_write_rights() {
+    let mut h = Harness::new("attach-interactive");
+    h.hello();
+
+    let payload = h.attach_payload(codec::AttachMode::Interactive, None);
+    let out = h
+        .send(msg::ATTACH_REQUEST, flag::ENC, 20, &payload)
+        .unwrap();
+    let ack = decode_attach_ack(&out);
+    assert!(
+        ack.lease.is_none(),
+        "Interactive attach must not self-grant a lease"
+    );
+    assert_eq!(
+        h.broker.state(),
+        ConnState::Negotiated,
+        "still not the writer"
+    );
+
+    let input = codec::InputPayload {
+        seq: 1,
+        kind: 0,
+        flags: 0,
+        payload: b"id".to_vec(),
+    }
+    .encode()
+    .unwrap();
+    let out = h.send(msg::INPUT, 0, 21, &input).unwrap();
+    assert_eq!(out[0].msg_type, msg::CAP_DENIED);
+    assert_eq!(h.broker.input_accepted, 0);
+    assert_eq!(h.broker.input_rejected, 1);
+}
+
+/// A version range with no overlap is a structured refusal; being a message-layer error
+/// it keeps the link (kernel/07 section 3.2).
+#[test]
+fn disjoint_attach_version_range_is_refused_and_the_link_survives() {
+    let mut h = Harness::new("attach-ver");
+    h.hello();
+    let payload = h.attach_payload_range(codec::AttachMode::ReadOnly, None, 9, 10);
+    let out = h
+        .send(msg::ATTACH_REQUEST, flag::ENC, 20, &payload)
+        .unwrap();
+    assert_eq!(out[0].msg_type, msg::ERROR);
+    assert_eq!(h.broker.state(), ConnState::Negotiated, "no disconnect");
+    let body = codec::from_bytes(&out[0].payload).unwrap();
+    assert_eq!(
+        body.get("code").and_then(|v| v.as_text()),
+        Some(termai_core::error::handshake::VER_UNSUPPORTED)
+    );
+    assert!(h.broker.attach_subscription().is_none());
+}
+
+/// Duplicate attach returns the same subscription handle, and resume_from at or before
+/// the applied watermark asks for no replay (WS-05a emits none).
+#[test]
+fn duplicate_attach_reuses_the_subscription_and_resume_from_is_idempotent() {
+    let mut h = Harness::new("attach-idem");
+    h.hello();
+
+    let payload = h.attach_payload(codec::AttachMode::ReadOnly, Some(0));
+    let first = h
+        .send(msg::ATTACH_REQUEST, flag::ENC, 20, &payload)
+        .unwrap();
+    let ack1 = decode_attach_ack(&first);
+    let sub1 = h.broker.attach_subscription().unwrap();
+    assert_eq!(ack1.snapshot_ref.seq, 0, "no records appended yet");
+    assert!(
+        first.iter().all(|f| f.msg_type == msg::ATTACH_ACK),
+        "WS-05a emits no TAIL_REPLAY"
+    );
+
+    let second = h
+        .send(msg::ATTACH_REQUEST, flag::ENC, 21, &payload)
+        .unwrap();
+    let ack2 = decode_attach_ack(&second);
+    assert_eq!(h.broker.attach_subscription(), Some(sub1), "same handle");
+    assert_eq!(ack1.snapshot_ref, ack2.snapshot_ref);
+    assert_eq!(h.broker.attach_resume_from(), Some(0));
+}
+
+/// DETACH_NOTICE releases the read subscription. Basis for refusing the later snapshot:
+/// kernel/04 section 3.4 makes GRID_SNAPSHOT the transport leg of the attach flow
+/// (ATTACH_REQ -> ATTACH_ACK -> GRID_SNAPSHOT), so with no subscription there is no
+/// consumer to deliver to.
+#[test]
+fn detach_releases_the_subscription_and_later_snapshot_is_refused() {
+    let mut h = Harness::new("attach-detach");
+    h.hello();
+    let payload = h.attach_payload(codec::AttachMode::ReadOnly, None);
+    h.send(msg::ATTACH_REQUEST, flag::ENC, 20, &payload)
+        .unwrap();
+    assert!(h.broker.read_only_attached());
+    let snap = h.send(msg::GRID_SNAPSHOT, 0, 21, &[]).unwrap();
+    assert!(!snap.is_empty(), "snapshot works while attached");
+
+    let out = h
+        .send(
+            msg::DETACH_NOTICE,
+            0,
+            22,
+            &codec::detach_notice_encode(false),
+        )
+        .unwrap();
+    assert!(out.is_empty(), "DETACH_NOTICE has no reply");
+    assert!(!h.broker.read_only_attached());
+    assert!(h.broker.attach_subscription().is_none());
+
+    let out = h.send(msg::GRID_SNAPSHOT, 0, 23, &[]).unwrap();
+    assert_eq!(out[0].msg_type, msg::ERROR);
+    let body = codec::from_bytes(&out[0].payload).unwrap();
+    assert_eq!(
+        body.get("code").and_then(|v| v.as_text()),
+        Some(termai_core::error::ipc::CORRUPT)
+    );
+    assert_eq!(h.broker.state(), ConnState::Negotiated, "link survives");
+}
+
+/// lease_release = true frees the lease through the existing explicit revoke path, so
+/// write rights disappear with it and a re-acquire is required.
+#[test]
+fn detach_with_lease_release_frees_the_lease_and_locks_writes_again() {
+    let mut h = Harness::new("attach-release");
+    h.hello();
+    let payload = h.attach_payload(codec::AttachMode::Interactive, None);
+    h.send(msg::ATTACH_REQUEST, flag::ENC, 20, &payload)
+        .unwrap();
+
+    let out = h
+        .send(msg::LEASE_ACQUIRE, 0, 21, &9u128.to_le_bytes())
+        .unwrap();
+    assert_eq!(out[0].msg_type, msg::LEASE_GRANT);
+    let input = codec::InputPayload {
+        seq: 1,
+        kind: 0,
+        flags: 0,
+        payload: b"x".to_vec(),
+    }
+    .encode()
+    .unwrap();
+    assert_eq!(
+        h.send(msg::INPUT, 0, 22, &input).unwrap()[0].msg_type,
+        msg::CREDIT_UPDATE
+    );
+
+    let out = h
+        .send(
+            msg::DETACH_NOTICE,
+            0,
+            23,
+            &codec::detach_notice_encode(true),
+        )
+        .unwrap();
+    assert!(out.is_empty());
+    assert_eq!(h.broker.lease(), None);
+    assert_eq!(h.broker.state(), ConnState::Negotiated);
+
+    let input = codec::InputPayload {
+        seq: 2,
+        kind: 0,
+        flags: 0,
+        payload: b"y".to_vec(),
+    }
+    .encode()
+    .unwrap();
+    assert_eq!(
+        h.send(msg::INPUT, 0, 24, &input).unwrap()[0].msg_type,
+        msg::CAP_DENIED
+    );
+}
+
+/// Attach before the handshake is refused; a payload missing required fields is rejected
+/// rather than silently defaulted, and the link survives both.
+#[test]
+fn attach_requires_a_handshake_and_a_complete_payload() {
+    let mut h = Harness::new("attach-pre");
+    let payload = h.attach_payload(codec::AttachMode::ReadOnly, None);
+    let out = h.send(msg::ATTACH_REQUEST, flag::ENC, 1, &payload).unwrap();
+    assert_eq!(out[0].msg_type, msg::ERROR);
+    assert_eq!(h.broker.state(), ConnState::Closed);
+
+    h.hello();
+    let bad = codec::to_bytes(&Value::map(vec![("proto_min", Value::U64(1))]));
+    let out = h.send(msg::ATTACH_REQUEST, flag::ENC, 2, &bad).unwrap();
+    assert_eq!(out[0].msg_type, msg::ERROR);
+    assert_eq!(h.broker.state(), ConnState::Negotiated, "link survives");
+    assert!(h.broker.attach_subscription().is_none());
+}
+
+/// Unknown optional fields are ignored for forward compatibility (kernel/07 section 3.6
+/// V3), so a newer client minor does not break an older broker.
+#[test]
+fn attach_ignores_unknown_optional_fields() {
+    let mut h = Harness::new("attach-future");
+    h.hello();
+    let mut v = codec::attach_request_to_value(&codec::AttachRequest {
+        proto_min: 1,
+        proto_max: 3,
+        client_kind: ClientKind::Cli,
+        session_id: h.session,
+        mode: codec::AttachMode::ReadOnly,
+        resume_from: None,
+        capabilities: vec![CAP_SESSION_READ],
+    });
+    if let Value::Map(ref mut m) = v {
+        m.push((Value::Text("future_field".into()), Value::U64(1)));
+    }
+    let payload = codec::to_bytes(&v);
+    let out = h
+        .send(msg::ATTACH_REQUEST, flag::ENC, 20, &payload)
+        .unwrap();
+    let ack = decode_attach_ack(&out);
+    assert_eq!(ack.chosen_ver, 3);
+}
+
+/// A re-attach on a connection that has acquired the lease reports it in ATTACH_ACK,
+/// so a client can tell it is the writer without a separate round trip.
+#[test]
+fn reattach_after_lease_reports_the_granted_lease() {
+    let mut h = Harness::new("attach-lease-info");
+    h.hello();
+    let payload = h.attach_payload(codec::AttachMode::Interactive, None);
+    let out = h
+        .send(msg::ATTACH_REQUEST, flag::ENC, 20, &payload)
+        .unwrap();
+    assert!(decode_attach_ack(&out).lease.is_none());
+
+    h.send(msg::LEASE_ACQUIRE, 0, 21, &9u128.to_le_bytes())
+        .unwrap();
+    let out = h
+        .send(msg::ATTACH_REQUEST, flag::ENC, 22, &payload)
+        .unwrap();
+    let lease = decode_attach_ack(&out).lease.expect("lease is reported");
+    assert_eq!(lease.lease_id, 1);
+    assert_eq!(lease.holder, 9);
+    assert_eq!(
+        lease.since, 0,
+        "mono clock is injected and zero in this harness"
+    );
+    assert_eq!(lease.ttl_s, 30, "kernel/04 section 3.4 default TTL");
 }

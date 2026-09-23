@@ -161,17 +161,40 @@ fn sorted_unique(mut caps: Vec<CapId>) -> Vec<CapId> {
     caps
 }
 
+/// Version-range intersection (kernel/07 section 3.3): `lo = max(c.min, s.min)`,
+/// `hi = min(c.max, s.max)`; no overlap is a refusal, otherwise the highest common
+/// version wins. Shared by the connection handshake and the attach handshake so the
+/// two can never drift into a second implementation.
+#[must_use]
+pub fn chosen_version(
+    client_min: u16,
+    client_max: u16,
+    server_min: u16,
+    server_max: u16,
+) -> Option<u16> {
+    let lo = client_min.max(server_min);
+    let hi = client_max.min(server_max);
+    if lo > hi {
+        None
+    } else {
+        Some(hi)
+    }
+}
+
 /// Negotiation algorithm (kernel/07 section 3.3).
 #[must_use]
 pub fn negotiate(client: &Hello, server: &ServerPolicy) -> Outcome {
     if server.seen_nonces.contains(&client.nonce) {
         return Outcome::Refused(RefusedReason::HandshakeReplay);
     }
-    let lo = client.proto_min.max(server.proto_min);
-    let hi = client.proto_max.min(server.proto_max);
-    if lo > hi {
+    let Some(chosen_ver) = chosen_version(
+        client.proto_min,
+        client.proto_max,
+        server.proto_min,
+        server.proto_max,
+    ) else {
         return Outcome::Refused(RefusedReason::VerUnsupported);
-    }
+    };
 
     // Required capabilities: both directions must be understood, else refuse.
     for cap in &client.required {
@@ -204,7 +227,7 @@ pub fn negotiate(client: &Hello, server: &ServerPolicy) -> Outcome {
     let degraded = !unknown_optional.is_empty();
 
     let ack = HelloAck {
-        chosen_ver: hi,
+        chosen_ver,
         caps_inter,
         limits: server.limits.clone(),
         auth_state: if degraded {
@@ -362,5 +385,38 @@ mod tests {
         );
         assert_eq!(out, Outcome::Refused(RefusedReason::HandshakeReplay));
         assert_eq!(RefusedReason::HandshakeReplay.cli_exit(), 3);
+    }
+
+    #[test]
+    fn chosen_version_intersects_and_reports_no_overlap() {
+        assert_eq!(chosen_version(1, 3, 1, 3), Some(3));
+        assert_eq!(chosen_version(1, 2, 1, 5), Some(2));
+        assert_eq!(chosen_version(4, 6, 1, 3), None);
+        // Adjacent ranges share exactly one version.
+        assert_eq!(chosen_version(1, 3, 3, 5), Some(3));
+    }
+
+    #[test]
+    fn negotiate_uses_the_shared_intersection() {
+        // The connection handshake and the attach handshake must agree by construction:
+        // both call chosen_version.
+        let out = negotiate(
+            &client(
+                0x0001,
+                0x0002,
+                vec![CAP_SESSION_READ],
+                vec![CAP_SESSION_READ],
+            ),
+            &server(),
+        );
+        match out {
+            Outcome::Negotiated { ack, .. } => {
+                assert_eq!(
+                    ack.chosen_ver,
+                    chosen_version(0x0001, 0x0002, 0x0001, 0x0003).unwrap()
+                );
+            }
+            other => panic!("unexpected {other:?}"),
+        }
     }
 }

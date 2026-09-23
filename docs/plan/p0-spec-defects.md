@@ -30,17 +30,45 @@
 
 ## SD-13｜GridSnapshot / RowPayload 缺逐行 LineFlags（WRAPPED），逻辑行无法重建
 
-- **证据**：${T}kernel/03${T} §3.8 定义「逻辑行 = 由 ${T}LineFlags::WRAPPED${T} 串起来的网格行链」，§3.3 的 ${T}LineRecord${T} 亦带 ${T}LineFlags${T}；而 core DTO v1（${T}crates/termai-core/src/grid.rs${T}）的 ${T}GridSnapshot${T} 只有全局 ${T}wrap_pending${T}，${T}RowPayload${T} 只有 ${T}row${T} + ${T}cells${T}，**没有任何逐行标志**。
+- **证据**：`kernel/03` §3.8 定义「逻辑行 = 由 `LineFlags::WRAPPED` 串起来的网格行链」，§3.3 的 `LineRecord` 亦带 `LineFlags`；而 core DTO v1（`crates/termai-core/src/grid.rs`）的 `GridSnapshot` 只有全局 `wrap_pending`，`RowPayload` 只有 `row` + `cells`，**没有任何逐行标志**。
 - **影响**：软换行/裁剪（VisualRowMap，AR-23 §6 / kernel/03 K-10 / **RP-08**）无法实现——无法把网格行链成逻辑行；UX-G17「软换行开关下复制逐字节相同」因此不可判定。这是**对外契约级**缺口。
-- **本 P0 处置**：不实现近似替代（不许按列宽猜折行，那会破坏复制保真）；${T}termai-render${T} 先落地镜像切片，VRM 等字段补充后落地。归属见 **ADR-0024 D2**。
-- **需要的动作**：按 **ADR-0023 D3**（字段集以 ${T}kernel/03${T} §3.3 为准）为 ${T}GridSnapshot${T} / ${T}RowPayload${T} 增加逐行 ${T}flags${T}（至少 WRAPPED 位），并同步 ${T}canonical_bytes${T} / golden / digest 的版本处理与 ${T}kernel/01${T} 的 golden 规则。属**实现对齐已冻结设计**（minor 字段新增），须与 golden 哈希兼容性一并验证。
+- **本 P0 处置**：不实现近似替代（不许按列宽猜折行，那会破坏复制保真）；`termai-render` 先落地镜像切片，VRM 等字段补充后落地。归属见 **ADR-0024 D2**。
+- **需要的动作**：按 **ADR-0023 D3**（字段集以 `kernel/03` §3.3 为准）为 `GridSnapshot` / `RowPayload` 增加逐行 `flags`（至少 WRAPPED 位），并同步 `canonical_bytes` / golden / digest 的版本处理与 `kernel/01` 的 golden 规则。属**实现对齐已冻结设计**（minor 字段新增），须与 golden 哈希兼容性一并验证。
 
 ## SD-14｜GridDelta 的 scroll 字段重复承载
 
-- **证据**：${T}crates/termai-core/src/grid.rs${T} 的 ${T}GridDelta${T} 同时有 ${T}scroll: Option<ScrollOp>${T} 与 ${T}damage: Damage${T}（后者也带 ${T}scroll${T}）；${T}kernel/03${T} §3.3 的伪代码同样两处并存。
+- **证据**：`crates/termai-core/src/grid.rs` 的 `GridDelta` 同时有 `scroll: Option<ScrollOp>` 与 `damage: Damage`（后者也带 `scroll`）；`kernel/03` §3.3 的伪代码同样两处并存。
 - **影响**：应用顺序与「哪个是真源」无定义，两个实现者会做出不同选择，且可能双应用或漏应用滚动。
-- **本 P0 处置**：${T}termai-render${T} 取 ${T}delta.scroll.or(delta.damage.scroll)${T} 的**单一优先级**并加测试锁定，代码注释引用本条。
-- **需要的动作**：kernel/03 owner 二选一并删除另一处，或显式写明「两处必须一致，否则以 ${T}GridDelta.scroll${T} 为准」。
+- **本 P0 处置**：`termai-render` 取 `delta.scroll.or(delta.damage.scroll)` 的**单一优先级**并加测试锁定，代码注释引用本条。
+- **需要的动作**：kernel/03 owner 二选一并删除另一处，或显式写明「两处必须一致，否则以 `GridDelta.scroll` 为准」。
+
+## SD-15｜GridSnapshot 不带 rev，快照替换后的 rev 基线未定义
+
+- **证据**：`kernel/03` §3.3 用单调 `rev` 检测缺口，但 core DTO 的 `GridSnapshot` **没有 rev 字段**；替换镜像后客户端的下一个 delta 落在哪个 rev 上无定义。
+- **影响**：镜像实现者会各自发明（拒绝第一个 delta / 无条件接受 / 从 0 起算），跨端 attach 与崩溃恢复的 rev 语义随之分叉。
+- **本 P0 处置**：`termai-render` 的镜像规定「快照后**接受下一个 delta 并将其 rev 作为新基线**」，加测试锁定，代码注释引用本条。
+- **需要的动作**：kernel/03 / 07 owner 决定是否给 `GridSnapshot` 增 `rev`（minor），或显式写明快照后的复位规则。
+
+## SD-16｜kernel/04 §3.4 的「首个 Interactive attach 自动授予租约」与 AR-03 的显式授权冲突
+
+- **证据**：`kernel/04` §3.4 的租约表规定首个 `Interactive` attach 在租约空闲时**自动授予**并写 `LeaseEvent{grant}`；而 **AR-03 契约层**规定「写 stdin **必须显式授权**」，AR-06 要求破坏性/写操作逐条批准。
+- **影响**：自动授予等于「attach 即获得写权」，与 AR-03 的显式授权直接冲突；也把「订阅」与「写入」两种意图混在一次握手里。
+- **裁决（总负责人）**：**以 AR-03 为准**。attach 只建立订阅；写权必须由显式 `LEASE_ACQUIRE` 获取。WS-05a 已按此实现：`Interactive` attach 的 `ATTACH_ACK.lease = null`，写 stdin 在显式取租约前仍 `CAP_DENIED`，且 CAP 闸门未被削弱。
+- **需要的动作**：kernel/04 §3.4 的租约表按本条修订（自动授予改为「必须显式 acquire」），或新增 ADR 追认；在修订前**以本条为准**。
+
+## SD-17｜AttachRequest 字段命名与 spec 不一致（proto_range vs proto_min/proto_max）
+
+- **证据**：`kernel/04` §3.4 写 `proto_range`；实现（WS-05a）用 `proto_min` / `proto_max`，理由是复用 `Hello` 的同一对字段与同一求交函数（`handshake::chosen_version`），避免第二套版本区间表示。
+- **影响**：纯命名，但属对外契约措辞；不统一会让跨端实现各自猜测字段名。
+- **本 P0 处置**：接受实现命名（与 `Hello` 同源是更强的一致性论据），登记本条。
+- **需要的动作**：kernel/04 §3.4 与 kernel/07 §3.3 把 `proto_range` 标注为「即 `proto_min` / `proto_max``」。另：`ATTACH_ACK` 无 `sub_id` 字段（订阅句柄仅存在于服务端，经 `Broker::attach_subscription()` 暴露），与 kernel/04 §3.4 一致，无需动作。
+
+## SD-18｜attach 族对外错误码在 kernel/07 §3.8 未登记即暴露
+
+- **证据**：kernel/07 §3.8 的登记规则要求「对外暴露前**先补入本表并冻结**，未登记即暴露视为契约事故」。M0 的 `on_snapshot_request` 与 WS-05a 的 attach 路径暴露了会话域字符串码 `NoSuchSession`；「未 attach / 状态非法」当前映射到已登记的 `IpcError::Corrupt`。
+- **影响**：`NoSuchSession` 属未登记即暴露；用 `Corrupt`（语义为帧/载荷损坏）表达「状态非法」是语义借用，会让 CLI/UI 的错误分支不可靠。
+- **本 P0 处置**：已在 **kernel/07 §3.8 补登** `NoSuchSession` 与 `AttachStateInvalid`（字符串码即契约，新增走 minor）；版本拒绝复用既有 `VerUnsupported`，不新增码。
+- **需要的动作**：WS-05b 把「未 attach / 状态非法」从 `Corrupt` 切到 `AttachStateInvalid`（或在 kernel/07 §3.8 明确写成 `Corrupt` 的合法用法并给出理由）。在此切换完成前，不得声称 attach 的错误分支已冻结。
 
 ## 处置总表
 

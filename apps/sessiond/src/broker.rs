@@ -12,6 +12,7 @@ use termai_ipc::codec::{self, CodecError};
 use termai_ipc::frame::{flag, FrameHeader, IpcError};
 use termai_ipc::handshake::{self, Outcome, RefusedReason, ServerPolicy};
 use termai_ipc::msg;
+use termai_session::lease::LeaseState;
 
 use crate::registry::{Registry, RegistryError};
 
@@ -60,6 +61,20 @@ impl OutFrame {
     }
 }
 
+/// SessionError::NoSuchSession. kernel/04 section 3.8 registers SessionError as a trait
+/// error type (not value-frozen), and kernel/07 section 3.8 has no ipc:: code for a
+/// missing session, so the broker keeps the literal it already used for that condition.
+const NO_SUCH_SESSION: &str = "NoSuchSession";
+
+/// One live attach subscription. A repeated ATTACH_REQ on the same connection reuses the
+/// same handle (kernel/04 section 3.4: duplicate attach returns the same subscription).
+#[derive(Clone, PartialEq, Eq, Debug)]
+struct AttachState {
+    sub_id: u64,
+    mode: codec::AttachMode,
+    resume_from: Option<u64>,
+}
+
 /// The per-connection protocol state machine.
 pub struct Broker {
     policy: ServerPolicy,
@@ -70,7 +85,8 @@ pub struct Broker {
     caps: Vec<CapId>,
     client: Option<u128>,
     lease: Option<u64>,
-    read_only_attached: bool,
+    attach: Option<AttachState>,
+    next_sub_id: u64,
     now: MonoTime,
     pub input_accepted: u64,
     pub input_rejected: u64,
@@ -98,7 +114,8 @@ impl Broker {
             caps: Vec::new(),
             client: None,
             lease: None,
-            read_only_attached: false,
+            attach: None,
+            next_sub_id: 1,
             now: MonoTime::ZERO,
             input_accepted: 0,
             input_rejected: 0,
@@ -162,6 +179,8 @@ impl Broker {
             msg::RESIZE => self.on_resize(h.corr_id, payload),
             msg::SIGNAL => Ok(vec![OutFrame::error(h.corr_id, "Unsupported", "signal")]),
             msg::GRID_SNAPSHOT => self.on_snapshot_request(h.corr_id, payload),
+            msg::ATTACH_REQUEST => self.on_attach_request(h.corr_id, payload),
+            msg::DETACH_NOTICE => self.on_detach_notice(h.corr_id, payload),
             other => Ok(vec![match msg::classify(other) {
                 msg::MsgClass::ReservedSection => OutFrame::error(
                     h.corr_id,
@@ -493,7 +512,17 @@ impl Broker {
                 "snapshot request must be empty",
             )]);
         }
-        self.read_only_attached = true;
+        // ADR-0023 D1 voids the M0 idiom where an empty GRID_SNAPSHOT was itself the
+        // attach: the snapshot is now the transport leg of the attach flow (kernel/04
+        // section 3.4: ATTACH_REQ -> ATTACH_ACK -> GRID_SNAPSHOT), so it needs a live
+        // subscription. After DETACH_NOTICE releases it, snapshot requests are refused.
+        if self.attach.is_none() {
+            return Ok(vec![OutFrame::error(
+                corr_id,
+                termai_core::error::ipc::CORRUPT,
+                "attach required",
+            )]);
+        }
         let snapshot = match self.registry.snapshot(self.session) {
             Ok(s) => s,
             Err(RegistryError::NoSuchSession) => {
@@ -512,6 +541,182 @@ impl Broker {
             }
         };
         Ok(self.chunk_snapshot(corr_id, &snapshot))
+    }
+
+    /// ATTACH_REQUEST (0x0500): validate version range, session, mode semantics and
+    /// idempotency, then answer ATTACH_ACK. Interactive mode does NOT acquire stdin
+    /// write rights; that still requires an explicit LEASE_ACQUIRE (WS-05a).
+    fn on_attach_request(
+        &mut self,
+        corr_id: u64,
+        payload: &[u8],
+    ) -> Result<Vec<OutFrame>, IpcError> {
+        if self.state != ConnState::Negotiated && self.state != ConnState::Ready {
+            return Ok(vec![OutFrame::error(
+                corr_id,
+                termai_core::error::ipc::CORRUPT,
+                "handshake required",
+            )]);
+        }
+        let req =
+            match codec::from_bytes(payload).and_then(|v| codec::attach_request_from_value(&v)) {
+                Ok(r) => r,
+                Err(e) => {
+                    return Ok(vec![OutFrame::error(
+                        corr_id,
+                        codec_error_code(e),
+                        "bad attach request",
+                    )])
+                }
+            };
+        // Version range: reuse the connection handshake intersection, never a second
+        // implementation (kernel/07 section 3.3).
+        let Some(chosen_ver) = handshake::chosen_version(
+            req.proto_min,
+            req.proto_max,
+            self.policy.proto_min,
+            self.policy.proto_max,
+        ) else {
+            return Ok(vec![OutFrame::cbor(
+                msg::ERROR,
+                flag::ERROR,
+                corr_id,
+                &codec::error_body(
+                    termai_core::error::handshake::VER_UNSUPPORTED,
+                    "attach version range has no overlap",
+                ),
+            )]);
+        };
+        // The connection is session-scoped: only the bound session may be attached.
+        if req.session_id != self.session || self.registry.get(req.session_id).is_none() {
+            return Ok(vec![OutFrame::error(
+                corr_id,
+                NO_SUCH_SESSION,
+                "session not found",
+            )]);
+        }
+        let Some((segment_id, seq)) = self.registry.log_position(self.session) else {
+            return Ok(vec![OutFrame::error(
+                corr_id,
+                NO_SUCH_SESSION,
+                "session not found",
+            )]);
+        };
+        let grid_digest = match self.registry.digest(self.session) {
+            Ok(d) => d,
+            Err(_) => {
+                return Ok(vec![OutFrame::error(
+                    corr_id,
+                    NO_SUCH_SESSION,
+                    "session not found",
+                )])
+            }
+        };
+        let state = self
+            .registry
+            .state(self.session)
+            .and_then(|s| codec::SessionState::parse(s.as_str()).ok())
+            .unwrap_or(codec::SessionState::Dead);
+        // Duplicate attach returns the same subscription handle.
+        let sub_id = match &self.attach {
+            Some(a) => a.sub_id,
+            None => {
+                let id = self.next_sub_id;
+                self.next_sub_id += 1;
+                id
+            }
+        };
+        self.attach = Some(AttachState {
+            sub_id,
+            mode: req.mode,
+            resume_from: req.resume_from,
+        });
+        let ack = codec::AttachAck {
+            chosen_ver,
+            state,
+            snapshot_ref: codec::SnapshotRef {
+                segment_id,
+                seq,
+                grid_digest,
+            },
+            lease: self.current_lease_info(),
+            limits: codec::AttachLimits {
+                max_frame: codec::ATTACH_MAX_FRAME,
+                credits: self.policy.limits.credits,
+            },
+        };
+        Ok(vec![OutFrame::cbor(
+            msg::ATTACH_ACK,
+            flag::RESPONSE,
+            corr_id,
+            &codec::attach_ack_to_value(&ack),
+        )])
+    }
+
+    /// The lease this connection currently holds, as ATTACH_ACK.lease. None when the
+    /// connection is not the writer, so a read-only client learns it has no write rights.
+    fn current_lease_info(&self) -> Option<codec::LeaseInfo> {
+        let client = self.client?;
+        let lease_id = self.lease?;
+        let entry = self.registry.get(self.session)?;
+        match entry.lease.state() {
+            LeaseState::Held {
+                holder,
+                acquired_at,
+                ..
+            } if holder.0 == client => Some(codec::LeaseInfo {
+                lease_id,
+                holder: holder.0,
+                since: acquired_at.as_nanos(),
+                ttl_s: entry.lease.ttl().as_secs() as u32,
+            }),
+            _ => None,
+        }
+    }
+
+    /// DETACH_NOTICE (0x0503): release the read subscription and, on request, the lease.
+    /// Idempotent, and it never bypasses the lease authority: release goes through
+    /// Registry::release_lease, which requires the caller to be the holder (CAP gate).
+    fn on_detach_notice(
+        &mut self,
+        corr_id: u64,
+        payload: &[u8],
+    ) -> Result<Vec<OutFrame>, IpcError> {
+        if self.state != ConnState::Negotiated && self.state != ConnState::Ready {
+            return Ok(vec![OutFrame::error(
+                corr_id,
+                termai_core::error::ipc::CORRUPT,
+                "handshake required",
+            )]);
+        }
+        let lease_release = match codec::detach_notice_decode(payload) {
+            Ok(v) => v,
+            Err(e) => {
+                return Ok(vec![OutFrame::error(
+                    corr_id,
+                    codec_error_code(e),
+                    "bad detach notice",
+                )])
+            }
+        };
+        // Detaching without an attach is a no-op (idempotent); DETACH_NOTICE has no reply
+        // in kernel/04 section 3.4.
+        self.attach = None;
+        if lease_release {
+            if let (Some(client), Some(lease_id)) = (self.client, self.lease) {
+                let _ = self.registry.release_lease(
+                    self.session,
+                    termai_session::lease::LeaseId(lease_id),
+                    termai_session::state::ClientId(client),
+                    self.now,
+                );
+            }
+            self.lease = None;
+            if self.state == ConnState::Ready {
+                self.state = ConnState::Negotiated;
+            }
+        }
+        Ok(Vec::new())
     }
 
     /// Chunk a snapshot into CBOR frames with MORE_CHUNK / LAST_CHUNK flags.
@@ -544,9 +749,28 @@ impl Broker {
         out
     }
 
+    /// True when a ReadOnly attach subscription is live.
     #[must_use]
-    pub const fn read_only_attached(&self) -> bool {
-        self.read_only_attached
+    pub fn read_only_attached(&self) -> bool {
+        matches!(&self.attach, Some(a) if a.mode == codec::AttachMode::ReadOnly)
+    }
+
+    /// The subscription handle of the live attach, if any. A repeated attach reuses it.
+    #[must_use]
+    pub fn attach_subscription(&self) -> Option<u64> {
+        self.attach.as_ref().map(|a| a.sub_id)
+    }
+
+    /// The live attach mode, if any.
+    #[must_use]
+    pub fn attach_mode(&self) -> Option<codec::AttachMode> {
+        self.attach.as_ref().map(|a| a.mode)
+    }
+
+    /// The resume_from the client last claimed, if any.
+    #[must_use]
+    pub fn attach_resume_from(&self) -> Option<u64> {
+        self.attach.as_ref().and_then(|a| a.resume_from)
     }
 }
 
@@ -837,14 +1061,43 @@ mod tests {
         );
     }
 
+    fn attach_payload(mode: codec::AttachMode) -> Vec<u8> {
+        codec::to_bytes(&codec::attach_request_to_value(&codec::AttachRequest {
+            proto_min: 1,
+            proto_max: 3,
+            client_kind: ClientKind::Cli,
+            session_id: SessionId(7),
+            mode,
+            resume_from: None,
+            capabilities: vec![CAP_SESSION_READ, CAP_STDIN_WRITE],
+        }))
+    }
+
+    #[test]
+    fn snapshot_without_attach_is_refused_since_adr_0023_d1() {
+        let (mut b, _) = broker("snapshot-noattach");
+        do_hello(&mut b);
+        let out = b.on_frame(&hdr(msg::GRID_SNAPSHOT, 0, 2), &[]).unwrap();
+        assert_eq!(out[0].msg_type, msg::ERROR);
+        assert_eq!(b.state(), ConnState::Negotiated, "link survives");
+        assert!(!b.read_only_attached());
+    }
+
     #[test]
     fn snapshot_request_returns_chunks_that_reassemble_exactly() {
         let (mut b, id) = broker("snapshot");
         do_hello(&mut b);
+        let ack = b
+            .on_frame(
+                &hdr(msg::ATTACH_REQUEST, flag::ENC, 2),
+                &attach_payload(codec::AttachMode::ReadOnly),
+            )
+            .unwrap();
+        assert_eq!(ack[0].msg_type, msg::ATTACH_ACK);
         b.registry_mut()
             .feed_pty_out(id, b"hello world", 5)
             .unwrap();
-        let out = b.on_frame(&hdr(msg::GRID_SNAPSHOT, 0, 2), &[]).unwrap();
+        let out = b.on_frame(&hdr(msg::GRID_SNAPSHOT, 0, 3), &[]).unwrap();
         assert!(!out.is_empty());
         let (bytes, digest) = reassemble_snapshot(&out).unwrap();
         assert_eq!(digest, *blake3::hash(&bytes).as_bytes());
