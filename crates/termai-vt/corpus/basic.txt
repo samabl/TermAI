@@ -1,0 +1,10 @@
+# basic printing, carriage return and line erase
+KEY "hello"
+ASSERT ROW 0 = hello
+ASSERT CURSOR 0 5
+KEY "\r"
+ASSERT CURSOR 0 0
+KEY "world"
+ASSERT ROW 0 = world
+KEY "\x1b[2K"
+ASSERT ROW 0 = 

@@ -1,0 +1,44 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/termai-tokens",
+  "crates/termai-core",
+  "crates/termai-ipc",
+  "crates/termai-vt",
+  "crates/termai-pty",
+  "crates/termai-session",
+  "apps/sessiond",
+  "apps/termai",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "Apache-2.0 OR MIT"
+description = "TermAI - terminal-first AI workspace"
+
+# Dependency admission: every entry must be registered in ADR-0019 and must pass the
+# ADR-0015 link-boundary table. No GPL/AGPL/SSPL. portable-pty is refused (AR-28.3).
+[workspace.dependencies]
+termai-tokens = { path = "crates/termai-tokens" }
+termai-core = { path = "crates/termai-core" }
+termai-ipc = { path = "crates/termai-ipc" }
+termai-vt = { path = "crates/termai-vt" }
+termai-pty = { path = "crates/termai-pty" }
+termai-session = { path = "crates/termai-session" }
+# AR-18: vte is the P0-P2 base ESC state machine behind the termai-vt trait boundary.
+vte = "0.15"
+unicode-width = "0.2"
+blake3 = "1"
+sha2 = "0.10"
+libc = "0.2"
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_System_Console",
+  "Win32_System_IO",
+  "Win32_System_Threading",
+  "Win32_System_JobObjects",
+  "Win32_Storage_FileSystem",
+  "Win32_Security",
+] }

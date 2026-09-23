@@ -1,0 +1,25 @@
+[package]
+name = "termai-pty"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "TermAI PTY/platform layer: nine-face PtyBackend, ConPTY + Job Object, forkpty, F0/F1/F2 byte fidelity, conpty-rules gate (kernel/02, AR-25, ADR-0018 D1)."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+termai-core = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+# The workspace enables the core Win32 features; this crate additionally needs the
+# Pipes feature for CreatePipe (input/output pipe pair handed to CreatePseudoConsole).
+windows-sys = { workspace = true, features = ["Win32_System_Pipes"] }
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"

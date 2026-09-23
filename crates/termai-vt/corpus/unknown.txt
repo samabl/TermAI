@@ -1,0 +1,10 @@
+# unknown sequences are fully consumed and never echoed
+KEY "\x1b[99zhello"
+ASSERT ROW 0 = hello
+ASSERT COUNTER csi_unknown = 1
+KEY "\x1b]999;SECRET\x07world"
+ASSERT ROW 0 = helloworld
+ASSERT COUNTER osc_unknown[999] = 1
+KEY "\x1bPzpayload\x1b\\done"
+ASSERT ROW 0 = helloworlddone
+ASSERT COUNTER dcs_unknown = 1

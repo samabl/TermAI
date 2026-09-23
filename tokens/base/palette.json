@@ -1,0 +1,337 @@
+{
+  "$schema": "../tokens.schema.json",
+  "group": "palette",
+  "version": "1.0.0",
+  "tokens": {
+    "canvas": {
+      "type": "color",
+      "value": "#08090C",
+      "description": "画布底色（最底层背景）"
+    },
+    "surface": {
+      "type": "color",
+      "value": "#17191F",
+      "description": "卡片/面板表面"
+    },
+    "raised": {
+      "type": "color",
+      "value": "#1E2129",
+      "description": "浮起表面（分段控件底、悬停块）"
+    },
+    "sunken": {
+      "type": "color",
+      "value": "#121419",
+      "description": "下沉表面（代码块、diff、输入槽）"
+    },
+    "border": {
+      "type": "color",
+      "value": "#2A2F38",
+      "description": "标准边框/分隔线"
+    },
+    "border-soft": {
+      "type": "color",
+      "value": "#20242C",
+      "description": "弱边框（更淡的分隔）"
+    },
+    "text": {
+      "type": "color",
+      "value": "#E7E9EE",
+      "description": "正文前景"
+    },
+    "text-2": {
+      "type": "color",
+      "value": "#A6ADBA",
+      "description": "次要文字"
+    },
+    "text-3": {
+      "type": "color",
+      "value": "#949CAA",
+      "description": "三级文字/占位/图标"
+    },
+    "ghost": {
+      "type": "color",
+      "value": "#868E9C",
+      "description": "幽灵文字：终端内联候选输入（ghost text）；非禁用态，按正文 4.5:1 校验"
+    },
+    "accent": {
+      "type": "color",
+      "value": "#4A9EFF",
+      "description": "主色 azure（仅主操作/选中/焦点/链接）"
+    },
+    "accent-ink": {
+      "type": "color",
+      "value": "#06121F",
+      "description": "主色实心上的前景（primary 按钮文字）"
+    },
+    "accent-dim": {
+      "type": "color",
+      "value": "rgba(74,158,255,.12)",
+      "description": "主色 12% 底色"
+    },
+    "accent-dim2": {
+      "type": "color",
+      "value": "rgba(74,158,255,.20)",
+      "description": "主色 20% 底色"
+    },
+    "accent-line": {
+      "type": "color",
+      "value": "rgba(74,158,255,.35)",
+      "description": "主色 35% 描边"
+    },
+    "hover": {
+      "type": "color",
+      "value": "rgba(255,255,255,.045)",
+      "description": "悬停叠加 4.5%"
+    },
+    "hover-2": {
+      "type": "color",
+      "value": "rgba(255,255,255,.075)",
+      "description": "悬停叠加 7.5%"
+    },
+    "overlay": {
+      "type": "color",
+      "value": "rgba(6,7,10,.62)",
+      "description": "遮罩 scrim"
+    },
+    "wall-a": {
+      "type": "color",
+      "value": "#243244",
+      "description": "壁纸渐变停靠色 a"
+    },
+    "wall-b": {
+      "type": "color",
+      "value": "#5D6470",
+      "description": "壁纸渐变停靠色 b"
+    },
+    "wall-c": {
+      "type": "color",
+      "value": "#C69A63",
+      "description": "壁纸渐变停靠色 c"
+    },
+    "wall-d": {
+      "type": "color",
+      "value": "#E0B478",
+      "description": "壁纸渐变停靠色 d"
+    },
+    "wall-e": {
+      "type": "color",
+      "value": "#8A5A2B",
+      "description": "壁纸渐变停靠色 e"
+    },
+    "mark-a": {
+      "type": "color",
+      "value": "#2A63D8",
+      "description": "文本标注色 a"
+    },
+    "mark-b": {
+      "type": "color",
+      "value": "#1E4FC4",
+      "description": "文本标注色 b"
+    },
+    "mark-c": {
+      "type": "color",
+      "value": "#14347F",
+      "description": "文本标注色 c"
+    },
+    "term-bg": {
+      "type": "color",
+      "value": "#0B0D11",
+      "description": "终端背景"
+    },
+    "term-bg2": {
+      "type": "color",
+      "value": "#0E1116",
+      "description": "终端背景（次层）"
+    },
+    "term-fg": {
+      "type": "color",
+      "value": "#C9D1DC",
+      "description": "终端正文"
+    },
+    "term-dim": {
+      "type": "color",
+      "value": "#9AA4B2",
+      "description": "终端次要输出"
+    },
+    "term-mut": {
+      "type": "color",
+      "value": "#A3ADBB",
+      "description": "终端静默/装饰"
+    },
+    "a-red": {
+      "type": "color",
+      "value": "#FF6B62",
+      "description": "终端 ANSI red"
+    },
+    "a-green": {
+      "type": "color",
+      "value": "#4ED17A",
+      "description": "终端 ANSI green"
+    },
+    "a-yellow": {
+      "type": "color",
+      "value": "#E8B93B",
+      "description": "终端 ANSI yellow"
+    },
+    "a-blue": {
+      "type": "color",
+      "value": "#79B8FF",
+      "description": "终端 ANSI blue"
+    },
+    "a-mag": {
+      "type": "color",
+      "value": "#C79BFF",
+      "description": "终端 ANSI magenta"
+    },
+    "a-cyan": {
+      "type": "color",
+      "value": "#4FD6E0",
+      "description": "终端 ANSI cyan"
+    },
+    "a-white": {
+      "type": "color",
+      "value": "#F0F4FA",
+      "description": "终端 ANSI white"
+    },
+    "sel": {
+      "type": "color",
+      "value": "rgba(74,158,255,.28)",
+      "description": "选区底色"
+    },
+    "sel-ink": {
+      "type": "color",
+      "value": "#F0F4FA",
+      "description": "选区前景"
+    },
+    "c-green": {
+      "type": "color",
+      "value": "#22C55E",
+      "description": "对象身份色 green"
+    },
+    "c-amber": {
+      "type": "color",
+      "value": "#D97706",
+      "description": "对象身份色 amber"
+    },
+    "c-red": {
+      "type": "color",
+      "value": "#EF4444",
+      "description": "对象身份色 red"
+    },
+    "c-orange": {
+      "type": "color",
+      "value": "#F97316",
+      "description": "对象身份色 orange"
+    },
+    "c-blue": {
+      "type": "color",
+      "value": "#3B82F6",
+      "description": "对象身份色 blue"
+    },
+    "c-purple": {
+      "type": "color",
+      "value": "#A855F7",
+      "description": "对象身份色 purple"
+    },
+    "c-teal": {
+      "type": "color",
+      "value": "#14B8A6",
+      "description": "对象身份色 teal"
+    },
+    "c-slate": {
+      "type": "color",
+      "value": "#5B6B7C",
+      "description": "对象身份色 slate"
+    },
+    "c-pink": {
+      "type": "color",
+      "value": "#EC4899",
+      "description": "对象身份色 pink"
+    },
+    "term-line": {
+      "type": "color",
+      "value": "#1A1E26",
+      "description": "终端 chrome 分隔线（顶栏/标签条/命令条；不随主题变化）"
+    },
+    "term-strong": {
+      "type": "color",
+      "value": "#EAF0F8",
+      "description": "终端 chrome 强前景（host chip / 悬停图标 / tab「+」悬停；不随主题变化）"
+    },
+    "term-metric": {
+      "type": "color",
+      "value": "#D3DBE6",
+      "description": "终端指标数值（.chip.metric b；不随主题变化）"
+    },
+    "term-tab-ink": {
+      "type": "color",
+      "value": "#E1E7F0",
+      "description": "终端 tab 悬停文字（不随主题变化）"
+    },
+    "term-tab-on": {
+      "type": "color",
+      "value": "#EDF2F9",
+      "description": "终端 tab 选中文字（不随主题变化）"
+    },
+    "term-tab-line": {
+      "type": "color",
+      "value": "#1E232C",
+      "description": "终端 tab 选中描边（不随主题变化）"
+    },
+    "term-danger": {
+      "type": "color",
+      "value": "#FF8A80",
+      "description": "终端 tab 关闭控件悬停（不随主题变化）"
+    },
+    "term-accent": {
+      "type": "color",
+      "value": "#8CC2FF",
+      "description": "终端 chrome accent（tab「+」展开 / 内联 Agent 图标；不随主题变化）"
+    },
+    "term-accent-fg": {
+      "type": "color",
+      "value": "#6FB2FF",
+      "description": "终端正文 accent（.c-accent；不随主题变化）"
+    },
+    "term-accent-ink": {
+      "type": "color",
+      "value": "#EAF3FF",
+      "description": "终端 accent 实心悬停文字（.ai-inline:hover；不随主题变化）"
+    },
+    "term-fg-bright": {
+      "type": "color",
+      "value": "#E6ECF4",
+      "description": "终端亮前景 / 反显底色（.c-fg、.rev；不随主题变化）"
+    },
+    "term-sel-ink": {
+      "type": "color",
+      "value": "#F0F4FA",
+      "description": "终端选区文字（.term-pane ::selection；终端在两套主题下均为深色，故不随主题变化）"
+    },
+    "ink-on-color": {
+      "type": "color",
+      "value": "#FFFFFF",
+      "description": "彩色/强调实心底上的纯白前景（插件图标块、模型徽标、终端 .sel；两套主题下均为白，故只在基座定义）"
+    },
+    "seg-on": {
+      "type": "color",
+      "value": "#262B34",
+      "description": "分段控件选中底色（仅深色主题使用；浅色由 --surface 承担，故只在基座定义）"
+    },
+    "wc-close": {
+      "type": "color",
+      "value": "#FF5F57",
+      "description": "窗口控制红灯（macOS 交通灯，平台色不随主题变化）"
+    },
+    "wc-min": {
+      "type": "color",
+      "value": "#FEBC2E",
+      "description": "窗口控制黄灯（macOS 交通灯，平台色不随主题变化）"
+    },
+    "wc-max": {
+      "type": "color",
+      "value": "#28C840",
+      "description": "窗口控制绿灯（macOS 交通灯，平台色不随主题变化）"
+    }
+  }
+}

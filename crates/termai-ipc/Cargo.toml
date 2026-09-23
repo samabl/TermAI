@@ -1,0 +1,17 @@
+[package]
+name = "termai-ipc"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "TermAI IPC: 24-byte binary frames, CBOR+POD dual encoding, CRC-32C, capability handshake (DC-22)."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+termai-core = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"

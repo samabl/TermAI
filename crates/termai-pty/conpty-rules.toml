@@ -1,0 +1,87 @@
+# termai-pty / conpty-rules.toml
+#
+# AR-25.3 machine-readable truth for registered ConPTY rewrites. This file is the
+# sole input to the PTY-AC-02 gate. owner = T1 kernel (crates/termai-pty), reviewer
+# T5; every rule carries owner and expires (default 2 minors, AR-31 item 3).
+#
+# severity: "block" | "warn" | "info"
+#   block => gate failure (AR-25.3).
+# scope: "data" | "meta" | "render"
+#   data  => gate failure, no exception (AR-25.3).
+#
+# Grade mapping to kernel/02 section 3.2: accept -> info/warn, degrade -> warn,
+# block -> block. The F0 identity guarantee (K-01) is enforced at the
+# PtyBackend -> VT parser boundary; ConPTY rewrites happen upstream in conhost, so
+# every registered rewrite below is scope = "meta" and none is a gate failure.
+
+[[rule]]
+id = "C-W1"
+phenomenon = "ConPTY output re-encoding: UTF-8/UTF-16 conversion and newline normalisation can rewrite LF as CRLF or reinterpret high bytes as replacement characters."
+detection = "Loopback probe: a child emits bytes 0x00-0xFF plus mixed LF/CRLF; compare the read-back per byte and classify the first differing offset."
+severity = "info"
+scope = "meta"
+owner = "T1-kernel/termai-pty"
+expires = "2 minors"
+
+[[rule]]
+id = "C-W2"
+phenomenon = "ConPTY inserts extra sequences (ED / EL / CUP and friends) on start, redraw or clear, so raw-byte replay is not identical to what the application wrote."
+detection = "Same loopback probe plus a static assertion: ESC [ sequences that appear in a window where the user wrote nothing are matched against the RuleSetId allow list."
+severity = "info"
+scope = "meta"
+owner = "T1-kernel/termai-pty"
+expires = "2 minors"
+
+[[rule]]
+id = "C-W3"
+phenomenon = "ConPTY resize is lossy: it only affects newly produced content; the existing screen is not re-flowed to the new column count, so vim splits and htop can misalign."
+detection = "Fill the screen in vim/htop, resize columns 80 -> 120 -> 80, then compare readback size and per-frame grid hashes."
+severity = "warn"
+scope = "meta"
+owner = "T1-kernel/termai-pty"
+expires = "2 minors"
+
+[[rule]]
+id = "C-W4"
+phenomenon = "Windows has no POSIX signals: SIGINT/SIGTERM/SIGWINCH do not exist and GenerateConsoleCtrlEvent can fail silently for a process group that is not bound to the caller console."
+detection = "Probe child (idle loop), send signal(Int) once, observe whether it exits within 2s and count failures into signal-probe.json."
+severity = "warn"
+scope = "meta"
+owner = "T1-kernel/termai-pty"
+expires = "2 minors"
+
+[[rule]]
+id = "C-W5"
+phenomenon = "UTF-8 and code page: under a non-UTF-8 code page (936/932 and friends) output is mojibake or replacement characters until chcp takes effect."
+detection = "At startup compare GetConsoleOutputCP / GetConsoleCP with 65001; a probe writes 8 CJK and 8 emoji characters and round-trips them."
+severity = "warn"
+scope = "meta"
+owner = "T1-kernel/termai-pty"
+expires = "2 minors"
+
+[[rule]]
+id = "C-W6"
+phenomenon = "Pseudo console lifecycle events: CTRL_CLOSE_EVENT / CTRL_LOGOFF_EVENT / CTRL_SHUTDOWN_EVENT arrive with window lifetime and can be mistaken for a user Ctrl-C."
+detection = "Subscribe to console events and count Close/Logoff/Shutdown separately from CtrlC/CtrlBreak; a child probe prints the dwCtrlType it receives."
+severity = "warn"
+scope = "meta"
+owner = "T1-kernel/termai-pty"
+expires = "2 minors"
+
+[[rule]]
+id = "C-W7"
+phenomenon = "Cursor and query-response rewriting: DA1/DSR/CPR responses can be answered early or late by Conhost, so the application receives an answer inconsistent with terminal state."
+detection = "Active query probe: write ESC[c and ESC[6n, read the response, compare with the local VT expectation for the same sequence, and collect a response-latency histogram."
+severity = "warn"
+scope = "meta"
+owner = "T1-kernel/termai-pty"
+expires = "2 minors"
+
+[[rule]]
+id = "C-W8"
+phenomenon = "Console input translation: bytes written to the PTY input pipe that do not map to console key events are dropped or reinterpreted by conhost, so arbitrary 0x00-0xFF input does not round-trip."
+detection = "Write a fixed 0x00-0xFF payload to the PTY input, read the child output back, and classify the per-byte differential as input-side representation loss (this rule) versus output-side rewrite (C-W1/C-W2)."
+severity = "warn"
+scope = "meta"
+owner = "T1-kernel/termai-pty"
+expires = "2 minors"

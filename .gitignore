@@ -1,0 +1,27 @@
+# ---- 第三方参考素材 ----
+# Netcatty 界面截图仅用于本地视觉比对；其版权属第三方（GPL-3.0 项目）。
+# 依 ADR-0016 OQ-5 决议：排除出版本库与任何发行物，只把风格特征保留在我们自己的文档中。
+prototype/reference/
+
+# ---- 原型渲染产物（可随时用 headless Chrome 重新生成）----
+prototype/*.png
+# 视觉回归门禁的比对产物（每次运行 design:check 都会重写；基线是 prototype/baseline/*.png，
+# 不带 .current 后缀，那些必须入库）。
+prototype/baseline/*.current.png
+prototype/**/*.current.png
+
+# ---- 构建与本地环境 ----
+# 注意：通用 dist/ 规则会覆盖到 packages/tokens/dist/；该目录是 DC-09 的
+# 生成产物且需要入库，故由 packages/tokens/.gitignore 以否定规则显式放行。
+target/
+node_modules/
+dist/
+*.log
+.DS_Store
+Thumbs.db
+
+# ---- 本地排障的临时输出 ----
+# 例如把 cargo/clippy 输出重定向到文件；这类捕获文件不得入库。
+*.out.txt
+zz_probe*
+

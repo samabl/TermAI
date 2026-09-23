@@ -1,0 +1,405 @@
+{
+  "$schema": "./contrast-pairs.schema.json",
+  "version": "1.0.0",
+  "standard": "WCAG 2.x（相对亮度公式）",
+  "thresholds": {
+    "text": 4.5,
+    "ui": 3
+  },
+  "description": "需要在 dark/light 两套主题下校验对比度的前景/背景配对（AR-22 第 1 条 / DC-13 / A9 / A24）。kind=text 为正文/小字（≥4.5:1），kind=ui 为图标/大字号/UI 组件（≥3.0:1）。bg 为 rgba 时必须给 bgBase 以合成不透明底色。终端 chrome 与终端画布在深/浅两主题下均为深色（--term-* 不随主题变化）。",
+  "pairs": [
+    {
+      "id": "text-on-canvas",
+      "category": "正文",
+      "fg": "text",
+      "bg": "canvas",
+      "kind": "text"
+    },
+    {
+      "id": "text-on-surface",
+      "category": "正文",
+      "fg": "text",
+      "bg": "surface",
+      "kind": "text"
+    },
+    {
+      "id": "text-on-raised",
+      "category": "正文",
+      "fg": "text",
+      "bg": "raised",
+      "kind": "text"
+    },
+    {
+      "id": "text-on-sunken",
+      "category": "正文",
+      "fg": "text",
+      "bg": "sunken",
+      "kind": "text"
+    },
+    {
+      "id": "link-accent-on-canvas",
+      "category": "正文",
+      "fg": "accent",
+      "bg": "canvas",
+      "kind": "text",
+      "note": "链接/主操作文字"
+    },
+    {
+      "id": "text2-on-canvas",
+      "category": "次要文字",
+      "fg": "text-2",
+      "bg": "canvas",
+      "kind": "text"
+    },
+    {
+      "id": "text2-on-surface",
+      "category": "次要文字",
+      "fg": "text-2",
+      "bg": "surface",
+      "kind": "text"
+    },
+    {
+      "id": "text2-on-raised",
+      "category": "次要文字",
+      "fg": "text-2",
+      "bg": "raised",
+      "kind": "text"
+    },
+    {
+      "id": "text3-on-surface",
+      "category": "次要文字",
+      "fg": "text-3",
+      "bg": "surface",
+      "kind": "text"
+    },
+    {
+      "id": "text3-on-sunken",
+      "category": "次要文字",
+      "fg": "text-3",
+      "bg": "sunken",
+      "kind": "text"
+    },
+    {
+      "id": "ghost-on-term-bg",
+      "category": "候选输入",
+      "fg": "ghost",
+      "bg": "term-bg",
+      "kind": "text",
+      "note": "ghost text 是用户要读并接受（Tab）的候选输入，不是禁用态控件，故按正文 4.5:1；其真实落点是终端底色（两主题均为深色），不是 UI surface。"
+    },
+    {
+      "id": "chip-label-on-term-bg2",
+      "category": "chip",
+      "fg": "term-mut",
+      "bg": "term-bg2",
+      "kind": "text",
+      "note": ".chip / .term-top（终端 chrome 两主题均为深色）"
+    },
+    {
+      "id": "chip-metric-value-on-term-bg2",
+      "category": "chip",
+      "fg": "term-dim",
+      "bg": "term-bg2",
+      "kind": "text",
+      "note": ".chip.metric 数值"
+    },
+    {
+      "id": "chip-pill-on-raised",
+      "category": "chip",
+      "fg": "text-2",
+      "bg": "raised",
+      "kind": "text",
+      "note": ".pill"
+    },
+    {
+      "id": "btn-primary-ink",
+      "category": "按钮",
+      "fg": "accent-ink",
+      "bg": "accent",
+      "kind": "text"
+    },
+    {
+      "id": "btn-danger-ink",
+      "category": "按钮",
+      "fg": "risk-l3-ink",
+      "bg": "risk-l3",
+      "kind": "text"
+    },
+    {
+      "id": "btn-icon-on-surface",
+      "category": "按钮",
+      "fg": "text-3",
+      "bg": "surface",
+      "kind": "ui"
+    },
+    {
+      "id": "risk-l0-on-raised",
+      "category": "风险色阶",
+      "fg": "risk-l0",
+      "bg": "raised",
+      "kind": "text"
+    },
+    {
+      "id": "risk-l1-on-raised",
+      "category": "风险色阶",
+      "fg": "risk-l1",
+      "bg": "raised",
+      "kind": "text"
+    },
+    {
+      "id": "risk-l2-on-raised",
+      "category": "风险色阶",
+      "fg": "risk-l2",
+      "bg": "raised",
+      "kind": "text"
+    },
+    {
+      "id": "risk-l3-on-raised",
+      "category": "风险色阶",
+      "fg": "risk-l3",
+      "bg": "raised",
+      "kind": "text"
+    },
+    {
+      "id": "risk-u-on-raised",
+      "category": "风险色阶",
+      "fg": "risk-u",
+      "bg": "raised",
+      "kind": "text"
+    },
+    {
+      "id": "risk-l3-badge-ink",
+      "category": "风险色阶",
+      "fg": "risk-l3-ink",
+      "bg": "risk-l3",
+      "kind": "text"
+    },
+    {
+      "id": "risk-l1-tick-on-sunken",
+      "category": "风险色阶",
+      "fg": "risk-l1",
+      "bg": "sunken",
+      "kind": "text"
+    },
+    {
+      "id": "diff-add-on-sunken",
+      "category": "diff",
+      "fg": "risk-l1",
+      "bg": "sunken",
+      "kind": "text"
+    },
+    {
+      "id": "diff-del-on-sunken",
+      "category": "diff",
+      "fg": "risk-l3",
+      "bg": "sunken",
+      "kind": "text"
+    },
+    {
+      "id": "diff-ctx-on-sunken",
+      "category": "diff",
+      "fg": "text-3",
+      "bg": "sunken",
+      "kind": "text"
+    },
+    {
+      "id": "term-fg-on-term-bg",
+      "category": "终端 ANSI",
+      "fg": "term-fg",
+      "bg": "term-bg",
+      "kind": "text"
+    },
+    {
+      "id": "term-dim-on-term-bg",
+      "category": "终端 ANSI",
+      "fg": "term-dim",
+      "bg": "term-bg",
+      "kind": "text"
+    },
+    {
+      "id": "term-mut-on-term-bg",
+      "category": "终端 ANSI",
+      "fg": "term-mut",
+      "bg": "term-bg",
+      "kind": "text"
+    },
+    {
+      "id": "term-fg-on-term-bg2",
+      "category": "终端 ANSI",
+      "fg": "term-fg",
+      "bg": "term-bg2",
+      "kind": "text"
+    },
+    {
+      "id": "ansi-red-on-term-bg",
+      "category": "终端 ANSI",
+      "fg": "a-red",
+      "bg": "term-bg",
+      "kind": "text"
+    },
+    {
+      "id": "ansi-green-on-term-bg",
+      "category": "终端 ANSI",
+      "fg": "a-green",
+      "bg": "term-bg",
+      "kind": "text"
+    },
+    {
+      "id": "ansi-yellow-on-term-bg",
+      "category": "终端 ANSI",
+      "fg": "a-yellow",
+      "bg": "term-bg",
+      "kind": "text"
+    },
+    {
+      "id": "ansi-blue-on-term-bg",
+      "category": "终端 ANSI",
+      "fg": "a-blue",
+      "bg": "term-bg",
+      "kind": "text"
+    },
+    {
+      "id": "ansi-mag-on-term-bg",
+      "category": "终端 ANSI",
+      "fg": "a-mag",
+      "bg": "term-bg",
+      "kind": "text"
+    },
+    {
+      "id": "ansi-cyan-on-term-bg",
+      "category": "终端 ANSI",
+      "fg": "a-cyan",
+      "bg": "term-bg",
+      "kind": "text"
+    },
+    {
+      "id": "ansi-white-on-term-bg",
+      "category": "终端 ANSI",
+      "fg": "a-white",
+      "bg": "term-bg",
+      "kind": "text"
+    },
+    {
+      "id": "ansi-red-on-term-bg2",
+      "category": "终端 ANSI",
+      "fg": "a-red",
+      "bg": "term-bg2",
+      "kind": "text"
+    },
+    {
+      "id": "code-fg-on-code-bg",
+      "category": "AI 代码片",
+      "fg": "code-fg",
+      "bg": "code-bg",
+      "bgBase": "surface",
+      "kind": "text",
+      "note": "code-bg 为 rgba，合成到 surface"
+    },
+    {
+      "id": "sel-ink-on-sel-surface",
+      "category": "选区",
+      "fg": "sel-ink",
+      "bg": "sel",
+      "bgBase": "surface",
+      "kind": "text",
+      "note": "全局 ::selection（sel 为 rgba，合成到 surface）"
+    },
+    {
+      "id": "sel-ink-on-sel-canvas",
+      "category": "选区",
+      "fg": "sel-ink",
+      "bg": "sel",
+      "bgBase": "canvas",
+      "kind": "text"
+    },
+    {
+      "id": "term-strong-on-term-bg2",
+      "category": "终端 chrome",
+      "fg": "term-strong",
+      "bg": "term-bg2",
+      "kind": "text",
+      "note": ".chip.host / 悬停图标（终端 chrome 两主题均为深色）"
+    },
+    {
+      "id": "term-metric-on-term-bg2",
+      "category": "终端 chrome",
+      "fg": "term-metric",
+      "bg": "term-bg2",
+      "kind": "text",
+      "note": ".chip.metric 数值"
+    },
+    {
+      "id": "term-tab-ink-on-term-bg2",
+      "category": "终端 chrome",
+      "fg": "term-tab-ink",
+      "bg": "term-bg2",
+      "kind": "text",
+      "note": ".ttab:hover 文字"
+    },
+    {
+      "id": "term-tab-on-on-term-bg",
+      "category": "终端 chrome",
+      "fg": "term-tab-on",
+      "bg": "term-bg",
+      "kind": "text",
+      "note": ".ttab[aria-selected=true] 文字"
+    },
+    {
+      "id": "term-accent-on-term-bg2",
+      "category": "终端 chrome",
+      "fg": "term-accent",
+      "bg": "term-bg2",
+      "kind": "text",
+      "note": ".ttab-add[aria-expanded=true] / .ai-inline 图标"
+    },
+    {
+      "id": "term-accent-fg-on-term-bg",
+      "category": "终端正文",
+      "fg": "term-accent-fg",
+      "bg": "term-bg",
+      "kind": "text",
+      "note": ".c-accent 终端 accent 正文"
+    },
+    {
+      "id": "term-accent-ink-on-term-bg2",
+      "category": "终端 chrome",
+      "fg": "term-accent-ink",
+      "bg": "term-bg2",
+      "kind": "text",
+      "note": ".ai-inline:hover 文字"
+    },
+    {
+      "id": "term-danger-on-term-bg2",
+      "category": "终端 chrome",
+      "fg": "term-danger",
+      "bg": "term-bg2",
+      "kind": "text",
+      "note": ".t-x:hover（关闭控件）"
+    },
+    {
+      "id": "term-fg-bright-on-term-bg",
+      "category": "终端正文",
+      "fg": "term-fg-bright",
+      "bg": "term-bg",
+      "kind": "text",
+      "note": ".c-fg 终端亮前景"
+    },
+    {
+      "id": "term-bg-on-term-fg-bright",
+      "category": "终端正文",
+      "fg": "term-bg",
+      "bg": "term-fg-bright",
+      "kind": "text",
+      "note": ".rev 反显文字（fg 为 --term-bg）"
+    },
+    {
+      "id": "term-sel-ink-on-sel-term-bg",
+      "category": "选区",
+      "fg": "term-sel-ink",
+      "bg": "sel",
+      "bgBase": "term-bg",
+      "kind": "text",
+      "note": "终端 ::selection（sel 为 rgba，合成到终端底色 term-bg）"
+    }
+  ]
+}

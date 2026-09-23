@@ -1,0 +1,27 @@
+{
+  "$schema": "../tokens.schema.json",
+  "group": "radius",
+  "version": "1.0.0",
+  "tokens": {
+    "r-input": {
+      "type": "dimension",
+      "value": "8px",
+      "description": "输入框/内联热键圆角 8"
+    },
+    "r-card": {
+      "type": "dimension",
+      "value": "10px",
+      "description": "卡片/按钮/图标按钮圆角 10"
+    },
+    "r-pop": {
+      "type": "dimension",
+      "value": "14px",
+      "description": "弹层圆角 14"
+    },
+    "r-pill": {
+      "type": "dimension",
+      "value": "999px",
+      "description": "chip/药丸/头像圆角 999"
+    }
+  }
+}

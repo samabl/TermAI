@@ -1,0 +1,27 @@
+# Line-ending and diff policy.
+#
+# Why this is not cosmetic: two merge-blocking gates compare file BYTES, not content.
+#   - tokens:check regenerates packages/tokens/dist/* and crates/termai-tokens/src/lib.rs
+#     and fails on drift (DC-09 idempotency), and ci.yml runs git diff --exit-code on them.
+#   - the design gates hash the inline token block of prototype/termai-ui-terminal-first.html.
+# A CRLF-converting checkout (core.autocrlf=true on Windows) would make those gates fail on
+# files nobody edited. Normalise everything to LF in the repository.
+* text=auto eol=lf
+
+# Binary assets must never be line-ending translated or diffed as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.exe binary
+*.dll binary
+*.tmalog binary
+
+# Generated-but-committed artifacts: keep diffs reviewable.
+packages/tokens/dist/** -diff
+crates/termai-tokens/src/lib.rs -diff

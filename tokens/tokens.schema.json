@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://termai.dev/schemas/tokens.schema.json",
+  "title": "TermAI design token source (base group / theme override)",
+  "description": "DC-09：tokens/*.json 是视觉唯一真相源。base/*.json 每组一个文件；themes/*.json 是覆盖文件（只写与基座不同的键），基座 (:root) = 深色（AR-22 / AR-23）。",
+  "$defs": {
+    "kebabKey": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+    },
+    "tokenType": {
+      "enum": [
+        "color",
+        "dimension",
+        "fontSize",
+        "fontFamily",
+        "fontWeight",
+        "lineHeight",
+        "duration",
+        "timingFunction",
+        "shadow",
+        "number",
+        "string",
+        "gradient"
+      ]
+    },
+    "token": {
+      "type": "object",
+      "required": [
+        "type",
+        "value"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/tokenType"
+        },
+        "value": {
+          "type": [
+            "string",
+            "number"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ladder": {
+          "enum": [
+            "ui",
+            "terminal"
+          ],
+          "description": "fontSize 专用：该字号所属阶梯（ui = UI 阶梯 / terminal = 终端阶梯）。由 tools/tokens/check.mjs 校验取值落在该阶梯内；非 fontSize token 不得声明。"
+        }
+      }
+    },
+    "baseFile": {
+      "title": "Base token group file",
+      "type": "object",
+      "required": [
+        "$schema",
+        "group",
+        "version",
+        "tokens"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "group": {
+          "enum": [
+            "palette",
+            "type",
+            "space",
+            "radius",
+            "elevation",
+            "motion",
+            "ai-semantic"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "tokens": {
+          "type": "object",
+          "minProperties": 1,
+          "patternProperties": {
+            "^[a-z][a-z0-9]*(-[a-z0-9]+)*$": {
+              "$ref": "#/$defs/token"
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "themeFile": {
+      "title": "Theme override file",
+      "type": "object",
+      "required": [
+        "$schema",
+        "id",
+        "label",
+        "colorScheme",
+        "overrides"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "$ref": "#/$defs/kebabKey"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "default": {
+          "type": "boolean"
+        },
+        "colorScheme": {
+          "enum": [
+            "dark",
+            "light"
+          ]
+        },
+        "overrides": {
+          "type": "object",
+          "patternProperties": {
+            "^[a-z][a-z0-9]*(-[a-z0-9]+)*$": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/baseFile"
+    },
+    {
+      "$ref": "#/$defs/themeFile"
+    }
+  ]
+}

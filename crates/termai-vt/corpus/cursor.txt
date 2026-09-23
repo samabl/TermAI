@@ -1,0 +1,11 @@
+# cursor movement
+KEY "abc"
+ASSERT CURSOR 0 3
+KEY "\x1b[2;3H"
+ASSERT CURSOR 1 2
+KEY "\x1b[A"
+ASSERT CURSOR 0 2
+KEY "\x1b[E"
+ASSERT CURSOR 1 0
+KEY "\x1b[F"
+ASSERT CURSOR 0 0

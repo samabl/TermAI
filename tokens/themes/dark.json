@@ -1,0 +1,8 @@
+{
+  "$schema": "../tokens.schema.json",
+  "id": "dark",
+  "label": "Dark（基座/默认，azure #4A9EFF）",
+  "default": true,
+  "colorScheme": "dark",
+  "overrides": {}
+}

@@ -1,0 +1,15 @@
+# OSC 133 command boundaries
+KEY "\x1b]133;A\x07"
+KEY "user@host$ "
+KEY "\x1b]133;B\x07"
+KEY "echo hi"
+KEY "\x1b]133;C\x07"
+KEY "\r\nhi\r\n"
+KEY "\x1b]133;D;0\x07"
+ASSERT ROW 1 = hi
+KEY "\x1b]133;A\x07"
+KEY "\x1b]133;B\x07"
+KEY "\x1b]133;C\x07"
+KEY "\r\nfail\r\n"
+KEY "\x1b]133;D;2\x07"
+ASSERT ROW 3 = fail

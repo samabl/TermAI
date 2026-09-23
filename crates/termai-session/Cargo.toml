@@ -1,0 +1,20 @@
+[package]
+name = "termai-session"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "TermAI session truth: state machine, append-only Session Log, checkpoint/recovery, stdin lease, event bus (kernel/04)."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+termai-core = { workspace = true }
+termai-ipc = { workspace = true }
+blake3 = { workspace = true }
+sha2 = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"

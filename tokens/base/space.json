@@ -1,0 +1,77 @@
+{
+  "$schema": "../tokens.schema.json",
+  "group": "space",
+  "version": "1.0.0",
+  "tokens": {
+    "sp-1": {
+      "type": "dimension",
+      "value": "4px",
+      "description": "间距标尺 4"
+    },
+    "sp-2": {
+      "type": "dimension",
+      "value": "8px",
+      "description": "间距标尺 8"
+    },
+    "sp-3": {
+      "type": "dimension",
+      "value": "12px",
+      "description": "间距标尺 12"
+    },
+    "sp-4": {
+      "type": "dimension",
+      "value": "16px",
+      "description": "间距标尺 16"
+    },
+    "sp-5": {
+      "type": "dimension",
+      "value": "24px",
+      "description": "间距标尺 24"
+    },
+    "sp-6": {
+      "type": "dimension",
+      "value": "32px",
+      "description": "间距标尺 32"
+    },
+    "sp-7": {
+      "type": "dimension",
+      "value": "48px",
+      "description": "间距标尺 48"
+    },
+    "card-head-h": {
+      "type": "dimension",
+      "value": "44px",
+      "description": "卡片头高度"
+    },
+    "statusbar-h": {
+      "type": "dimension",
+      "value": "32px",
+      "description": "状态栏高度（≥28）"
+    },
+    "titlebar-h": {
+      "type": "dimension",
+      "value": "48px",
+      "description": "标题栏高度"
+    },
+    "toolbar-h": {
+      "type": "dimension",
+      "value": "56px",
+      "description": "工具条高度"
+    },
+    "capsule-h": {
+      "type": "dimension",
+      "value": "48px",
+      "description": "最小化胶囊高度"
+    },
+    "win-mx": {
+      "type": "dimension",
+      "value": "clamp(16px,2.4vw,56px)",
+      "description": "窗口水平外距"
+    },
+    "win-my": {
+      "type": "dimension",
+      "value": "clamp(12px,1.7vh,24px)",
+      "description": "窗口垂直外距"
+    }
+  }
+}

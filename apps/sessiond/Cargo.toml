@@ -1,0 +1,23 @@
+[package]
+name = "sessiond"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "sessiond"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sessiond"
+path = "src/main.rs"
+
+[dependencies]
+termai-core = { workspace = true }
+termai-ipc = { workspace = true }
+termai-vt = { workspace = true }
+termai-pty = { workspace = true }
+termai-session = { workspace = true }
+blake3 = { workspace = true }

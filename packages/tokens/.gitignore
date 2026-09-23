@@ -1,0 +1,5 @@
+# 生成产物必须入库（DC-09 / AR-22）：仓库根 .gitignore 有通用 `dist/` 规则，
+# 这里用同目录（更深的）.gitignore 复写它，仅作用于 packages/tokens/dist/。
+# 约束要求不得修改仓库根 .gitignore，故采用该标准 git 机制。
+!dist/
+!dist/**

@@ -1,0 +1,10 @@
+# OSC 633 captures the command locally and reports cwd; neither is echoed
+KEY "\x1b]633;A\x07"
+KEY "PS> "
+KEY "\x1b]633;B\x07"
+KEY "\x1b]633;E;dir\x07"
+KEY "\x1b]633;C\x07"
+KEY "\r\nout\r\n"
+KEY "\x1b]633;D;1\x07"
+KEY "\x1b]633;P;Cwd=/home/me\x07"
+ASSERT ROW 1 = out

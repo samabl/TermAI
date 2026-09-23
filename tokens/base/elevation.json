@@ -1,0 +1,27 @@
+{
+  "$schema": "../tokens.schema.json",
+  "group": "elevation",
+  "version": "1.0.0",
+  "tokens": {
+    "elev-0": {
+      "type": "shadow",
+      "value": "none",
+      "description": "无阴影（仅边框）"
+    },
+    "elev-1": {
+      "type": "shadow",
+      "value": "0 1px 2px rgba(0,0,0,.34)",
+      "description": "卡片投影"
+    },
+    "elev-2": {
+      "type": "shadow",
+      "value": "0 24px 64px rgba(0,0,0,.6)",
+      "description": "弹层投影"
+    },
+    "shadow-win": {
+      "type": "shadow",
+      "value": "0 32px 90px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.04)",
+      "description": "浮动窗口投影（含内亮边）"
+    }
+  }
+}

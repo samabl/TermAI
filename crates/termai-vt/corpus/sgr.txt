@@ -1,0 +1,7 @@
+# SGR changes attributes, never the text content
+KEY "\x1b[31mred\x1b[0m normal"
+ASSERT ROW 0 = red normal
+ASSERT CURSOR 0 10
+KEY "\x1b[1;4;38;5;196mbold\x1b[22;24;39m"
+ASSERT ROW 0 = red normalbold
+ASSERT CURSOR 0 14

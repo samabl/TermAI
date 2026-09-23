@@ -1,0 +1,1905 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>TermAI — UI 原型 v3 · Netcatty 视觉方向（浅色 / 深色）</title>
+<style>
+
+/* ============================================================
+   TermAI · Netcatty-style 视觉方向原型 v3（单文件、零外部资源、file:// 可开）
+   方向性变更：视觉语言由「加密终端 / 霓虹冷青」改为
+   「macOS 浮动窗口 + azure 蓝 accent + 卡片网格 + 宽松留白」。
+   语义层（AR-06 / AR-13 / AR-16 / DC-03 / DC-08）保持不变，仅换皮。
+   ------------------------------------------------------------
+   ★ TOKEN 与规则对照表（全站只允许使用下表中的值）
+   ------------------------------------------------------------
+   [1] 间距标尺 --sp-1..--sp-7 = 4 / 8 / 12 / 16 / 24 / 32 / 48（px）
+       普通间隙只用这 7 档。仅三处按定义豁免、且不参与其它测量：
+       (a) 1px 边框 / 1px 圆点 / 2px 引导线与色带；
+       (b) 终端单元格度量（caret 7px、.diff 行号 2.4em、16px 方形图标）；
+       (c) 装饰性红绿灯 .light 12px。
+   [2] 圆角标尺 --r-card:10（卡片/按钮/图标按钮/.seg 外框/.ttab/菜单项）
+       --r-pop:14（弹层：命令面板 / popover / composer 浮窗 / 终端面板 /
+                   可折叠分析块 —— AI 分析表面与弹层同档）
+       --r-pill:999（chip / 药丸 / 头像 / 进度条 / 圆形发送）
+       --r-input:8（文本输入框与菜单内联热键）
+       除以上四项外，全站不得出现任何其它 border-radius 数值。
+   [3] 图标系统 内联 SVG、统一 stroke-width:1.5、仅 16 / 20 / 24 三档
+       （.ni-ico 与 .tile-ico 为 20；顶栏/卡片头/状态条/行内为 16；
+         终端与 AI 面板主图标为 24 绘制尺寸 16）。
+       emoji 只允许出现在 AI 回答正文（.rt 内），chrome 一律使用 SVG。
+   [4] 按钮层级 primary(实心 accent) / secondary(描边幽灵) / tertiary(纯图标)
+       / danger(实心红)。同一场景不混用层级：
+       工具栏 = secondary + tertiary + 1 个 primary；
+       卡片操作区 = secondary；终端状态条 = tertiary。
+   [5] 卡片规范 --card-head-h:44px 卡头高度；padding 16 / 20；
+       --elev-0 none（仅边框）/ --elev-1 卡片 / --elev-2 弹层。
+   [6] 颜色纪律 accent 仅用于主操作 / 选中 / 焦点 / 链接；
+       danger 仅用于 L3 与销毁类；彩色仅用于对象身份色块（工作区图标块）；
+       其余一律中性灰阶。
+   [7] 字号 正文 13 · 次要 12 · 区块标题 15 · 终端单调 12.5；
+       UI 行高 1.5~1.6，终端网格行高 1.25。
+   [8] 结构高度 titlebar 48 / statusbar 32 / term-top 32 / term-tabs 40；
+       工作区视图内滚动，无页面级纵向滚动；全站无横向滚动条。
+   ============================================================ */
+:root{
+  color-scheme:dark;
+  --font-ui:-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI",Inter,system-ui,"PingFang SC","Microsoft YaHei UI","Noto Sans SC",sans-serif;
+  --font-mono:ui-monospace,"Cascadia Mono","SF Mono",Menlo,Consolas,"JetBrains Mono",monospace;
+  --fs-12:12px; --fs-13:13px; --fs-15:15px;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px; --sp-7:48px;
+  --r-input:8px; --r-card:10px; --r-pop:14px; --r-pill:999px;
+  --card-head-h:44px; --statusbar-h:32px; --titlebar-h:48px;
+  --elev-0:none;
+  --elev-1:0 1px 2px rgba(0,0,0,.34);
+  --elev-2:0 24px 64px rgba(0,0,0,.6);
+  --m-fast:120ms; --m-base:180ms; --m-slow:240ms;
+  --ease:cubic-bezier(.2,0,0,1);
+  --ease-out:cubic-bezier(.25,1,.5,1);
+  --c-green:#22C55E; --c-amber:#D97706; --c-red:#EF4444;
+  --c-orange:#F97316; --c-blue:#3B82F6; --c-purple:#A855F7; --c-teal:#14B8A6;
+  --c-slate:#5B6B7C; --c-pink:#EC4899;
+  --risk-l1:#22C55E;
+  --mark-a:#2A63D8; --mark-b:#1E4FC4; --mark-c:#14347F;
+}
+html[data-theme="dark"]{
+  color-scheme:dark;
+  --canvas:#08090C; --surface:#17191F; --raised:#1E2129; --sunken:#121419;
+  --border:#2A2F38; --border-soft:#20242C;
+  --text:#E7E9EE; --text-2:#A6ADBA; --text-3:#949CAA;
+  --accent:#4A9EFF; --accent-ink:#06121F;
+  --accent-dim:rgba(74,158,255,.12); --accent-dim2:rgba(74,158,255,.20); --accent-line:rgba(74,158,255,.35);
+  --hover:rgba(255,255,255,.045); --hover-2:rgba(255,255,255,.075); --ghost:#868E9C;
+  --shadow-win:0 32px 90px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.04);
+  --overlay:rgba(6,7,10,.62);
+  --wall-a:#243244; --wall-b:#5D6470; --wall-c:#C69A63; --wall-d:#E0B478; --wall-e:#8A5A2B;
+  --risk-l0:#7FB8FF; --risk-l2:#F0A23C; --risk-l3:#FF8578; --risk-u:#C9A0FF;
+  --risk-l3-ink:#1A0B0A;
+  --term-bg:#0B0D11; --term-bg2:#0E1116;
+  --term-fg:#C9D1DC; --term-dim:#9AA4B2; --term-mut:#A3ADBB;
+  --a-red:#FF6B62; --a-green:#4ED17A; --a-yellow:#E8B93B; --a-blue:#79B8FF;
+  --a-mag:#C79BFF; --a-cyan:#4FD6E0; --a-white:#F0F4FA;
+  --sel:rgba(74,158,255,.28); --sel-ink:#F0F4FA;
+  --code-bg:rgba(74,158,255,.14); --code-bd:rgba(74,158,255,.22); --code-fg:#9CC7FF;
+}
+html[data-theme="light"]{
+  color-scheme:light;
+  --canvas:#F6F5F2; --surface:#FFFFFF; --raised:#F1F0EC; --sunken:#F7F7F5;
+  --border:#E6E4DF; --border-soft:#EFEDE8;
+  --text:#1B1D21; --text-2:#59616D; --text-3:#5E6571;
+  --accent:#245BC9; --accent-ink:#FFFFFF;
+  --accent-dim:rgba(47,111,237,.10); --accent-dim2:rgba(47,111,237,.17); --accent-line:rgba(47,111,237,.32);
+  --hover:rgba(20,22,26,.045); --hover-2:rgba(20,22,26,.075); --ghost:#7C8493;
+  --shadow-win:0 30px 80px rgba(38,32,24,.26), inset 0 1px 0 rgba(255,255,255,.7);
+  --overlay:rgba(48,44,38,.35);
+  --wall-a:#7F8A94; --wall-b:#BFC2BE; --wall-c:#E9C79B; --wall-d:#F0CFA2; --wall-e:#B98A55;
+  --risk-l0:#123E9E; --risk-l2:#7A3A06; --risk-l3:#A32018; --risk-l1:#116635; --risk-u:#7013A8;
+  --risk-l3-ink:#FFFFFF;
+  --term-bg:#0B0D11; --term-bg2:#0E1116;
+  --term-fg:#C9D1DC; --term-dim:#9AA4B2; --term-mut:#A3ADBB;
+  --a-red:#FF6B62; --a-green:#4ED17A; --a-yellow:#E8B93B; --a-blue:#79B8FF;
+  --a-mag:#C79BFF; --a-cyan:#4FD6E0; --a-white:#F0F4FA;
+  --sel:rgba(47,111,237,.28); --sel-ink:#141A22;
+  --code-bg:rgba(47,111,237,.09); --code-bd:rgba(47,111,237,.18); --code-fg:#1D4FD8;
+  --c-orange:#C2410C; --c-blue:#2563EB; --c-purple:#7C3AED;
+  --c-teal:#0F766E; --c-green:#15803D; --c-red:#DC2626;
+  --c-slate:#475569; --c-pink:#DB2777; --c-amber:#B45309;
+  --elev-1:0 1px 2px rgba(30,28,24,.06), 0 1px 1px rgba(30,28,24,.04);
+  --elev-2:0 24px 60px rgba(30,28,24,.25);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; overflow:hidden; font-family:var(--font-ui); font-size:var(--fs-13);
+  line-height:1.55; color:var(--text);
+  background:var(--canvas); -webkit-font-smoothing:antialiased; text-rendering:geometricPrecision;
+}
+.wall{
+  position:fixed; inset:0; z-index:0;
+  background:
+    radial-gradient(120% 70% at 76% 104%, var(--wall-d) 0%, transparent 58%),
+    radial-gradient(80% 46% at 22% 100%, var(--wall-e) 0%, transparent 52%),
+    linear-gradient(180deg, var(--wall-a) 0%, var(--wall-b) 34%, var(--wall-c) 74%, var(--wall-d) 100%);
+  transition:background var(--m-slow) var(--ease);
+}
+.grain{position:fixed; inset:0; z-index:1; pointer-events:none; opacity:.55;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.05'/%3E%3C/svg%3E")}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:var(--r-card)}
+::selection{background:var(--sel); color:var(--sel-ink)}
+.term-pane ::selection,.term-pane::selection{background:var(--sel); color:#F0F4FA}
+button{font:inherit; color:inherit; background:none; border:0; cursor:pointer; padding:0}
+input,textarea{font:inherit; color:inherit}
+svg{display:block; flex:0 0 auto}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+.app{
+  z-index:2;
+  --win-mx:clamp(16px,2.4vw,56px); --win-my:clamp(12px,1.7vh,24px);
+  width:min(1780px, calc(100% - 2 * var(--win-mx)));
+  position:absolute; left:0; right:0; top:var(--win-my); bottom:var(--win-my); margin:0 auto;
+  display:grid; grid-template-columns:264px minmax(0,1fr);
+  grid-template-rows:var(--titlebar-h) minmax(0,1fr) var(--statusbar-h);
+  grid-template-areas:"title title" "side main" "status status";
+  background:var(--canvas); border:1px solid var(--border); border-radius:var(--r-pop);
+  box-shadow:var(--shadow-win); overflow:hidden;
+  transition:background var(--m-slow) var(--ease), border-color var(--m-slow) var(--ease);
+}
+.titlebar{grid-area:title; display:flex; align-items:center; gap:var(--sp-3); padding:0 var(--sp-4);
+  border-bottom:1px solid var(--border-soft); min-width:0}
+.lights{display:flex; gap:var(--sp-2); align-items:center}
+.light{width:12px;height:12px;border-radius:50%;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.22)}
+.light.r{background:#FF5F57} .light.y{background:#FEBC2E} .light.g{background:#28C840}
+.title-mid{display:flex; align-items:center; gap:var(--sp-2); min-width:0; flex:1; justify-content:center}
+.win-title{font-size:var(--fs-12); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.title-right{display:flex; align-items:center; gap:var(--sp-1)}
+
+.side{grid-area:side; display:flex; flex-direction:column; min-height:0; padding:var(--sp-3);
+  border-right:1px solid var(--border-soft); background:var(--canvas)}
+.brand{display:flex; align-items:center; gap:var(--sp-2); padding:var(--sp-1) var(--sp-2) var(--sp-4)}
+.brand-mark{width:32px;height:32px;border-radius:var(--r-card); display:grid; place-items:center; color:#fff;
+  background:linear-gradient(150deg,var(--mark-a) 0%,var(--mark-b) 55%,var(--mark-c) 100%);
+  box-shadow:var(--elev-1), inset 0 1px 0 rgba(255,255,255,.28);
+  font-family:var(--font-mono); font-weight:700; font-size:var(--fs-15)}
+.brand-name{font-size:15px; font-weight:700; font-style:italic; letter-spacing:-.01em}
+.nav{display:flex; flex-direction:column; gap:var(--sp-1); min-height:0}
+.nav-item{display:flex; align-items:center; gap:var(--sp-2); width:100%; text-align:left;
+  height:36px; padding:0 var(--sp-3);
+  border-radius:var(--r-card); color:var(--text-2); font-size:var(--fs-13); font-weight:500; line-height:1.5;
+  transition:background var(--m-fast) var(--ease), color var(--m-fast) var(--ease)}
+.nav-item .ni-ico{color:var(--text-3); transition:color var(--m-fast) var(--ease); display:grid; place-items:center}
+.nav-item:hover{background:var(--hover); color:var(--text)}
+.nav-item:hover .ni-ico{color:var(--text-2)}
+.nav-item[aria-current="page"]{background:var(--accent-dim); color:var(--accent); font-weight:600}
+.nav-item[aria-current="page"] .ni-ico{color:var(--accent)}
+.nav-item .ni-count{margin-left:auto; font-family:var(--font-mono); font-size:var(--fs-12); color:var(--text-3);
+  background:var(--raised); border:1px solid var(--border); border-radius:var(--r-pill); padding:0 var(--sp-2); line-height:18px}
+.side-foot{margin-top:auto; padding-top:var(--sp-2); border-top:1px solid var(--border-soft)}
+.side-meta{display:flex; align-items:center; gap:var(--sp-2); padding:var(--sp-2) var(--sp-3) var(--sp-1);
+  font-size:var(--fs-12); color:var(--text-3); font-family:var(--font-mono); line-height:1.5;
+  white-space:nowrap; overflow:hidden; min-width:0}
+.side-meta .sm-v{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--c-green);flex:0 0 auto}
+.dot.amber{background:var(--c-amber)} .dot.grey{background:var(--text-3)} .dot.red{background:var(--c-red)}
+
+.main{grid-area:main; display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--canvas)}
+.toolbar{display:flex; align-items:center; gap:var(--sp-3); padding:var(--sp-3) var(--sp-5);
+  border-bottom:1px solid var(--border-soft); min-width:0}
+.crumbs{display:flex; align-items:center; gap:var(--sp-2); min-width:0}
+.crumbs .cb-root{font-size:var(--fs-13); font-weight:600; color:var(--accent); white-space:nowrap}
+.crumbs .cb-sep{color:var(--text-3); display:grid; place-items:center}
+.crumbs .cb-cur{font-size:var(--fs-13); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.search{position:relative; flex:0 1 320px; min-width:96px; max-width:320px; margin-left:auto}
+.search .s-ico{position:absolute; left:var(--sp-2); top:50%; transform:translateY(-50%); color:var(--text-3); pointer-events:none; z-index:1}
+.search input{width:100%; height:32px; padding:0 var(--sp-2) 0 32px; border-radius:var(--r-input);
+  background:var(--raised); border:1px solid var(--border); color:var(--text); font-size:var(--fs-13); line-height:1.5;
+  transition:border-color var(--m-fast) var(--ease), box-shadow var(--m-fast) var(--ease), background var(--m-fast) var(--ease)}
+.search input::placeholder{color:var(--text-3)}
+.search input:focus{outline:none; border-color:var(--accent); background:var(--surface); box-shadow:0 0 0 3px var(--accent-dim)}
+.tool-actions{display:flex; align-items:center; gap:var(--sp-2); flex:0 0 auto}
+.seg{display:inline-flex; padding:var(--sp-1); gap:var(--sp-1); background:var(--raised);
+  border:1px solid var(--border); border-radius:var(--r-card)}
+.seg button{display:inline-flex; align-items:center; gap:var(--sp-1); height:24px; padding:0 var(--sp-3);
+  border-radius:var(--r-input); font-size:var(--fs-12); font-weight:600; color:var(--text-2); line-height:1.5;
+  transition:background var(--m-fast) var(--ease), color var(--m-fast) var(--ease)}
+.seg button:hover{color:var(--text)}
+.seg button[aria-selected="true"]{background:var(--surface); color:var(--text); box-shadow:var(--elev-1)}
+html[data-theme="dark"] .seg button[aria-selected="true"]{background:#262B34; box-shadow:none}
+
+.btn{display:inline-flex; align-items:center; justify-content:center; gap:var(--sp-2); height:32px; padding:0 var(--sp-4);
+  border-radius:var(--r-card); border:1px solid var(--border); background:var(--surface); color:var(--text);
+  font-size:var(--fs-12); font-weight:600; line-height:1.5; white-space:nowrap;
+  transition:background var(--m-fast) var(--ease), border-color var(--m-fast) var(--ease), box-shadow var(--m-fast) var(--ease)}
+.btn:hover{background:var(--hover); border-color:var(--text-3)}
+.btn-primary{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+.btn-primary:hover{background:var(--accent); border-color:var(--accent); filter:brightness(1.08); box-shadow:var(--elev-1)}
+.btn-danger{background:var(--risk-l3); border-color:var(--risk-l3); color:var(--risk-l3-ink)}
+.btn-danger:hover:not([disabled]){filter:brightness(1.06); box-shadow:var(--elev-1)}
+.btn[disabled]{cursor:not-allowed; color:var(--text-3); background:var(--raised); border-color:var(--border)}
+.btn[disabled]:hover{background:var(--raised); border-color:var(--border); box-shadow:none}
+.btn-danger[disabled]{color:var(--risk-l3); background:color-mix(in srgb, var(--risk-l3) 15%, var(--surface));
+  border-color:color-mix(in srgb, var(--risk-l3) 40%, transparent)}
+.btn-danger[disabled]:hover{background:color-mix(in srgb, var(--risk-l3) 15%, var(--surface));
+  border-color:color-mix(in srgb, var(--risk-l3) 40%, transparent)}
+.btn-sm{height:28px; padding:0 var(--sp-3); font-size:var(--fs-12)}
+.btn-ghost{background:transparent}
+.btn-ghost:hover{background:var(--hover)}
+.icon-btn{width:32px;height:32px; border-radius:var(--r-card); display:grid; place-items:center; color:var(--text-2);
+  transition:background var(--m-fast) var(--ease), color var(--m-fast) var(--ease)}
+.icon-btn:hover{background:var(--hover-2); color:var(--text)}
+.icon-btn.is-on{background:var(--accent-dim); color:var(--accent)}
+.icon-btn-sm{width:24px;height:24px}
+.icon-row{display:flex; align-items:center; gap:var(--sp-1)}
+
+.pop-wrap{position:relative; display:inline-flex}
+.pop{position:absolute; top:calc(100% + var(--sp-1)); right:0; z-index:40; min-width:256px; padding:var(--sp-2);
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r-pop); box-shadow:var(--elev-2);
+  display:none; flex-direction:column; gap:var(--sp-1)}
+.pop.is-open{display:flex}
+.pop-label{padding:var(--sp-2) var(--sp-3) var(--sp-1); font-size:var(--fs-12); font-weight:700; color:var(--text-3); letter-spacing:.02em}
+.pop-item{display:flex; align-items:center; gap:var(--sp-3); width:100%; text-align:left; min-height:32px; padding:var(--sp-1) var(--sp-3);
+  border-radius:var(--r-card); color:var(--text-2); font-size:var(--fs-12); font-weight:500; line-height:1.5}
+.pop-item:hover{background:var(--hover); color:var(--text)}
+.pop-item .pi-ico{color:var(--text-3); display:grid; place-items:center}
+.pop-item .pi-tag{margin-left:auto; font-family:var(--font-mono); font-size:var(--fs-12); color:var(--text-3)}
+.pop-opt-ico{color:var(--accent)}
+.pop.is-opt{min-width:288px}
+.pop-opt{padding:var(--sp-3); border-radius:var(--r-card); gap:var(--sp-1); display:none; border:1px solid transparent}
+.pop-opt.is-on{display:block; background:var(--accent-dim); border-color:var(--accent-line)}
+.pop-opt:hover{background:var(--hover)}
+.pop-opt .po-h{display:flex; align-items:center; gap:var(--sp-2); color:var(--text); font-size:var(--fs-12); font-weight:600}
+.pop-opt.is-on .po-h .po-ico{color:var(--accent)}
+.pop-opt .po-ico{color:var(--text-3); display:grid; place-items:center}
+.pop-opt .po-d{display:block; color:var(--text-3); font-size:var(--fs-12); line-height:1.5; margin-top:var(--sp-1)}
+
+.tip{position:fixed; z-index:90; max-width:288px; padding:var(--sp-2) var(--sp-3);
+  background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:var(--r-card);
+  box-shadow:var(--elev-2); font-size:var(--fs-12); line-height:1.5; pointer-events:none;
+  opacity:0; transform:translateY(4px); transition:opacity var(--m-fast) var(--ease), transform var(--m-fast) var(--ease)}
+.tip.is-on{opacity:1; transform:none}
+.tip code{font-family:var(--font-mono); font-size:var(--fs-12); color:var(--accent); background:var(--accent-dim);
+  border-radius:var(--r-input); padding:0 var(--sp-1)}
+
+.views{flex:1 1 auto; min-height:0; min-width:0; position:relative}
+.view{position:absolute; inset:0; display:none; min-height:0}
+.view.is-active{display:flex}
+.view-in{animation:viewIn var(--m-base) var(--ease-out) both}
+@keyframes viewIn{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
+
+.ws-view{flex-direction:column; min-height:0}
+.ws-scroll{flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; padding:var(--sp-5) var(--sp-5) var(--sp-6)}
+.group-head{display:flex; align-items:baseline; gap:var(--sp-3); margin:0 0 var(--sp-4)}
+.group-head h3{margin:0; font-size:var(--fs-15); font-weight:650; letter-spacing:-.005em; line-height:1.5}
+.group-head .gh-meta{margin-left:auto; font-size:var(--fs-12); color:var(--text-3); font-family:var(--font-mono);
+  display:inline-flex; align-items:center; gap:var(--sp-2)}
+.badge-live{display:inline-flex; align-items:center; gap:var(--sp-1); padding:0 var(--sp-2); border-radius:var(--r-pill);
+  background:var(--raised); color:var(--text-2); border:1px solid var(--border); font-weight:600; line-height:18px}
+.grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(248px,1fr)); gap:var(--sp-4); margin-bottom:var(--sp-6)}
+.tile{display:flex; flex-direction:column; align-items:stretch; gap:var(--sp-2); padding:var(--sp-4);
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r-card); box-shadow:var(--elev-1);
+  text-align:left; width:100%; line-height:1.5;
+  transition:transform var(--m-fast) var(--ease), border-color var(--m-fast) var(--ease), box-shadow var(--m-base) var(--ease)}
+.tile:hover{transform:translateY(-1px); border-color:var(--text-3); box-shadow:var(--elev-1), 0 10px 26px rgba(0,0,0,.22)}
+.tile-ico{width:40px;height:40px; border-radius:var(--r-card); flex:0 0 auto; display:grid; place-items:center; color:#fff;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.22), var(--elev-1)}
+.tile-top{display:flex; align-items:center; gap:var(--sp-3); min-width:0}
+.tile-foot{display:flex; align-items:center; gap:var(--sp-2); min-width:0}
+.tile-txt{min-width:0; flex:1 1 auto}
+.tile-name{font-size:var(--fs-13); font-weight:600; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.tile-sub{font-size:var(--fs-12); color:var(--text-2); margin:0; flex:1 1 auto; min-width:0;
+  display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.tile-state{display:inline-flex; align-items:center; gap:var(--sp-1); flex:0 0 auto; padding:0 var(--sp-2); border-radius:var(--r-pill);
+  font-size:var(--fs-12); font-weight:600; border:1px solid var(--border); background:var(--raised); color:var(--text-2); line-height:18px}
+.tile-state .dot{width:8px;height:8px}
+.tile-state.attached{color:var(--text); border-color:var(--border); background:var(--raised)}
+.tile-state.attached .dot{background:var(--c-green)}
+.tile-state.warn{color:var(--text); border-color:color-mix(in srgb, var(--c-amber) 44%, transparent)}
+.tile-state.warn .dot{background:var(--c-amber)}
+.tile-state.error{color:var(--text); border-color:color-mix(in srgb, var(--c-red) 44%, transparent)}
+.tile-state.error .dot{background:var(--c-red)}
+.bg-orange{background:var(--c-orange)} .bg-blue{background:var(--c-blue)} .bg-purple{background:var(--c-purple)}
+.bg-teal{background:var(--c-teal)} .bg-green{background:var(--c-green)} .bg-red{background:var(--c-red)}
+.bg-slate{background:var(--c-slate)} .bg-pink{background:var(--c-pink)} .bg-amber{background:var(--c-amber)}
+.plate{display:flex; align-items:flex-start; gap:var(--sp-3); padding:var(--sp-4); background:var(--raised);
+  border:1px dashed var(--border); border-radius:var(--r-card); color:var(--text-2); font-size:var(--fs-12); line-height:1.6}
+.plate code{font-family:var(--font-mono); color:var(--text); background:var(--raised); border:1px solid var(--border); border-radius:var(--r-input); padding:0 var(--sp-1)}
+
+/* ============ 6. 终端视图（含软换行） ============ */
+.term-view{flex-direction:row; gap:var(--sp-4); padding:var(--sp-4) var(--sp-4) var(--sp-4) var(--sp-5)}
+.term-pane{flex:1 1 auto; min-width:0; min-height:0; display:flex; flex-direction:column;
+  background:var(--term-bg); border:1px solid var(--border); border-radius:var(--r-pop); overflow:hidden}
+.term-top{display:flex; align-items:center; gap:var(--sp-3); padding:0 var(--sp-3); min-height:32px; min-width:0;
+  background:var(--term-bg2); border-bottom:1px solid #1A1E26}
+.chip{display:inline-flex; align-items:center; gap:var(--sp-1); height:24px; padding:0 var(--sp-2); border-radius:var(--r-pill);
+  font-size:var(--fs-12); font-weight:600; color:var(--term-mut); background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.08); white-space:nowrap; font-family:var(--font-mono); line-height:1.5}
+.chip.host{color:#EAF0F8; background:rgba(255,255,255,.08)}
+.chip .dot{width:8px;height:8px}
+.chip.metric{color:var(--term-mut); background:transparent; border-color:transparent; padding:0 var(--sp-1); font-weight:500}
+.chip.metric b{color:#D3DBE6; font-weight:600}
+.chip.metric .m-ico{color:var(--term-mut); display:grid; place-items:center}
+.term-top .spacer{flex:1 1 auto; min-width:var(--sp-1)}
+.term-top .icon-btn{color:var(--term-mut); width:24px;height:24px; border-radius:var(--r-input)}
+.term-top .icon-btn:hover{background:rgba(255,255,255,.08); color:#EAF0F8}
+.term-tabs{display:flex; align-items:center; gap:var(--sp-1); padding:var(--sp-2) var(--sp-3) 0; overflow-x:auto; overflow-y:hidden;
+  background:var(--term-bg2); border-bottom:1px solid #1A1E26; scrollbar-width:none}
+.term-tabs::-webkit-scrollbar{display:none}
+.ttab{display:inline-flex; align-items:center; gap:var(--sp-2); height:32px; padding:0 var(--sp-3);
+  border-radius:var(--r-card) var(--r-card) 0 0;
+  font-size:var(--fs-12); color:var(--term-mut); white-space:nowrap; border:1px solid transparent; border-bottom:0;
+  transition:background var(--m-fast) var(--ease), color var(--m-fast) var(--ease)}
+.ttab:hover{background:rgba(255,255,255,.05); color:#E1E7F0}
+.ttab[aria-selected="true"]{background:var(--term-bg); color:#EDF2F9; border-color:#1E232C}
+.ttab .t-x{display:grid; place-items:center; width:16px; height:16px; color:var(--term-mut); border-radius:var(--r-input)}
+.ttab .t-x:hover{color:#FF8A80; background:rgba(255,255,255,.08)}
+.ttab-add{width:24px;height:24px;border-radius:var(--r-input); display:grid;place-items:center; color:var(--term-mut); margin-left:var(--sp-1)}
+.ttab-add:hover{background:rgba(255,255,255,.07); color:#EAF0F8}
+.term-body{flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; padding:var(--sp-3) var(--sp-4);
+  font-family:var(--font-mono); font-size:12.5px; line-height:1.25; color:var(--term-fg);
+  font-variant-ligatures:none; tab-size:4}
+/* [D] 软换行：pre-wrap + anywhere；折行续行由左侧 2px 极轻引导线提示 */
+.tl{display:grid; grid-template-columns:0px minmax(0,1fr); grid-template-rows:auto 1px;
+  white-space:pre-wrap; overflow-wrap:anywhere; min-height:1.25em; position:relative}
+.tl.cont{grid-template-columns:2px minmax(0,1fr); column-gap:var(--sp-2)}
+.tl > .c-guide{display:none; border-radius:var(--r-pill); background:rgba(122,162,255,.32)}
+.tl.cont > .c-guide{display:block}
+.tl-t{grid-column:2; grid-row:1; min-width:0}
+.tl.block{padding-left:var(--sp-2); border-left:2px solid rgba(74,158,255,.28); margin-left:-12px}
+.c-dim{color:var(--term-dim)} .c-mut{color:var(--term-mut)} .c-fg{color:#E6ECF4}
+.c-red{color:var(--a-red)} .c-green{color:var(--a-green)} .c-yellow{color:var(--a-yellow)}
+.c-blue{color:var(--a-blue)} .c-mag{color:var(--a-mag)} .c-cyan{color:var(--a-cyan)} .c-accent{color:#6FB2FF}
+.prompt{color:var(--a-green); font-weight:600}
+.sel{background:var(--sel); color:#fff}
+.rev{background:#E6ECF4; color:#0B0D11}
+.exit-bad{color:var(--a-red); font-weight:700}
+.ai-inline{display:inline-grid; place-items:center; vertical-align:-4px;
+  width:16px; height:16px; color:#8CC2FF; background:rgba(74,158,255,.16); border:1px solid rgba(74,158,255,.4);
+  border-radius:var(--r-input); padding:0; cursor:pointer}
+.ai-inline:hover{background:rgba(74,158,255,.3); color:#EAF3FF}
+.ghost{color:var(--ghost)}
+.caret{display:inline-block; width:7px; height:1.05em; vertical-align:-.18em; margin-left:1px; background:var(--accent);
+  animation:caret 200ms ease-in-out infinite alternate}
+@keyframes caret{from{opacity:1} to{opacity:.22}}
+.term-cmd{display:flex; align-items:center; gap:var(--sp-3); padding:var(--sp-3); background:var(--term-bg2);
+  border-top:1px solid #1A1E26; font-family:var(--font-mono); font-size:12.5px; line-height:1.5; min-width:0}
+.term-cmd .cm-range{margin-left:auto; font-size:var(--fs-12); color:var(--term-mut); white-space:nowrap}
+.term-hintrow{display:flex; align-items:center; gap:var(--sp-2); padding:0 var(--sp-3) var(--sp-2);
+  background:var(--term-bg2); color:var(--term-mut); font-size:var(--fs-12); line-height:1.5}
+
+/* ============ 7. AI 面板（跟随会话 + 可折叠分区） ============ */
+.ai-pane{flex:0 0 clamp(320px,27%,440px); min-width:0; min-height:0; display:flex; flex-direction:column;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r-pop); overflow:hidden;
+  transition:flex-basis var(--m-base) var(--ease), opacity var(--m-fast) var(--ease)}
+body.ai-off .ai-pane{display:none}
+.ai-pane .c-dim{color:var(--text-3)}
+.ai-rail{display:none; width:48px; flex:0 0 48px; flex-direction:column; align-items:center; gap:var(--sp-3); padding:var(--sp-3) 0;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r-pop)}
+body.ai-off .ai-rail{display:flex}
+.rail-badge{width:32px;height:32px;border-radius:var(--r-card); display:grid; place-items:center; color:#fff;
+  background:linear-gradient(150deg,var(--mark-a),var(--mark-b)); box-shadow:var(--elev-1); font-size:var(--fs-12); font-weight:700}
+.rail-vert{writing-mode:vertical-rl; letter-spacing:.18em; font-size:var(--fs-12); color:var(--text-3); font-family:var(--font-mono)}
+.rail-dot{width:8px;height:8px;border-radius:50%;background:var(--c-green)}
+.ai-head{display:flex; align-items:center; gap:var(--sp-2); height:var(--card-head-h); padding:0 var(--sp-2) 0 var(--sp-4);
+  border-bottom:1px solid var(--border-soft); flex:0 0 auto}
+.ai-title{display:flex; align-items:center; gap:var(--sp-2); font-size:var(--fs-13); font-weight:650; white-space:nowrap; line-height:1.5}
+.ai-head .icon-row{margin-left:auto}
+.ai-scope{display:flex; align-items:center; gap:var(--sp-2); height:var(--card-head-h);
+  padding:0 var(--sp-3) 0 var(--sp-4);
+  border-bottom:1px solid var(--border-soft); flex:0 0 auto; flex-wrap:nowrap; overflow:hidden}
+.scope-bind{display:inline-flex; align-items:center; gap:var(--sp-1); min-width:0; flex:1 1 auto; overflow:hidden;
+  font-size:var(--fs-12); color:var(--text-2); font-family:var(--font-mono); white-space:nowrap}
+.scope-bind .sb-v{color:var(--text); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.scope-switch{position:relative; display:inline-flex; margin-left:auto; flex:0 0 auto}
+.scope-btn{display:inline-flex; align-items:center; gap:var(--sp-1); height:24px; padding:0 var(--sp-2);
+  border:1px solid var(--border); border-radius:var(--r-pill); background:var(--raised);
+  font-size:var(--fs-12); font-weight:600; color:var(--text-2); line-height:1.5; white-space:nowrap}
+.scope-btn:hover{color:var(--text); border-color:var(--text-3)}
+.scope-scope{display:inline-flex; align-items:center; gap:var(--sp-1); min-width:0; font-size:var(--fs-12); color:var(--text-2)}
+.scope-scope .ss-v{color:var(--text); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.scope-warn{display:none; align-items:flex-start; gap:var(--sp-2); margin:0;
+  padding:var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-4);
+  background:color-mix(in srgb, var(--c-amber) 10%, var(--surface)); border-bottom:1px solid var(--border-soft);
+  border-left:2px solid var(--c-amber); color:var(--text); font-size:var(--fs-12); line-height:1.5; flex:0 0 auto}
+.scope-warn.is-on{display:flex}
+.scope-warn .sw-ico{color:var(--c-amber); margin-top:2px}
+.scope-warn b{color:var(--text)}
+.ai-scroll{flex:0 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; padding:var(--sp-3);
+  display:flex; flex-direction:column; gap:var(--sp-3)}
+.ai-scroll>*{flex:0 0 auto}
+
+.fold{background:var(--surface); border:1px solid var(--border); border-radius:var(--r-pop); box-shadow:var(--elev-0); overflow:hidden}
+.fold > summary{display:flex; align-items:center; gap:var(--sp-2); height:var(--card-head-h); padding:0 var(--sp-3);
+  cursor:pointer; list-style:none; flex-wrap:nowrap; overflow:hidden}
+.fold > summary::-webkit-details-marker{display:none}
+.fold > summary::marker{content:""}
+.fold > summary:hover{background:var(--hover)}
+.fold > summary .fd-chev{color:var(--text-3); transition:transform var(--m-base) var(--ease); display:grid; place-items:center}
+.fold[open] > summary .fd-chev{transform:rotate(90deg)}
+.fold > summary .prim{font-size:var(--fs-12); font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text-2)}
+.fold > summary .meta{margin-left:auto; font-family:var(--font-mono); font-size:var(--fs-12); color:var(--text-3);
+  min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.fold > summary .th-label{font-weight:600; color:var(--text-2); flex:0 0 auto; font-size:var(--fs-13)}
+.fold > summary .th-text{color:var(--text-3); min-width:0; flex:1 1 auto; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-12)}
+.fold > summary .fd-chev,.fold > summary .prim,.fold > summary .pill,.fold > summary .badge-norevert,
+.fold > summary .meta{flex:0 0 auto}
+.fold-body{padding:var(--sp-4); border-top:1px solid var(--border-soft);
+  display:flex; flex-direction:column; gap:var(--sp-3); min-width:0}
+.fold-body p{margin:0; line-height:1.6; color:var(--text-2); font-size:var(--fs-13)}
+.fold-body p.lead{color:var(--text); font-size:var(--fs-13)}
+.fold-foot{display:flex; gap:var(--sp-2); flex-wrap:wrap; padding:var(--sp-4); border-top:1px solid var(--border-soft)}
+.fold-hint{padding:0 var(--sp-4) var(--sp-4); margin:0}
+.ico-h{display:inline-grid; place-items:center; color:var(--text-3); flex:0 0 auto}
+.rt-h .ico-h{color:var(--text-3)}
+
+.pill{display:inline-flex; align-items:center; gap:var(--sp-1); height:20px; padding:0 var(--sp-2); border-radius:var(--r-pill);
+  font-size:var(--fs-12); font-weight:700; border:1px solid var(--border); background:var(--raised); color:var(--text-2);
+  white-space:nowrap; font-family:var(--font-ui); line-height:1.5}
+.pill-info,.pill-l0{color:var(--risk-l0); border-color:color-mix(in srgb, var(--risk-l0) 44%, transparent); background:color-mix(in srgb, var(--risk-l0) 9%, transparent)}
+.pill-l1{color:var(--risk-l1); border-color:color-mix(in srgb, var(--risk-l1) 44%, transparent); background:color-mix(in srgb, var(--risk-l1) 9%, transparent)}
+.pill-l2{color:var(--risk-l2); border-color:color-mix(in srgb, var(--risk-l2) 46%, transparent); background:color-mix(in srgb, var(--risk-l2) 10%, transparent)}
+.pill-l3{color:var(--risk-l3); border-color:color-mix(in srgb, var(--risk-l3) 46%, transparent); background:color-mix(in srgb, var(--risk-l3) 10%, transparent)}
+.pill-u{color:var(--risk-u); border-color:color-mix(in srgb, var(--risk-u) 44%, transparent); background:color-mix(in srgb, var(--risk-u) 9%, transparent)}
+.badge-norevert{display:inline-flex; align-items:center; gap:var(--sp-1); height:20px; padding:0 var(--sp-2); border-radius:var(--r-pill);
+  font-size:var(--fs-12); font-weight:700; color:var(--risk-l3-ink); background:var(--risk-l3); letter-spacing:.01em; line-height:1.5}
+code.chip-code{font-family:var(--font-mono); font-size:var(--fs-12); color:var(--code-fg); background:var(--code-bg);
+  border:1px solid var(--code-bd); border-radius:var(--r-input); padding:0 var(--sp-1); overflow-wrap:anywhere}
+.rt{display:flex; flex-direction:column; gap:var(--sp-4); min-width:0}
+.rt-sec{display:flex; flex-direction:column; gap:var(--sp-2); min-width:0}
+.rt-h{margin:0; font-size:var(--fs-15); font-weight:700; color:var(--text); display:flex; align-items:center; gap:var(--sp-2); line-height:1.5}
+ul.ticks{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:var(--sp-1)}
+ul.ticks li{display:grid; grid-template-columns:16px minmax(0,1fr); gap:var(--sp-2); font-size:var(--fs-13); line-height:1.6; color:var(--text-2)}
+ul.ticks li .tk{color:var(--risk-l1); font-weight:700; font-size:var(--fs-12); line-height:1.7}
+ul.ticks li b{color:var(--text)}
+table.rt-table{width:100%; border-collapse:collapse; font-size:var(--fs-12); border:1px solid var(--border);
+  border-radius:var(--r-card); overflow:hidden}
+table.rt-table th,table.rt-table td{padding:var(--sp-2) var(--sp-3); text-align:left; border-bottom:1px solid var(--border-soft);
+  vertical-align:top; line-height:1.5; overflow-wrap:anywhere}
+table.rt-table th{background:var(--raised); font-size:var(--fs-12); font-weight:700; color:var(--text-2); letter-spacing:.02em}
+table.rt-table td{color:var(--text-2)}
+table.rt-table td:first-child{color:var(--text); font-weight:600}
+table.rt-table tr:last-child td{border-bottom:0}
+.quote{margin:0; padding:var(--sp-3) var(--sp-4); border:1px solid var(--border); border-left:2px solid var(--border);
+  border-radius:var(--r-card); background:var(--raised); color:var(--text-2); font-size:var(--fs-13); line-height:1.6}
+.quote b{color:var(--text)}
+.quote .q-src{display:flex; align-items:center; gap:var(--sp-1); font-family:var(--font-mono); font-size:var(--fs-12);
+  color:var(--text-3); margin-bottom:var(--sp-1)}
+.chain{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:var(--sp-2)}
+.chain li{display:grid; grid-template-columns:20px minmax(0,1fr); gap:var(--sp-2); font-size:var(--fs-13); line-height:1.55; color:var(--text-2)}
+.chain .n{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;margin-top:2px;
+  font-family:var(--font-mono); font-size:var(--fs-12); font-weight:700; color:var(--text-2);
+  background:var(--raised); border:1px solid var(--border)}
+.chain .ev{display:block; font-family:var(--font-mono); font-size:var(--fs-12); color:var(--text-3); margin-top:var(--sp-1)}
+.conf{display:flex; align-items:center; gap:var(--sp-2); font-family:var(--font-mono); font-size:var(--fs-12); color:var(--text-3)}
+.conf-bar{flex:1 1 auto; height:8px; border-radius:var(--r-pill); background:var(--raised); overflow:hidden}
+.conf-bar i{display:block; height:100%; width:92%; background:var(--text-2); border-radius:var(--r-pill)}
+.ladder{list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--sp-2)}
+.ladder li{display:flex; flex-direction:column; gap:var(--sp-1); min-width:0; overflow:hidden; font-size:var(--fs-12); color:var(--text-2);
+  padding:var(--sp-2) var(--sp-3); border-radius:var(--r-card); border:1px solid var(--border); border-top-width:2px; background:var(--raised)}
+.ladder .tier{font-family:var(--font-mono); font-size:var(--fs-12); font-weight:700; color:var(--text); white-space:nowrap;
+  display:flex; align-items:center; gap:var(--sp-1)}
+.ladder .tier .ico-h{color:var(--text-2)}
+.ladder .desc{display:block; font-size:var(--fs-12); color:var(--text-3); line-height:1.5}
+.ladder li.l2 .desc{color:var(--text-2)}
+.ladder li.l0{border-top-color:var(--risk-l0)}
+.ladder li.l1{border-top-color:var(--risk-l1)}
+.ladder li.l2{border-top-color:var(--risk-l2); background:color-mix(in srgb, var(--risk-l2) 7%, var(--raised));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--risk-l2) 35%, transparent)}
+.ladder li.l3{border-top-color:var(--risk-l3)}
+.ladder li.lu{border-top-color:var(--risk-u)}
+.hint{font-size:var(--fs-12); color:var(--text-3); line-height:1.6; font-family:var(--font-mono); margin:0}
+.argv{font-family:var(--font-mono); font-size:var(--fs-12); background:var(--sunken); border:1px solid var(--border);
+  border-radius:var(--r-card); padding:var(--sp-3); line-height:1.65; white-space:pre-wrap; overflow-wrap:anywhere;
+  color:var(--text-2); margin:0}
+.argv .tok-cmd{color:var(--accent); font-weight:700}
+.argv .tok-flag{color:var(--risk-u)}
+.argv .tok-val{color:var(--risk-l2)}
+.argv .tok-warn{color:var(--risk-l3)}
+.argv-note{font-size:var(--fs-12); color:var(--text-3); margin-top:var(--sp-1); font-family:var(--font-mono)}
+.impact{display:grid; grid-template-columns:auto minmax(0,1fr); gap:var(--sp-1) var(--sp-3); margin:0; font-size:var(--fs-12)}
+.impact dt{color:var(--text-3); font-size:var(--fs-12); font-family:var(--font-mono); white-space:nowrap; padding-top:1px}
+.impact dd{margin:0; color:var(--text-2); line-height:1.55; overflow-wrap:anywhere}
+.impact dd .warn{color:var(--risk-l3); font-weight:600}
+.dryrun{border:1px solid var(--border); border-radius:var(--r-card); overflow:hidden; background:var(--sunken)}
+.dryrun-head{display:flex; align-items:center; gap:var(--sp-2); padding:var(--sp-2) var(--sp-3); background:var(--raised);
+  border-bottom:1px solid var(--border-soft); font-family:var(--font-mono); font-size:var(--fs-12); color:var(--text-2)}
+.dryrun-head .ok{margin-left:auto; color:var(--risk-l1); font-weight:700}
+.dryrun pre{margin:0; padding:var(--sp-2) var(--sp-3); font-family:var(--font-mono); font-size:var(--fs-12); line-height:1.6;
+  color:var(--text-2); white-space:pre-wrap; overflow-wrap:anywhere}
+.datasource{display:flex; gap:var(--sp-2); align-items:flex-start; font-size:var(--fs-12); color:var(--text-3); line-height:1.6}
+.tag-untrusted{flex:0 0 auto; color:var(--risk-l2); border:1px solid color-mix(in srgb, var(--risk-l2) 45%, transparent);
+  background:color-mix(in srgb, var(--risk-l2) 10%, transparent); border-radius:var(--r-input); padding:0 var(--sp-1); font-weight:700}
+.friction{display:block; font-size:var(--fs-12); color:var(--text-2); line-height:1.6}
+.friction code{font-family:var(--font-mono); color:var(--risk-l2); background:color-mix(in srgb, var(--risk-l2) 12%, transparent);
+  border:1px solid color-mix(in srgb, var(--risk-l2) 40%, transparent); border-radius:var(--r-input); padding:0 var(--sp-1)}
+.approve-foot{display:flex; flex-direction:column; gap:var(--sp-2); padding-top:var(--sp-3); border-top:1px dashed var(--border)}
+.approve-actions{display:flex; gap:var(--sp-2); align-items:center; flex-wrap:wrap}
+.scope-note{font-size:var(--fs-12); color:var(--text-3); line-height:1.6; margin:0}
+.field{width:100%; height:32px; font-family:var(--font-mono); font-size:var(--fs-12); color:var(--text); background:var(--raised);
+  border:1px solid var(--border); border-radius:var(--r-input); padding:0 var(--sp-3);
+  transition:border-color var(--m-fast) var(--ease), box-shadow var(--m-fast) var(--ease)}
+.field::placeholder{color:var(--text-3)}
+.field:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-dim)}
+.field.is-match{border-color:var(--risk-l1); box-shadow:0 0 0 3px color-mix(in srgb, var(--risk-l1) 16%, transparent)}
+.diff{margin:0; font-family:var(--font-mono); font-size:var(--fs-12); line-height:1.6; background:var(--sunken);
+  border:1px solid var(--border); border-radius:var(--r-card); white-space:pre-wrap; overflow-wrap:anywhere; padding:var(--sp-2) 0}
+.diff i{display:block; padding:0 var(--sp-3); font-style:normal}
+.diff .hdr{color:var(--text-3); border-bottom:1px solid var(--border-soft); padding-bottom:var(--sp-1); margin-bottom:var(--sp-1)}
+.diff .ctx{color:var(--text-3)}
+.diff .add{color:var(--risk-l1); background:color-mix(in srgb, var(--risk-l1) 9%, transparent)}
+.diff .del{color:var(--risk-l3); background:color-mix(in srgb, var(--risk-l3) 9%, transparent)}
+.diff .ln{display:inline-block; width:2.4em; color:var(--text-3); text-align:right; padding-right:var(--sp-2); user-select:none}
+.diff .add .ln,.diff .del .ln{color:var(--text-2)}
+.explain{width:100%; border-collapse:collapse; font-size:var(--fs-12)}
+.explain td{padding:var(--sp-1) 0; vertical-align:top; border-bottom:1px solid var(--border-soft); line-height:1.55}
+.explain tr:last-child td{border-bottom:0}
+.explain td:first-child{width:38%; padding-right:var(--sp-3); font-family:var(--font-mono); font-size:var(--fs-12);
+  color:var(--text); white-space:normal; overflow-wrap:anywhere}
+.explain td:last-child{color:var(--text-2)}
+.warnlist{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:var(--sp-1)}
+.warnlist li{font-size:var(--fs-12); color:var(--text-3); line-height:1.6; font-family:var(--font-mono);
+  padding-left:var(--sp-4); position:relative}
+.warnlist li::before{content:""; position:absolute; left:0; top:8px; width:8px; height:8px; border-radius:50%;
+  background:color-mix(in srgb, var(--c-amber) 70%, transparent)}
+
+.composer{padding:var(--sp-2) var(--sp-3) var(--sp-3); flex:0 0 auto; min-width:0; overflow-x:hidden}
+.composer-box{border:1px solid var(--border); background:var(--raised); border-radius:var(--r-pop);
+  padding:var(--sp-3) var(--sp-3) var(--sp-2);
+  transition:border-color var(--m-fast) var(--ease), box-shadow var(--m-fast) var(--ease), background var(--m-fast) var(--ease)}
+.composer-box:focus-within{border-color:var(--accent); background:var(--surface); box-shadow:0 0 0 3px var(--accent-dim)}
+.composer-box textarea{width:100%; resize:none; border:0; background:none; outline:none; color:var(--text);
+  font-size:var(--fs-13); line-height:1.55; height:40px; display:block}
+.composer-box textarea::placeholder{color:var(--text-3)}
+.composer-row{display:flex; align-items:center; gap:var(--sp-2); margin-top:var(--sp-2); min-width:0; overflow:hidden}
+.composer-row .pick{min-width:0; overflow:hidden}
+.composer-row .pick.model{flex:1 1 auto; max-width:176px}
+.pick{display:inline-flex; align-items:center; gap:var(--sp-1); height:24px; padding:0 var(--sp-2); border-radius:var(--r-pill);
+  border:1px solid var(--border); background:var(--surface); color:var(--text-2); font-size:var(--fs-12); font-weight:600;
+  white-space:nowrap; line-height:1.5}
+.pick:hover{background:var(--hover); color:var(--text)}
+.pick .p-ico{color:var(--text-2); display:grid; place-items:center}
+.pick.is-off{color:var(--text-3); background:var(--sunken); border-color:var(--border)}
+.pick.is-off .p-ico{color:var(--text-3)}
+.pick.is-off:hover{color:var(--text-2)}
+.pick .m-badge{width:16px;height:16px;border-radius:50%; display:grid; place-items:center; color:#fff;
+  background:linear-gradient(150deg,var(--mark-a),var(--mark-b)); font-size:var(--fs-12); font-weight:700; line-height:1}
+.send{margin-left:auto; width:32px;height:32px;border-radius:50%; display:grid;place-items:center;
+  background:var(--accent); color:var(--accent-ink); transition:filter var(--m-fast) var(--ease)}
+.send:hover{filter:brightness(1.1)}
+
+/* ============ 8. 状态栏（图标 + 值 chip；高度 ≥28；chip 间距 ≥10） ============ */
+.statusbar{grid-area:status; display:flex; align-items:center; justify-content:space-between; gap:var(--sp-3);
+  padding:0 var(--sp-3); border-top:1px solid var(--border-soft); background:var(--surface);
+  font-family:var(--font-mono); font-size:var(--fs-12); color:var(--text-3); min-width:0;
+  height:var(--statusbar-h); overflow:hidden}
+.sb-l{display:flex; align-items:center; gap:var(--sp-3); min-width:0; overflow:hidden; white-space:nowrap; flex:1 1 auto}
+.sb-r{display:flex; align-items:center; gap:var(--sp-3); min-width:0; overflow:hidden; white-space:nowrap; flex:0 0 auto; justify-content:flex-end}
+.sb-i{display:inline-flex; align-items:center; gap:var(--sp-1); min-width:0; height:24px}
+.sb-i .k{color:var(--text-3)}
+.sb-i .k2{color:var(--text-2)}
+.sb-chip{display:inline-flex; align-items:center; gap:var(--sp-1); height:24px; padding:0 var(--sp-2);
+  border:1px solid var(--border); border-radius:var(--r-pill); background:var(--raised); color:var(--text-2); white-space:nowrap}
+.sb-chip .sb-ico{color:var(--text-3); display:grid; place-items:center}
+.sb-chip b{color:var(--text); font-weight:600}
+.sess{padding:0 var(--sp-2); height:24px; display:inline-flex; align-items:center; border-radius:var(--r-pill);
+  border:1px solid var(--border); background:var(--raised); font-weight:600; color:var(--text-2)}
+.sess-pty{color:var(--text); border-color:color-mix(in srgb, var(--risk-l1) 38%, transparent)}
+.sess-agent{color:var(--accent); border-color:var(--accent-line); background:var(--accent-dim)}
+.sb-sep{width:1px;height:16px;background:var(--border); display:inline-block; flex:0 0 auto}
+.sb-arrow{color:var(--text-3); display:grid; place-items:center}
+/* 降级态：只留图标（tooltip 仍可读完整值）。被隐藏的整项用 display:none，绝不出现半截 chip。 */
+.sb-i.is-min .sb-v,.sb-i.is-min .sb-follow-v{display:none}
+.sb-i.is-min{padding:0 var(--sp-1)}
+.sb-i[data-to-hide].is-hidden,.sb-chip[data-to-hide].is-hidden,.sb-sep[data-to-hide].is-hidden{display:none}
+.fold > summary .meta.is-hidden{display:none}
+
+/* ============ 9. 命令面板（Mod+K） ============ */
+.overlay{position:fixed; inset:0; z-index:60; display:grid; justify-items:center; align-items:start;
+  padding-top:var(--sp-7); background:var(--overlay); opacity:0; visibility:hidden; pointer-events:none;
+  transition:opacity var(--m-fast) var(--ease-out), visibility 0s linear var(--m-fast)}
+.overlay.is-open{opacity:1; visibility:visible; pointer-events:auto; transition:opacity var(--m-fast) var(--ease-out)}
+.palette{width:min(760px,66vw); background:var(--surface); border:1px solid var(--border); border-radius:var(--r-pop);
+  box-shadow:var(--elev-2); overflow:hidden; transform:translateY(-8px) scale(.985);
+  transition:transform var(--m-base) var(--ease-out)}
+.overlay.is-open .palette{transform:none}
+.pal-head{display:flex; align-items:center; gap:var(--sp-3); padding:var(--sp-3) var(--sp-4); border-bottom:1px solid var(--border-soft)}
+.pal-head .p-ico{color:var(--text-3); display:grid; place-items:center}
+#palInput{flex:1 1 auto; background:none; border:0; outline:none; color:var(--text); font-size:var(--fs-13); line-height:1.5}
+#palInput::placeholder{color:var(--text-3)}
+.pal-keys{font-family:var(--font-mono); font-size:var(--fs-12); color:var(--text-2); border:1px solid var(--border);
+  border-radius:var(--r-input); padding:0 var(--sp-2); background:var(--raised); white-space:nowrap; line-height:20px}
+.pal-list{max-height:min(46vh,420px); overflow-y:auto; overflow-x:hidden; padding:var(--sp-2)}
+.pal-group{padding:var(--sp-2) var(--sp-3) var(--sp-1); font-size:var(--fs-12); letter-spacing:.08em; text-transform:uppercase;
+  color:var(--text-3); font-weight:700}
+.pal-item{display:grid; grid-template-columns:24px minmax(0,1fr) auto auto; align-items:center; gap:var(--sp-3);
+  padding:var(--sp-2) var(--sp-3); border-radius:var(--r-card); cursor:pointer; border:1px solid transparent;
+  transition:background var(--m-fast) var(--ease), border-color var(--m-fast) var(--ease)}
+.pal-item:hover{background:var(--hover)}
+.pal-item.is-cursor{background:var(--accent-dim); border-color:var(--accent-line)}
+.pal-item .ico{color:var(--text-3); display:grid; place-items:center}
+.pal-item.is-cursor .ico{color:var(--accent)}
+.pal-item .label{font-size:var(--fs-13); color:var(--text); min-width:0; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; font-weight:500; line-height:1.5}
+.pal-item .desc{font-size:var(--fs-12); color:var(--text-3); font-family:var(--font-mono); white-space:nowrap}
+.pal-item .kb{font-family:var(--font-mono); font-size:var(--fs-12); color:var(--text-2); border:1px solid var(--border);
+  border-radius:var(--r-input); padding:0 var(--sp-1); background:var(--raised); white-space:nowrap; line-height:18px}
+.pal-foot{display:flex; align-items:center; gap:var(--sp-3); padding:var(--sp-2) var(--sp-4); border-top:1px solid var(--border-soft);
+  background:var(--raised); font-family:var(--font-mono); font-size:var(--fs-12); color:var(--text-3)}
+.pal-foot .pal-gate{margin-left:auto; color:var(--text-2); font-weight:600}
+@media (max-height:900px){ .pal-list{max-height:min(42vh,360px)} }
+
+.toast{position:fixed; left:50%; bottom:calc(var(--win-my,20px) + var(--statusbar-h) + var(--sp-4)); transform:translate(-50%,10px); z-index:70;
+  display:flex; align-items:center; gap:var(--sp-2); background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r-pill); padding:var(--sp-2) var(--sp-4); font-size:var(--fs-12); color:var(--text-2); box-shadow:var(--elev-2);
+  opacity:0; visibility:hidden; transition:opacity var(--m-base) var(--ease-out), transform var(--m-base) var(--ease-out), visibility 0s linear var(--m-base)}
+.toast.is-on{opacity:1; visibility:visible; transform:translate(-50%,0)}
+.toast .t-ico{color:var(--text-2); display:grid; place-items:center}
+
+/* ============ [F] overlay 滚动条：静止不可见、hover/滚动显现、6px、无轨道 ============ */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:transparent; border-radius:var(--r-pill)}
+.is-scrolling ::-webkit-scrollbar-thumb,
+*:hover::-webkit-scrollbar-thumb{background:color-mix(in srgb, var(--text-3) 45%, transparent)}
+.is-scrolling ::-webkit-scrollbar-thumb:hover,
+*:hover::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb, var(--text-3) 70%, transparent)}
+*{scrollbar-width:thin; scrollbar-color:transparent transparent}
+*:hover{scrollbar-color:color-mix(in srgb, var(--text-3) 45%, transparent) transparent}
+.term-body::-webkit-scrollbar-thumb,.term-body:hover::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18)}
+.term-body:hover::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.32)}
+
+@media (max-width:1500px){
+  .app{grid-template-columns:228px minmax(0,1fr)}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(232px,1fr))}
+}
+@media (max-width:1200px){
+  .brand-name{display:none}
+  .search{max-width:200px}
+}
+@media (max-height:820px){
+  .brand{padding-bottom:var(--sp-3)}
+  .toast{bottom:auto; top:var(--sp-4)}
+}
+@media (prefers-reduced-motion: reduce){
+  :root{--m-fast:0s; --m-base:0s; --m-slow:0s}
+  *,*::before,*::after{animation:none !important; transition-duration:0s !important}
+}
+
+</style>
+</head>
+<body>
+
+<div class="wall" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+
+<main class="app">
+
+  <!-- ===== 顶部工具栏（48px；次要动作收进「更多」） ===== -->
+  <header class="titlebar">
+    <div class="lights" aria-hidden="true"><span class="light r"></span><span class="light y"></span><span class="light g"></span></div>
+    <div class="title-mid">
+      <span class="ico-h" data-i="vault" data-sz="16" aria-hidden="true"></span>
+      <span class="win-title">TermAI · payments 工作区</span>
+    </div>
+    <div class="title-right">
+      <button class="icon-btn" data-i="search" data-sz="16" data-act="find" data-tip="全局搜索：跨会话 / 命令块 / 主机（Mod+Shift+F）" aria-label="全局搜索：跨会话 / 命令块 / 主机"></button>
+      <button class="icon-btn" data-i="panel" data-sz="16" data-act="palette" data-tip="命令面板：Action Registry 是唯一真相源（Mod+K）" aria-label="打开命令面板"></button>
+      <button class="icon-btn" data-i="help" data-sz="16" data-act="keys" data-tip="键盘速查：Mod+K 命令面板 · Mod+I Agent 面板 · Mod+Shift+L 主题" aria-label="键盘速查"></button>
+      <button class="icon-btn" id="themeBtn" aria-pressed="false" data-i="theme" data-sz="16" data-tip="主题：深色 / 浅色 · 仅数据层切换，无脚本注入（Mod+Shift+L）" aria-label="切换到浅色主题"></button>
+      <span class="sr" id="themeLabel">切换到浅色主题</span>
+    </div>
+  </header>
+
+  <!-- ===== 左侧主导航（保留可见文字的导航项） ===== -->
+  <nav class="side" aria-label="主导航">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">TI</span>
+      <span class="brand-name">TermAI</span>
+    </div>
+    <div class="nav" id="navRoot">
+      <button class="nav-item" aria-current="page" data-nav="Workspaces"><span class="ni-ico" data-i="grid"></span><span>Workspaces</span><span class="ni-count">12</span></button>
+      <button class="nav-item" data-nav="Sessions"><span class="ni-ico" data-i="terminal"></span><span>Sessions</span><span class="ni-count">4</span></button>
+      <button class="nav-item" data-nav="Snippets"><span class="ni-ico" data-i="script"></span><span>Snippets</span><span class="ni-count">37</span></button>
+      <button class="nav-item" data-nav="Themes"><span class="ni-ico" data-i="theme"></span><span>Themes</span></button>
+      <button class="nav-item" data-nav="Plugins"><span class="ni-ico" data-i="plug"></span><span>Plugins</span><span class="ni-count">6</span></button>
+      <button class="nav-item" data-nav="Audit Log"><span class="ni-ico" data-i="notes"></span><span>Audit Log</span></button>
+    </div>
+    <div class="side-foot">
+      <button class="nav-item" data-nav="Settings"><span class="ni-ico" data-i="settings"></span><span>Settings</span></button>
+      <div class="side-meta" data-tip="sessiond 就绪 · 本机 attach 1 端（本端可写 stdin；屏幕可恢复，进程不可恢复）"><span class="dot" aria-hidden="true"></span><span class="sm-v">本机 · attach 1</span></div>
+    </div>
+  </nav>
+
+  <!-- ===== 主区 ===== -->
+  <section class="main">
+
+    <div class="toolbar">
+      <div class="crumbs" id="crumbs">
+        <span class="cb-root">Workspaces</span>
+        <span class="cb-sep" data-i="chevR" data-sz="16" aria-hidden="true"></span>
+        <span class="cb-cur" id="crumbCur">payments</span>
+      </div>
+
+      <div class="search">
+        <span class="s-ico" data-i="search" data-sz="16" aria-hidden="true"></span>
+        <input id="searchInput" type="text" placeholder="搜索工作区或主机…" autocomplete="off" spellcheck="false" aria-label="搜索">
+      </div>
+
+      <div class="tool-actions">
+        <span class="seg" role="tablist" aria-label="视图切换">
+          <button role="tab" id="tabTerm" aria-selected="true" aria-controls="viewTerm"><span data-i="terminal" data-sz="16" aria-hidden="true"></span>终端</button>
+          <button role="tab" id="tabWs" aria-selected="false" aria-controls="viewWs"><span data-i="grid" data-sz="16" aria-hidden="true"></span>工作区</button>
+        </span>
+        <button class="btn" id="newWsBtn" data-toast="新建工作区：继承当前布局与 cwd，不重放命令">新建工作区</button>
+        <button class="btn btn-primary" id="connectBtn" data-toast="连接主机：ssh user@hostname（凭据留在本机 keychain）">连接主机</button>
+        <span class="pop-wrap">
+          <button class="icon-btn" id="moreBtn" data-i="more" data-sz="16" aria-haspopup="menu" aria-expanded="false" aria-controls="moreMenu" data-tip="更多：布局 / 分屏 / 导入导出 / 主题 / 快捷键" aria-label="更多操作"></button>
+          <div class="pop" id="moreMenu" role="menu" aria-label="更多操作">
+            <div class="pop-label">布局与结构</div>
+            <div class="pop-opt is-on" id="optGrid" role="menuitemradio" aria-checked="true" tabindex="0">
+              <span class="po-h"><span class="po-ico" data-i="check" data-sz="16" aria-hidden="true"></span>网格布局</span>
+              <span class="po-d">工作区以卡片网格呈现（当前）</span>
+            </div>
+            <div class="pop-opt" id="optList" role="menuitemradio" aria-checked="false" tabindex="0">
+              <span class="po-h"><span class="po-ico" data-i="check" data-sz="16" aria-hidden="true"></span>列表布局</span>
+              <span class="po-d">紧凑行，适合 12 个以上工作区</span>
+            </div>
+            <div class="pop-label">次要动作（已由顶栏收起）</div>
+            <button class="pop-item" data-act="split" role="menuitem"><span class="pi-ico" data-i="split" data-sz="16" aria-hidden="true"></span>分屏 <span class="pi-tag">Mod+Shift+\</span></button>
+            <button class="pop-item" data-act="import" role="menuitem"><span class="pi-ico" data-i="download" data-sz="16" aria-hidden="true"></span>导入 kitty / alacritty / wezterm 配置</button>
+            <button class="pop-item" data-act="export" role="menuitem"><span class="pi-ico" data-i="copy" data-sz="16" aria-hidden="true"></span>导出会话日志（默认本地）</button>
+            <button class="pop-item" data-act="theme" role="menuitem"><span class="pi-ico" data-i="theme" data-sz="16" aria-hidden="true"></span>切换主题：深色 / 浅色 <span class="pi-tag">Mod+Shift+L</span></button>
+            <button class="pop-item" data-act="keys" role="menuitem"><span class="pi-ico" data-i="help" data-sz="16" aria-hidden="true"></span>键盘速查 <span class="pi-tag">?</span></button>
+          </div>
+        </span>
+      </div>
+    </div>
+
+    <div class="views">
+
+      <!-- ================= 终端视图（默认） ================= -->
+      <section class="view term-view is-active" id="viewTerm" role="tabpanel" aria-labelledby="tabTerm">
+        <div class="term-pane">
+          <!-- 终端状态条：次要按钮全图标化，指标=图标+值 -->
+          <div class="term-top">
+            <span class="chip host"><span class="dot" style="background:var(--a-green)"></span>payments-api</span>
+            <span class="spacer"></span>
+            <span class="chip metric" data-tip="CPU 6% · 4 vCPU · load 0.42"><span class="m-ico" data-i="cpu" data-sz="16" aria-hidden="true"></span><b>6%</b></span>
+            <span class="chip metric" data-tip="磁盘 194/311G 已用 · /dev/vda1"><span class="m-ico" data-i="disk" data-sz="16" aria-hidden="true"></span><b>194G</b></span>
+            <span class="chip metric" data-tip="网络 152/539 KB/s 上下行 · 无其他出站"><span class="m-ico" data-i="network" data-sz="16" aria-hidden="true"></span><b>152K</b></span>
+            <span class="chip metric" data-tip="k2p 双向延迟 p50 4.1ms · p99 11.8ms"><span class="m-ico" data-i="clock" data-sz="16" aria-hidden="true"></span><b>4.1ms</b></span>
+            <span class="spacer"></span>
+            <span class="icon-row">
+              <button class="icon-btn" id="explainBtn" data-i="agent" data-sz="24" data-tip="AI 解释上一条报错 → Diagnosis Card（Mod+I）" aria-label="AI 解释上一条报错"></button>
+              <button class="icon-btn" data-i="search" data-sz="24" data-act="scrollback" data-tip="搜索 scrollback（Mod+F）" aria-label="搜索 scrollback"></button>
+              <button class="icon-btn" data-i="copy" data-sz="24" data-act="copy" data-tip="复制选中内容（含折行后的完整字符，复制结果不变）" aria-label="复制选中内容"></button>
+              <button class="icon-btn" data-i="download" data-sz="24" data-act="export" data-tip="导出会话日志（默认本地，不上传）" aria-label="导出会话日志"></button>
+              <span class="pop-wrap">
+                <button class="icon-btn" id="termMoreBtn" data-i="more" data-sz="24" aria-haspopup="menu" aria-expanded="false" aria-controls="termMoreMenu" data-tip="更多终端动作：清屏 / 软换行 / 键盘 / 结束会话" aria-label="更多终端动作"></button>
+                <div class="pop" id="termMoreMenu" role="menu" aria-label="更多终端动作">
+                  <button class="pop-item" data-act="clear" role="menuitem"><span class="pi-ico" data-i="trash" data-sz="16" aria-hidden="true"></span>清屏（保留 scrollback）</button>
+                  <button class="pop-item" data-act="wrap" role="menuitem"><span class="pi-ico" data-i="wrap" data-sz="16" aria-hidden="true"></span>软换行：开（折行不改变字符内容）</button>
+                  <button class="pop-item" data-act="keypad" role="menuitem"><span class="pi-ico" data-i="check" data-sz="16" aria-hidden="true"></span>字符级选区与反白：开</button>
+                  <button class="pop-item" data-act="kill" role="menuitem"><span class="pi-ico" data-i="close" data-sz="16" aria-hidden="true"></span>结束会话（前台进程需确认）</button>
+                </div>
+              </span>
+            </span>
+          </div>
+
+          <!-- tab 条 -->
+          <div class="term-tabs" role="tablist" aria-label="Tab（Workspace &gt; Tab &gt; Pane）">
+            <button class="ttab" role="tab" aria-selected="true" data-sess="payments-api" data-pane="pane 1">payments-api · pane 1<span class="t-x" data-i="close" data-sz="16" role="presentation" data-tip="关闭 Tab（有前台进程时需确认）"></span></button>
+            <button class="ttab" role="tab" aria-selected="false" data-sess="payments-web" data-pane="pane 1">web · checkout<span class="t-x" data-i="close" data-sz="16" role="presentation" data-tip="关闭 Tab（有前台进程时需确认）"></span></button>
+            <button class="ttab" role="tab" aria-selected="false" data-sess="prod-shanghai-01" data-pane="pane 2">k8s · prod-shanghai-01<span class="t-x" data-i="close" data-sz="16" role="presentation" data-tip="关闭 Tab（有前台进程时需确认）"></span></button>
+            <button class="ttab" role="tab" aria-selected="false" data-sess="payments-api" data-pane="pane 3">logs · tail<span class="t-x" data-i="close" data-sz="16" role="presentation" data-tip="关闭 Tab（有前台进程时需确认）"></span></button>
+            <button class="ttab-add" id="addTabBtn" data-i="plus" data-sz="16" data-tip="新建 Tab：继承当前 cwd（不重放模板命令）" aria-label="新建 Tab"></button>
+          </div>
+
+          <!-- 终端网格（L0，等宽字符网格 · 默认软换行） -->
+          <div class="term-body is-scrolling" id="term" tabindex="0" role="log" aria-label="终端输出">
+<div class="tl block"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"><span class="c-dim">15:02:41</span>  <span class="c-mag">git:(main ✔)</span>  <span class="c-blue">~/work/payments/api</span>  <span class="c-dim">zsh 5.9 · node v20.11.1 · pnpm 9.1.0</span></span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"><span class="prompt">❯</span> <span class="c-fg">pnpm -C apps/api build</span></span></div>
+<div class="tl c-dim"><span class="c-guide" aria-hidden="true"></span><span class="tl-t">&gt; payments-api@2.4.1 build /Users/lei/work/payments/api/apps/api</span></div>
+<div class="tl c-dim"><span class="c-guide" aria-hidden="true"></span><span class="tl-t">&gt; tsc -p tsconfig.build.json</span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"> </span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"><span class="c-red">src/auth/jwt.ts:42:18 - error TS2339: Property 'signingKey' does not exist on type 'KeyRing'.</span></span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t">    <span class="c-dim">42</span>   return ring.<span class="c-red">signingKey</span>.export();</span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t">                   <span class="c-red">~~~~~~~~~~</span></span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"> </span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"><span class="c-red">src/auth/jwt.ts:57:9 - error TS18048: </span><span class="c-red sel">'ring.active' is possibly 'undefined'.</span></span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"><span class="sel">   57   jwt.sign(payload, ring.active.secret, { expiresIn: '15m' });</span></span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"><span class="sel">                          </span><span class="rev">~~~~~~~~~~~</span></span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"> </span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"><span class="c-red">Found 2 errors in the same file, starting at: src/auth/jwt.ts:42</span></span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"><span class="c-red"> ELIFECYCLE  Command failed with exit code 2.</span></span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"><span class="c-dim">exit</span> <span class="exit-bad">2</span> <span class="c-dim">· 2.84s · pane 1 · stderr 未折叠，原始顺序与 ANSI 保留（AR-16）</span></span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"> </span></div>
+<div class="tl block"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"><span class="c-dim">15:03:31</span>  <span class="c-mag">git:(main ✔)</span>  <span class="c-blue">~/work/payments/api</span></span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"><span class="prompt">❯</span> <span class="c-fg">kubectl -n payments get pods -l app=payments-api</span></span></div>
+<div class="tl c-mut"><span class="c-guide" aria-hidden="true"></span><span class="tl-t">NAME                          READY   STATUS             RESTARTS   AGE</span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"><span class="c-red">payments-api-7d9f4c8b6-2xkq9  0/1     CrashLoopBackOff   6          4m12s</span></span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"><span class="c-red">payments-api-7d9f4c8b6-8mvjt  0/1     CrashLoopBackOff   6          4m10s</span></span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"><span class="c-green">payments-api-7d9f4c8b6-r4plz  1/1     Running            0          4m09s</span></span></div>
+<div class="tl c-dim"><span class="c-guide" aria-hidden="true"></span><span class="tl-t">exit 0 · 412ms · kube-context termai-prod (prod-shanghai-01) · 该行若超出列宽将软换行，续行由左侧 2px 引导线提示</span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"> </span></div>
+<div class="tl block"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"><span class="c-dim">15:03:38</span>  <span class="c-mag">git:(main ✔)</span>  <span class="c-blue">~/work/payments/api</span></span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"><span class="prompt">❯</span> <span class="c-fg">kubectl -n payments logs deploy/payments-api --tail=4 --timestamps</span></span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t">2026-09-22T07:03:29.417Z <span class="c-yellow">ERROR</span> auth.verify failed: <span class="c-yellow">TypeError: Cannot read properties of undefined (reading 'kid')</span></span></div>
+<div class="tl c-dim"><span class="c-guide" aria-hidden="true"></span><span class="tl-t">    at verifyAccessToken (/app/dist/auth/jwt.js:57:24)</span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t">2026-09-22T07:03:30.115Z <span class="c-yellow">WARN </span> readiness probe failed: GET /healthz 503 (1/3)</span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t">2026-09-22T07:03:31.882Z <span class="c-cyan">INFO </span> deploy image tag sha-a91f3c2 · rollout ProgressDeadlineExceeded</span></div>
+<div class="tl c-dim"><span class="c-guide" aria-hidden="true"></span><span class="tl-t">exit 0 · 388ms</span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"> </span></div>
+<div class="tl block"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"><span class="c-dim">15:04:02</span>  <span class="c-mag">git:(main ✔)</span>  <span class="c-blue">~/work/payments/api</span></span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"><span class="prompt">❯</span> <span class="ai-inline" data-i="agent" data-sz="16" role="button" tabindex="0" data-tip="内联 Agent 入口：本行仍是可编辑输入，产出先落输入行" aria-label="内联 Agent 入口" id="inlineAgent"></span> <span class="c-fg">为什么构建挂了</span><span class="caret" aria-hidden="true"></span></span></div>
+<div class="tl"><span class="c-guide" aria-hidden="true"></span><span class="tl-t"><span class="c-dim">   ↳</span> <span class="ghost">git diff apps/api/src/auth/jwt.ts</span>  <span class="c-dim">ghost text · Tab 接受本段 · End 接受整行 · Enter 不执行</span></span></div>
+<div class="tl c-dim"><span class="c-guide" aria-hidden="true"></span><span class="tl-t">   内联 Agent（第一入口）产出先落输入行（可编辑 / 可复制）；命中 L2/L3 的建议降级为 Inline Hint，不上输入行。</span></div>
+          </div>
+
+          <!-- 命令行输入行 -->
+          <div class="term-cmd">
+            <span class="prompt">❯</span>
+            <span class="ai-inline" data-i="agent" data-sz="16" role="button" tabindex="0" data-tip="内联 Agent 入口：Tab 接受 ghost text，Enter 不执行" aria-label="内联 Agent 入口"></span>
+            <span class="c-fg">kubectl -n payments get pods -l app=payments-api</span><span class="caret" aria-hidden="true"></span>
+            <span class="cm-range" data-tip="k2p 双向延迟 p50 4.1ms · p99 11.8ms · 灰度抗锯齿 · 严格网格对齐">p50 4.1ms · p99 11.8ms</span>
+          </div>
+          <div class="term-hintrow"><span class="ico-h" data-i="wrap" data-sz="16" aria-hidden="true"></span><span>软换行 soft wrap：折行不改变字符内容与复制结果，也不改变网格列数（80×24）</span></div>
+        </div>
+
+        <!-- ================= 右侧 AI 面板 ================= -->
+        <aside class="ai-pane" id="aiPane" aria-label="Agent 面板">
+          <header class="ai-head">
+            <span class="ai-title">
+              <span class="ico-h" data-i="agent" data-sz="16" aria-hidden="true" style="color:var(--accent)"></span>
+              Agent
+            </span>
+            <span class="icon-row">
+              <button class="icon-btn" data-i="download" data-sz="24" data-act="export" data-tip="导出本次对话（默认本地，不上传）" aria-label="导出对话"></button>
+              <button class="icon-btn" data-i="history" data-sz="24" data-act="history" data-tip="历史记录：按会话溯源（跨会话读取留痕）" aria-label="历史记录"></button>
+              <button class="icon-btn" data-i="plus" data-sz="24" data-act="newagent" data-tip="新建 Agent Session（独立上下文与工具权限）" aria-label="新建 Agent Session"></button>
+              <button class="icon-btn" id="pinBtn" data-i="pin" data-sz="24" aria-pressed="false" data-tip="固定面板：切换 Tab 不改变宽度与作用域" aria-label="固定面板"></button>
+              <button class="icon-btn" id="closeAiBtn" data-i="close" data-sz="24" data-tip="收起为徽标（Mod+I）" aria-label="收起 Agent 面板"></button>
+            </span>
+          </header>
+
+          <!-- 作用域：默认跟随绑定的 PTY 会话 -->
+          <div class="ai-scope">
+            <span class="scope-bind" id="scopeBind" data-tip="Agent 作用域跟随当前 Tab / Pane 的 PTY 会话">绑定：<span class="sb-v" id="scopeBindVal">payments-api · pane 1</span></span>
+            <span class="scope-switch">
+              <button class="scope-btn" id="scopeBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="scopeMenu" data-tip="作用域：本会话 / 本工作区（跨会话）/ 多选会话">
+                <span class="ico-h" data-i="layers" data-sz="16" aria-hidden="true"></span><span id="scopeLabel">本会话</span>
+              </button>
+              <div class="pop pop-right" id="scopeMenu" role="menu" aria-label="作用域选择">
+                <button class="pop-item" role="menuitemradio" aria-checked="true" data-scope="session"><span class="pi-ico" data-i="check" data-sz="16" aria-hidden="true"></span>本会话（默认）<span class="pi-tag">1 pane</span></button>
+                <button class="pop-item" role="menuitemradio" aria-checked="false" data-scope="workspace"><span class="pi-ico" data-i="check" data-sz="16" aria-hidden="true"></span>本工作区（跨会话）<span class="pi-tag">9 会话</span></button>
+                <button class="pop-item" role="menuitemradio" aria-checked="false" data-scope="multi"><span class="pi-ico" data-i="check" data-sz="16" aria-hidden="true"></span>多选会话…<span class="pi-tag">4 已选</span></button>
+              </div>
+            </span>
+          </div>
+          <p class="scope-warn" id="scopeWarn" role="status">
+            <span class="sw-ico ico-h" data-i="warn" data-sz="16" aria-hidden="true"></span>
+            <span><b>跨会话范围</b>：本工作区 4 个会话全部可读、可写 · 引用逐段标注来源会话 · <b>跨会话写操作风险上调一档</b>（L1→L2，L2→L3），审批卡显示影响会话数并要求二次输入目标名。</span>
+          </p>
+
+          <div class="ai-scroll" id="aiScroll">
+
+            <!-- 1. Thought（默认折叠） -->
+            <details class="fold" data-open="false">
+              <summary data-tip="Thought：先确认是编译期还是运行期失败，再看两处报错是否同源">
+                <span class="fd-chev" data-i="chevR" data-sz="16" aria-hidden="true"></span>
+                <span class="th-label">Thought</span>
+                <span class="th-text">先确认是编译期还是运行期失败，再看两处报错是否同源…</span>
+              </summary>
+              <div class="fold-body">
+                <p class="hint">① tsc 报 TS2339 / TS18048 → 编译期，说明类型契约已变。<br>
+                ② 集群日志同文件同函数抛 TypeError … reading 'kid' → 运行期同源。<br>
+                ③ 两处指向同一 commit，排除环境 flaky 与随机失败。<br>
+                结论：一次类型收敛引发的跨面失败，不是两个独立故障。</p>
+              </div>
+            </details>
+
+            <!-- 2. Answer（默认展开） -->
+            <details class="fold" data-open="true" open>
+              <summary data-tip="Answer · answer.v2 · diag-7f3（点击折叠 / 展开）">
+                <span class="fd-chev" data-i="chevR" data-sz="16" aria-hidden="true"></span>
+                <span class="prim">Answer</span>
+                <span class="pill pill-info">answer.v2</span>
+                <span class="meta">diag-7f3</span>
+              </summary>
+              <div class="fold-body">
+                <p class="lead">构建失败与 Pod <code class="chip-code">CrashLoopBackOff</code> 是同一次提交的两个面：类型收敛改了契约，调用点没跟上。</p>
+                <div class="rt">
+                  <div class="rt-sec">
+                    <h4 class="rt-h"><span class="ico-h" data-i="check" data-sz="16" aria-hidden="true"></span>结论</h4>
+                    <ul class="ticks">
+                      <li><span class="tk">✓</span><span><code class="chip-code">a91f3c2</code> 把 <code class="chip-code">KeyRing</code> 收敛为单一 <code class="chip-code">active</code> 密钥源，<b>删除了 <code class="chip-code">signingKey</code> getter</b>，无过渡期 deprecation。</span></li>
+                      <li><span class="tk">✓</span><span><code class="chip-code">jwt.ts:42</code> 仍按旧契约读取 → <b>TS2339</b>；<code class="chip-code">jwt.ts:57</code> 因 <code class="chip-code">active?</code> 可空 → <b>TS18048</b>。</span></li>
+                      <li><span class="tk">✓</span><span>镜像 <code class="chip-code">sha-a91f3c2</code> 已进 canary，运行期同处抛 <code class="chip-code">TypeError</code>，readiness 503 → 重启 6 次。</span></li>
+                    </ul>
+                  </div>
+                  <div class="rt-sec">
+                    <h4 class="rt-h"><span class="ico-h" data-i="server" data-sz="16" aria-hidden="true"></span>影响面</h4>
+                    <table class="rt-table">
+                      <thead><tr><th>面</th><th>现象</th><th>是否同源</th></tr></thead>
+                      <tbody>
+                        <tr><td>本地构建</td><td><code class="chip-code">tsc</code> 退出码 2 · 2 errors</td><td>同源</td></tr>
+                        <tr><td>CI</td><td><code class="chip-code">ci/payments-api:build</code> 必失败（共用 tsconfig）</td><td>同源</td></tr>
+                        <tr><td>prod 集群</td><td>2/3 canary Pod CrashLoopBackOff</td><td>同源</td></tr>
+                        <tr><td>其他服务</td><td>无引用 <code class="chip-code">KeyRing</code>，未受影响</td><td>无关</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="rt-sec">
+                    <h4 class="rt-h"><span class="ico-h" data-i="activity" data-sz="16" aria-hidden="true"></span>诊断</h4>
+                    <p>该 commit 删除 4 行 getter 属<b>破坏性类型收敛</b>；调用点分布在同一文件的两处，没有编译期兜底就会以运行期 <code class="chip-code">undefined</code> 形式暴露。<code class="chip-code">--tail</code> 只看到最后 4 行，建议同时看 <code class="chip-code">previous</code> 容器日志确认首崩时间点。</p>
+                  </div>
+                  <div class="rt-sec">
+                    <h4 class="rt-h"><span class="ico-h" data-i="notes" data-sz="16" aria-hidden="true"></span>建议</h4>
+                    <blockquote class="quote">
+                      先落 <b>L1 幂等写补丁</b>（+6 −2，可撤销，走 Diff Block 审批）修好类型契约，再决定是否重启 canary Pod。补丁本身<b>不写集群</b>；集群侧动作单独走 L2 dry-run。
+                    </blockquote>
+                  </div>
+                </div>
+              </div>
+              <div class="fold-foot">
+                <button class="btn btn-sm btn-ghost" data-toast="已生成 L1 补丁草案（Diff Block · 可撤销）">应用补丁（L1 · 可撤销）</button>
+                <button class="btn btn-sm btn-ghost" data-toast="已把终端上下文（pane 1 · 最近 3 个命令块）附加到对话">带上下文提问</button>
+                <button class="btn btn-sm btn-ghost" data-toast="已复制为 issue（含 exit code 与命令来源）">复制为 issue</button>
+              </div>
+            </details>
+
+            <!-- 3. Diagnosis（默认展开） -->
+            <details class="fold" data-open="true" open>
+              <summary data-tip="Diagnosis · info 消息严重度 · exit 2 · pane 1（点击折叠 / 展开）">
+                <span class="fd-chev" data-i="chevR" data-sz="16" aria-hidden="true"></span>
+                <span class="prim">Diagnosis</span>
+                <span class="pill pill-info">info · 消息严重度</span>
+                <span class="meta">exit 2 · pane 1</span>
+              </summary>
+              <div class="fold-body">
+                <ol class="chain">
+                  <li><span class="n">1</span><span>该 commit 删除 4 行 getter，<code class="chip-code">KeyRing</code> 类型仅剩 <code class="chip-code">active</code>，无过渡期。<span class="ev">git show a91f3c2 -- apps/api/src/auth/jwt.ts</span></span></li>
+                  <li><span class="n">2</span><span>类型收窄 → 调用点 <code class="chip-code">42:18</code> 报 TS2339；<code class="chip-code">57:9</code> 因可空报 TS18048。<span class="ev">tsc -p tsconfig.build.json → 2 errors</span></span></li>
+                  <li><span class="n">3</span><span>运行时同一处抛 <code class="chip-code">TypeError … reading 'kid'</code>，readiness 503，Pod 重启 6 次进入 CrashLoopBackOff。<span class="ev">kubectl logs · sha-a91f3c2</span></span></li>
+                  <li><span class="n">4</span><span>本地与 CI 共用同一 tsconfig，构建必然同因失败；无环境差异，排除 flaky。<span class="ev">ci/payments-api:build</span></span></li>
+                </ol>
+                <div class="conf"><span>置信度 0.92</span><span class="conf-bar"><i></i></span><span>结构化解构 + 编译期错误码</span></div>
+              </div>
+            </details>
+
+            <!-- 4. 跨会话对比（默认收起；逐段标注来源且只读。默认展开数 = 2，见 AR-22 第 6 条） -->
+            <details class="fold" data-open="false">
+              <summary data-tip="Cross-Session · L0 只读 · 跨会话 · 2 个来源会话（点击展开：默认收起，保持默认展开数为 2）">
+                <span class="fd-chev" data-i="chevR" data-sz="16" aria-hidden="true"></span>
+                <span class="prim">Cross-Session</span>
+                <span class="pill pill-l0">L0 只读</span>
+                <span class="meta">2 会话</span>
+              </summary>
+              <div class="fold-body">
+                <p class="lead">跨会话实例：对比 <code class="chip-code">prod-shanghai-01</code> 与 <code class="chip-code">payments-api</code> 的 JWT 配置。</p>
+                <blockquote class="quote">
+                  <span class="q-src"><span class="ico-h" data-i="server" data-sz="16" aria-hidden="true"></span>来源会话 prod-shanghai-01 · pane 2 · 只读</span>
+                  <code class="chip-code">kubectl -n payments get cm payments-api -o yaml</code> → <b>AUTH_JWT_KEYS</b> 指向 <code class="chip-code">keyring-prod@v41</code>，仅暴露 <code class="chip-code">active</code> 单键。引用为只读快照，不含 secret 明文（AR-12 脱敏）。
+                </blockquote>
+                <blockquote class="quote">
+                  <span class="q-src"><span class="ico-h" data-i="terminal" data-sz="16" aria-hidden="true"></span>来源会话 payments-api · pane 1 · 只读</span>
+                  本地 <code class="chip-code">apps/api/src/auth/jwt.ts</code> 仍读取 <code class="chip-code">ring.signingKey</code>，与 prod 的 <code class="chip-code">active</code> 单键契约不一致 —— 差异点即 <b>TS2339</b> 根因。
+                </blockquote>
+                <p class="hint">两段引用均标注来源会话且为只读；跨会话读取写入审计链，但不会把非当前会话内容带入写路径。需要写操作时走下方审批卡（影响会话数可见 + 二次输入目标名）。</p>
+              </div>
+            </details>
+
+            <!-- 5. Risk Ladder（默认折叠） -->
+            <details class="fold" data-open="false">
+              <summary data-tip="Risk Ladder · risk.tier.* → ai.risk.* · 操作风险与消息严重度是两套枚举（点击折叠 / 展开）">
+                <span class="fd-chev" data-i="chevR" data-sz="16" aria-hidden="true"></span>
+                <span class="prim">Risk Ladder</span>
+                <span class="meta">risk.tier.*</span>
+              </summary>
+              <div class="fold-body">
+                <ul class="ladder">
+                  <li class="l0"><span class="tier"><span class="ico-h" data-i="eye" data-sz="16" aria-hidden="true"></span>L0 只读</span><span class="desc">中性 chip「只读」· 零摩擦<br>info · 无写副作用</span></li>
+                  <li class="l1"><span class="tier"><span class="ico-h" data-i="refresh" data-sz="16" aria-hidden="true"></span>L1 幂等写</span><span class="desc">chip「可撤销」+ 事后 Undo<br>工作区文件 / git 可逆</span></li>
+                  <li class="l2"><span class="tier"><span class="ico-h" data-i="warn" data-sz="16" aria-hidden="true"></span>L2 破坏性</span><span class="desc">每次都 dry-run + 目标名确认<br>部分可撤销 · danger</span></li>
+                  <li class="l3"><span class="tier"><span class="ico-h" data-i="lock" data-sz="16" aria-hidden="true"></span>L3 不可逆 / 外发</span><span class="desc">环境色带 + 目标短语 + 不可回滚徽章<br>逐条批准 · destructive</span></li>
+                  <li class="lu"><span class="tier"><span class="ico-h" data-i="info" data-sz="16" aria-hidden="true"></span>U 不可判定</span><span class="desc">按 L2 起步 + 说明判定原因<br>不静默降级</span></li>
+                  <li><span class="tier"><span class="ico-h" data-i="notes" data-sz="16" aria-hidden="true"></span>消息严重度</span><span class="desc">info / caution / danger / destructive<br>与操作风险是两套枚举</span></li>
+                </ul>
+                <p class="hint">两套枚举仅经映射表连接：操作风险（L0–L3 / U）描述「这个动作有多危险」，消息严重度描述「这条消息有多紧急」。U 不可判定时按 L2 起步并给出判定原因，不静默降级。</p>
+              </div>
+            </details>
+
+            <!-- 6. L2 破坏性操作 · dry-run 审批卡（默认折叠；确认不可由配置关闭） -->
+            <details class="fold" data-open="false" id="approvalFold">
+              <summary data-tip="Approval · dry-run · L2 破坏性 · 集群侧不可回滚 · 影响 1 个会话（跨会话时 2 个）· once（点击折叠 / 展开）">
+                <span class="fd-chev" data-i="chevR" data-sz="16" aria-hidden="true"></span>
+                <span class="prim">Approval</span>
+                <span class="pill pill-l2">L2 破坏性</span>
+                <span class="badge-norevert" data-tip="集群侧不可回滚（部分可撤销：仅工作区文件与 git 可逆操作）"><span class="ico-h" data-i="lock" data-sz="16" aria-hidden="true"></span>不可逆</span>
+                <span class="meta" id="approvalCount" data-tip="影响会话数：当前作用域 = 本会话（1 个会话）；切到跨会话时为 2 个会话。完整信息见本行 tooltip 与卡内「影响会话」字段。">1</span>
+              </summary>
+              <div class="fold-body">
+                <p class="scope-note" id="approvalScope" data-tip="跨会话范围下风险上调一档：L2 → L3 级审批口径">跨会话范围生效：<b>影响 2 个会话</b>（payments-api · pane 1；prod-shanghai-01 · pane 2）· 风险上调一档（L1→L2 / L2→L3）</p>
+                <div class="argv"><span class="tok-cmd">kubectl</span> <span class="tok-flag">-n</span> <span class="tok-val">payments</span> <span class="tok-flag">delete</span> <span class="tok-val">pod</span>
+  <span class="tok-flag">-l</span> <span class="tok-val">app=payments-api,rollout=canary</span> <span class="tok-flag">--grace-period</span>=<span class="tok-val">0</span> <span class="tok-flag">--wait</span>=<span class="tok-warn">false</span>
+</div>
+                <div class="argv-note">argv 数组展示（非拼接字符串）· 由确定性执行器构造，AI 只产出结构化意图</div>
+
+                <dl class="impact">
+                  <dt>读</dt><dd>Pod / ReplicaSet / Deployment 状态（只读列举）</dd>
+                  <dt>写</dt><dd>删除 <b>3</b> 个 canary Pod（2 × CrashLoopBackOff + 1 × Running）</dd>
+                  <dt>网络</dt><dd>出站 → apiserver <code class="chip-code">termai-prod@10.24.8.11:6443</code>（mTLS，无其他出站）</dd>
+                  <dt>提权</dt><dd>无 · ServiceAccount <code class="chip-code">payments-deployer</code>（ns 级，无 cluster-admin）</dd>
+                  <dt>目标集群</dt><dd><span class="warn">prod-shanghai-01</span> · ns payments · kube-context termai-prod</dd>
+                  <dt>影响文件</dt><dd>工作区 <b>+1 修改 / 0 删除</b>（同批次 L1 补丁需单独授权；本命令不写文件）</dd>
+                  <dt>影响会话</dt><dd><span class="warn">2 个会话</span>：payments-api · pane 1（发起）与 prod-shanghai-01 · pane 2（被引用）</dd>
+                  <dt>可撤销性</dt><dd>部分可撤销：仅工作区文件与 git 可逆操作；<span class="warn">集群侧已中断的 in-flight 请求与 2 个 Failed Pod 内会话不可恢复</span></dd>
+                </dl>
+
+                <div class="dryrun">
+                  <div class="dryrun-head">dry-run 预演 <span>--dry-run=server</span><span class="ok">✓ 通过 · 0 处冲突</span></div>
+                  <pre>pod/payments-api-7d9f4c8b6-2xkq9   would be deleted
+pod/payments-api-7d9f4c8b6-8mvjt   would be deleted
+pod/payments-api-7d9f4c8b6-r4plz   would be deleted
+replicaset.apps/payments-api-7d9f4c8b6  保留（支持 rollout undo 到 revision 41）
+deployment.apps/payments-api        不受影响 · 期望副本 5 · 当前可用 1
+3 pods would be deleted · 0 个 Service / ConfigMap / Secret 被修改</pre>
+                </div>
+
+                <div class="datasource">
+                  <span class="tag-untrusted">不可信来源</span>
+                  <span>label 值与 Pod 名取自终端输出 <code class="chip-code">kubectl get pods</code>；按 argv 数组传递、未经 shell 展开，并在审计中标注数据来源。</span>
+                </div>
+
+                <div class="approve-foot">
+                  <label class="friction" for="targetInput">二次输入目标名 <code>payments-api</code> 以解禁确认按钮 · 提交前 5s 不可用（压制盲确认）· <b>不可由配置关闭，企业策略只能加强</b></label>
+                  <input class="field" id="targetInput" placeholder="输入 payments-api" autocomplete="off" spellcheck="false" aria-describedby="frictionHint">
+                  <div class="approve-actions">
+                    <button class="btn btn-sm btn-danger" id="confirmBtn" disabled>确认执行（L2）</button>
+                    <button class="btn btn-sm btn-ghost" id="cancelBtn">取消</button>
+                    <span class="hint" id="frictionHint" style="margin-left:auto">撤销入口：工作区文件与 git 可逆操作</span>
+                  </div>
+                  <p class="scope-note">撤销边界（不可软化）：本操作不承诺 OS / 容器 / 远端回滚；「撤销上次 AI 操作」只覆盖工作区文件与 git 可逆操作，集群侧仅提供 rollout undo 到 revision 41。</p>
+                </div>
+              </div>
+            </details>
+
+            <!-- 7. Diff Block（L1，默认折叠） -->
+            <details class="fold" data-open="false">
+              <summary data-tip="Diff Block · L1 幂等写 · 可撤销 · jwt.ts +6 −2（点击折叠 / 展开）">
+                <span class="fd-chev" data-i="chevR" data-sz="16" aria-hidden="true"></span>
+                <span class="prim">Diff Block</span>
+                <span class="pill pill-l1">L1 可撤销</span>
+                <span class="meta">jwt.ts +6 −2</span>
+              </summary>
+              <div class="fold-body">
+                <pre class="diff"><i class="hdr">@@ -40,4 +40,5 @@ export function signAccessToken(payload: Claims)</i><i class="ctx"><span class="ln">40</span>  const key = ...</i><i class="del"><span class="ln">41</span>-  const key = ring.signingKey;</i><i class="del"><span class="ln">42</span>-  return ring.signingKey.export();</i><i class="add"><span class="ln">41</span>+  const key = ring.active;</i><i class="add"><span class="ln">42</span>+  if (!key) throw new ConfigError('AUTH_KEYRING_EMPTY', '未配置活动密钥，检查 AUTH_JWT_KEYS');</i><i class="add"><span class="ln">43</span>+  return key.export();</i><i class="ctx"><span class="ln">44</span>  }</i><i class="hdr">@@ -56,2 +57,2 @@ export function verifyAccessToken(token: string)</i><i class="del"><span class="ln">57</span>-  jwt.verify(token, ring.active?.secret, { algorithms: ['HS256'] });</i><i class="add"><span class="ln">57</span>+  jwt.verify(token, requireActiveKey(ring).secret, { algorithms: ['HS256'] });</i></pre>
+                <p class="hint">写操作前置快照；支持「撤销上次 AI 操作」（限工作区文件与 git 可逆操作）。行数 &gt;40 或被折叠的 diff 不计入终端 scrollback。</p>
+              </div>
+            </details>
+
+            <!-- 8. Command Explain（L0，默认折叠） -->
+            <details class="fold" data-open="false">
+              <summary data-tip="Command Explain · L0 只读 · 逐段流式解释（点击折叠 / 展开）">
+                <span class="fd-chev" data-i="chevR" data-sz="16" aria-hidden="true"></span>
+                <span class="prim">Command Explain</span>
+                <span class="pill pill-l0">L0 只读</span>
+                <span class="meta">流式</span>
+              </summary>
+              <div class="fold-body">
+                <pre class="argv">kubectl -n payments get pods -l app=payments-api -o custom-columns=NAME:.metadata.name,RESTARTS:.status.containerStatuses[0].restartCount | sort -k2 -nr | head -5</pre>
+                <table class="explain">
+                  <tr><td>kubectl</td><td>K8s CLI，命中 trusted subprocess 白名单（AR-07）；以 argv 调用，无 shell -c。</td></tr>
+                  <tr><td>-n payments</td><td>指定命名空间；非默认 ns 必须显式给出，避免落到 current-context 的 default。</td></tr>
+                  <tr><td>get pods</td><td>只读列举，无写副作用 → 判定 L0，零摩擦。</td></tr>
+                  <tr><td>-l app=payments-api</td><td>label selector；值来自终端输出（不可信来源），已标注来源并原样传参。</td></tr>
+                  <tr><td>-o custom-columns=…</td><td>自定义列，避免依赖默认列序被未来版本改动。</td></tr>
+                  <tr><td>| sort -k2 -nr</td><td>按第 2 列（RESTARTS）数值降序；纯本地管道，不出网。</td></tr>
+                  <tr><td>| head -5</td><td>只取前 5 行；上游 sort 收到 SIGPIPE 并退出，此处为预期行为。</td></tr>
+                </table>
+                <ul class="warnlist">
+                  <li>该命令只读，未命中 AST 危险模式（rm -rf / force push / drop / delete / 提权）。</li>
+                  <li>输出可能含 Pod 名与环境标识（数据分级 L2）→ 默认本地，不进入模型上下文之外的出站请求。</li>
+                </ul>
+              </div>
+            </details>
+
+            <p class="hint" style="text-align:center">AI 输出经结构化 schema 渲染：Inline Hint / Command Explain / Diff Block / Diagnosis Card / Risk Ladder。回答正文内的 emoji 小标题、✓ 列表、表格、code chip 与引用块属于 <b>answer.v2</b> 的一部分，仍受 schema 约束，禁止自由 markdown 与原始 HTML 直出（AR-16）。</p>
+          </div>
+
+          <!-- 聊天输入 -->
+          <div class="composer">
+            <div class="composer-box">
+              <textarea id="composerInput" placeholder="Message TermAI Agent — @ 引用上下文，/ 查看命令" aria-label="给 Agent 发消息"></textarea>
+              <div class="composer-row">
+                <button class="icon-btn icon-btn-sm" data-i="plus" data-sz="16" data-act="attach" data-tip="添加上下文（文件 / 命令块 / 主机）" aria-label="添加上下文"></button>
+                <button class="pick" data-toast="模型：DeepSeek · deepseek-v4（BYO-Key 直连，服务端不落 prompt）"><span class="m-badge" aria-hidden="true">D</span>deepseek-v4<span class="p-ico" data-i="chevD" data-sz="16" aria-hidden="true"></span></button>
+                <button class="pick" id="autoBtn" aria-pressed="true" data-toast="Auto 模式：只读动作自动执行；L2/L3 一律回到审批卡"><span class="p-ico" data-i="agent" data-sz="16" aria-hidden="true"></span>Auto</button>
+                <button class="send" id="sendBtn" data-i="arrowUp" data-sz="16" data-tip="发送：Mod+Enter 交给 Agent，不直接执行" aria-label="发送"></button>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <!-- ================= 工作区视图（卡片网格） ================= -->
+      <section class="view ws-view" id="viewWs" role="tabpanel" aria-labelledby="tabWs" hidden>
+        <div class="ws-scroll">
+          <div class="group-head">
+            <h3>工作区与主机</h3>
+            <span class="gh-meta">12 total · 9 live<span class="badge-live"><span class="dot"></span>attach 9</span></span>
+          </div>
+          <div class="grid" id="tileGrid">
+            <button class="tile" data-toast="打开工作区 payments-api（恢复布局与 cwd，不重放命令）">
+              <span class="tile-top"><span class="tile-ico bg-orange" aria-hidden="true" data-i="terminal" data-sz="20"></span>
+              <span class="tile-txt"><span class="tile-name">payments-api</span><span class="tile-sub">~/work/payments/api · 3 panes</span></span>
+              </span><span class="tile-foot"><span class="tile-state attached"><span class="dot"></span>已连接</span>
+            </span></button>
+            <button class="tile" data-toast="打开工作区 payments-web（恢复布局与 cwd，不重放命令）">
+              <span class="tile-top"><span class="tile-ico bg-blue" aria-hidden="true" data-i="globe" data-sz="20"></span>
+              <span class="tile-txt"><span class="tile-name">payments-web</span><span class="tile-sub">~/work/payments/web · 2 panes</span></span>
+              </span><span class="tile-foot"><span class="tile-state"><span class="dot grey"></span>就绪</span>
+            </span></button>
+            <button class="tile" data-toast="打开工作区 prod-shanghai-01（ssh sre@10.24.8.11）">
+              <span class="tile-top"><span class="tile-ico bg-purple" aria-hidden="true" data-i="server" data-sz="20"></span>
+              <span class="tile-txt"><span class="tile-name">prod-shanghai-01</span><span class="tile-sub">ssh sre@10.24.8.11 · k8s</span></span>
+              </span><span class="tile-foot"><span class="tile-state error"><span class="dot"></span>2 Pod 异常</span>
+            </span></button>
+            <button class="tile" data-toast="打开工作区 ci-runner-02（4 个 job 在跑）">
+              <span class="tile-top"><span class="tile-ico bg-teal" aria-hidden="true" data-i="activity" data-sz="20"></span>
+              <span class="tile-txt"><span class="tile-name">ci-runner-02</span><span class="tile-sub">payments-api:build · 4 jobs</span></span>
+              </span><span class="tile-foot"><span class="tile-state warn"><span class="dot"></span>构建失败</span>
+            </span></button>
+            <button class="tile" data-toast="打开工作区 payments-db（只读副本）">
+              <span class="tile-top"><span class="tile-ico bg-green" aria-hidden="true" data-i="database" data-sz="20"></span>
+              <span class="tile-txt"><span class="tile-name">payments-db</span><span class="tile-sub">psql · read replica · 只读</span></span>
+              </span><span class="tile-foot"><span class="tile-state attached"><span class="dot"></span>已连接</span>
+            </span></button>
+            <button class="tile" data-toast="打开工作区 swarm-edge（3 节点）">
+              <span class="tile-top"><span class="tile-ico bg-slate" aria-hidden="true" data-i="grid" data-sz="20"></span>
+              <span class="tile-txt"><span class="tile-name">swarm-edge</span><span class="tile-sub">docker swarm · 3 nodes</span></span>
+              </span><span class="tile-foot"><span class="tile-state"><span class="dot grey"></span>就绪</span>
+            </span></button>
+          </div>
+
+          <div class="group-head">
+            <h3>已保存会话</h3>
+            <span class="gh-meta">4 persistent</span>
+          </div>
+          <div class="grid">
+            <button class="tile" data-toast="attach 到 PTY Session pty-9f21（本端可写 stdin）">
+              <span class="tile-top"><span class="tile-ico bg-red" aria-hidden="true" data-i="bolt" data-sz="20"></span>
+              <span class="tile-txt"><span class="tile-name">hotfix · jwt-keyring</span><span class="tile-sub">pty-9f21 · attach 1 端</span></span>
+              </span><span class="tile-foot"><span class="tile-state attached"><span class="dot"></span>attach 中</span>
+            </span></button>
+            <button class="tile" data-toast="attach 到 PTY Session pty-4c07（只读镜像）">
+              <span class="tile-top"><span class="tile-ico bg-amber" aria-hidden="true" data-i="activity" data-sz="20"></span>
+              <span class="tile-txt"><span class="tile-name">logs · payments-api</span><span class="tile-sub">kubectl logs -f · tail</span></span>
+              </span><span class="tile-foot"><span class="tile-state"><span class="dot grey"></span>已暂停</span>
+            </span></button>
+            <button class="tile" data-toast="attach 到 PTY Session pty-1b83">
+              <span class="tile-top"><span class="tile-ico bg-pink" aria-hidden="true" data-i="notes" data-sz="20"></span>
+              <span class="tile-txt"><span class="tile-name">incident-2026-09-22</span><span class="tile-sub">soak · 结构化上下文已挂载</span></span>
+              </span><span class="tile-foot"><span class="tile-state"><span class="dot grey"></span>就绪</span>
+            </span></button>
+            <button class="tile" data-toast="attach 到 PTY Session pty-77aa">
+              <span class="tile-top"><span class="tile-ico bg-blue" aria-hidden="true" data-i="copy" data-sz="20"></span>
+              <span class="tile-txt"><span class="tile-name">migrate · users-table</span><span class="tile-sub">dry-run 已完成 · 待审批</span></span>
+              </span><span class="tile-foot"><span class="tile-state warn"><span class="dot"></span>待审批</span>
+            </span></button>
+          </div>
+
+          <div class="group-head"><h3>操作</h3></div>
+          <div class="plate">
+            <span class="ico-h" data-i="info" data-sz="16" aria-hidden="true" style="color:var(--accent)"></span>
+            <span>恢复语义只承诺<b>布局 / 工作目录 / 滚动历史 / 重新连接屏幕</b>；<b>屏幕可恢复，进程不可恢复</b>。重建布局不自动执行模板命令。快捷键 <code>Mod+K</code> 打开命令面板，<code>Mod+Shift+P</code> 查看全部动作。</span>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+  </section>
+
+  <!-- ===== 状态栏（图标 + 值 chip；PTY 与 Agent Session 分列并体现跟随） ===== -->
+  <footer class="statusbar">
+    <!-- 状态栏降级：data-pri 越小越先隐藏；data-shrink 允许先"降级为图标"再谈隐藏。
+         核心项（PTY / Agent Session / 跟随目标）永不隐藏，任何宽度都不出现半截 chip。 -->
+    <div class="sb-l" id="sbL">
+      <span class="sb-i sess sess-pty" data-tip="PTY Session：进程与缓冲的唯一真源">终端会话 · PTY Session</span>
+      <span class="sb-i sess sess-agent" data-tip="Agent Session：模型上下文与工具权限的作用域；跟随当前绑定的 PTY 会话">AI 会话 · Agent Session</span>
+      <span class="sb-i" data-tip="Agent 作用域跟随：切换 Tab / Pane 时 Agent Session 绑定同步变化（窄窗口下收成箭头图标）"><span class="sb-arrow ico-h" data-i="chevR" data-sz="16" aria-hidden="true"></span><span class="k2 sb-follow-v" id="sbFollow">payments-api · pane 1</span></span>
+      <span class="sb-i" data-to-hide data-pri="5" data-shrink data-tip="shell：登录 shell 版本（本机）"><span class="ico-h" data-i="terminal" data-sz="16" aria-hidden="true"></span><span class="k2 sb-v">zsh 5.9</span></span>
+      <span class="sb-i sb-clip" data-to-hide data-pri="4" data-shrink data-tip="当前工作目录：~/work/payments/api（恢复布局与 cwd，不重放命令）"><span class="ico-h" data-i="folder" data-sz="16" aria-hidden="true"></span><span class="k2 sb-v">~/work/payments/api</span></span>
+      <span class="sb-sep" data-to-hide data-pri="3"></span>
+      <span class="sb-i" data-to-hide data-pri="2" data-tip="attach 1 端 · 本端可写 stdin；屏幕可恢复，进程不可恢复（AR-13）"><span class="ico-h" data-i="link" data-sz="16" aria-hidden="true"></span><span class="k2">attach 1 端</span></span>
+    </div>
+    <div class="sb-r" id="sbR">
+      <span class="sb-chip" data-tip="GPU 后端 wgpu / Vulkan 1.3 · 灰度抗锯齿（不承诺 subpixel）"><span class="sb-ico ico-h" data-i="gpu" data-sz="16" aria-hidden="true"></span><b>wgpu/Vulkan 1.3</b></span>
+      <span class="sb-chip" data-to-hide data-pri="3" data-tip="k2p 双向延迟：p50 4.1ms · p99 11.8ms（灰度 AA 开启）"><span class="sb-ico ico-h" data-i="clock" data-sz="16" aria-hidden="true"></span><b>p50 4.1 · p99 11.8ms</b></span>
+      <span class="sb-chip" data-to-hide data-pri="3" data-tip="AI 状态：Agent 就绪 · 脱敏 ON · BYO-Key 直连"><span class="sb-ico ico-h" data-i="agent" data-sz="16" aria-hidden="true"></span>AI <b>就绪 · 脱敏 ON</b></span>
+      <span class="sb-chip" data-to-hide data-pri="1" data-tip="遥测：关闭（opt-in，默认不上传；PTY 流 / 文件内容 / 密钥永不进入服务端，AR-11）"><span class="sb-ico ico-h" data-i="telemetry" data-sz="16" aria-hidden="true"></span>遥测 <b>关闭</b></span>
+    </div>
+  </footer>
+</main>
+
+<!-- ===== 命令面板（Mod+K，默认隐藏） ===== -->
+<div class="overlay" id="overlay" aria-hidden="true">
+  <div class="palette" role="dialog" aria-modal="true" aria-label="命令面板（Mod+K）">
+    <div class="pal-head">
+      <span class="p-ico" data-i="search" data-sz="16" aria-hidden="true"></span>
+      <input id="palInput" type="text" role="combobox" aria-expanded="true" aria-controls="palList" aria-autocomplete="list" placeholder="输入动作、文件、主机或容器…（Action Registry 是唯一真相源）" autocomplete="off" spellcheck="false">
+      <span class="pal-keys">Esc 关闭</span>
+    </div>
+    <div class="pal-list" id="palList" role="listbox" aria-label="动作列表">
+      <div class="pal-group">结构</div>
+      <div class="pal-item" role="option" data-search="垂直分屏 vertical split pane"><span class="ico" data-i="split" data-sz="16"></span><span class="label">垂直分屏（右）</span><span class="desc">pane.split.vertical</span><span class="kb">Mod+\</span></div>
+      <div class="pal-item" role="option" data-search="水平分屏 horizontal split pane"><span class="ico" data-i="split" data-sz="16"></span><span class="label">水平分屏（下）</span><span class="desc">pane.split.horizontal</span><span class="kb">Mod+Shift+\</span></div>
+      <div class="pal-item" role="option" data-search="关闭当前 pane 前台进程 提示"><span class="ico" data-i="close" data-sz="16"></span><span class="label">关闭当前 Pane</span><span class="pill pill-l2">L2</span><span class="kb">Mod+W</span></div>
+      <div class="pal-item" role="option" data-search="切换 tab 1 2 3"><span class="ico" data-i="tabs" data-sz="16"></span><span class="label">切换 Tab（1–9）</span><span class="desc">tab.focus.1..9</span><span class="kb">Mod+1</span></div>
+      <div class="pal-item" role="option" data-search="新建 tab 会话"><span class="ico" data-i="plus" data-sz="16"></span><span class="label">新建 Tab（继承 cwd）</span><span class="desc">tab.new</span><span class="kb">Mod+T</span></div>
+      <div class="pal-group">会话</div>
+      <div class="pal-item" role="option" data-search="恢复上次布局 屏幕可恢复 进程不可恢复"><span class="ico" data-i="refresh" data-sz="16"></span><span class="label">恢复上次布局与工作目录</span><span class="desc">仅布局/cwd/滚动/历史 · 不重放命令</span><span class="kb">—</span></div>
+      <div class="pal-item" role="option" data-search="重连 sessiond 守护进程 attach"><span class="ico" data-i="link" data-sz="16"></span><span class="label">重连 sessiond（本机 attach 1 端）</span><span class="desc">sessiond.attach</span><span class="kb">—</span></div>
+      <div class="pal-item" role="option" data-search="撤销面板 工作区文件 git 可逆"><span class="ico" data-i="undo" data-sz="16"></span><span class="label">打开撤销面板（仅工作区文件与 git 可逆）</span><span class="desc">undo.panel</span><span class="kb">—</span></div>
+      <div class="pal-item" role="option" data-search="回滚 prod 集群 revision 不可回滚"><span class="ico" data-i="undo" data-sz="16"></span><span class="label">回滚 prod-shanghai-01 至 revision 41</span><span class="pill pill-l3">L3 · 不可回滚</span><span class="kb">—</span></div>
+      <div class="pal-group">AI</div>
+      <div class="pal-item" role="option" data-search="解释上一条报错 diagnosis explain ts2339"><span class="ico" data-i="agent" data-sz="16"></span><span class="label">解释上一条报错（Diagnosis Card）</span><span class="desc">ai.diagnose.last_error</span><span class="kb">Mod+I</span></div>
+      <div class="pal-item" role="option" data-search="作用域 本会话 跨会话 多选会话 scope"><span class="ico" data-i="layers" data-sz="16"></span><span class="label">Agent 作用域：本会话 / 本工作区（跨会话）/ 多选</span><span class="desc">ai.scope.set</span><span class="kb">—</span></div>
+      <div class="pal-item" role="option" data-search="把输入交给 AI 不直接执行 handoff"><span class="ico" data-i="arrowUp" data-sz="16"></span><span class="label">把当前输入交给 AI（不直接执行）</span><span class="desc">ai.handoff.input</span><span class="kb">Mod+Enter</span></div>
+      <div class="pal-item" role="option" data-search="切换 ai 面板 收起 徽标"><span class="ico" data-i="panel" data-sz="16"></span><span class="label">切换 AI 面板（收起为徽标）</span><span class="desc">ai.panel.toggle</span><span class="kb">Mod+I</span></div>
+      <div class="pal-item" role="option" data-search="ai 动作审计 出站请求回看"><span class="ico" data-i="notes" data-sz="16"></span><span class="label">AI 动作审计 / 出站请求回看</span><span class="desc">100% 出网可回看</span><span class="kb">—</span></div>
+      <div class="pal-item" role="option" data-search="模型 deepseek 切换"><span class="ico" data-i="agent" data-sz="16"></span><span class="label">切换模型：DeepSeek · deepseek-v4</span><span class="desc">BYO-Key 直连</span><span class="kb">—</span></div>
+      <div class="pal-group">视图与设置</div>
+      <div class="pal-item" role="option" data-search="视图 工作区 终端 切换"><span class="ico" data-i="grid" data-sz="16"></span><span class="label">切换视图：终端 / 工作区</span><span class="desc">view.switch</span><span class="kb">Mod+2</span></div>
+      <div class="pal-item" role="option" data-search="主题 深色 浅色 切换 theme"><span class="ico" data-i="theme" data-sz="16"></span><span class="label">切换主题：深色 / 浅色</span><span class="desc">纯数据 · 无脚本注入</span><span class="kb">Mod+Shift+L</span></div>
+      <div class="pal-item" role="option" data-search="终端画质 锐利 柔和 灰度抗锯齿"><span class="ico" data-i="eye" data-sz="16"></span><span class="label">终端画质档位：锐利 / 柔和</span><span class="desc">灰度 AA · 不承诺 subpixel</span><span class="kb">—</span></div>
+      <div class="pal-item" role="option" data-search="导入 kitty alacritty wezterm 配置"><span class="ico" data-i="download" data-sz="16"></span><span class="label">导入 kitty / alacritty / wezterm 配置</span><span class="desc">termai import</span><span class="kb">—</span></div>
+      <div class="pal-item" role="option" data-search="退出 关闭窗口"><span class="ico" data-i="close" data-sz="16"></span><span class="label">退出 TermAI（有前台进程时需确认）</span><span class="desc">app.quit</span><span class="kb">Mod+Q</span></div>
+    </div>
+    <div class="pal-foot">
+      <span>↑↓ 选择</span><span>↵ 运行</span><span>Esc 关闭</span><span>Mod+K 唤起</span>
+      <span class="pal-gate">动作表与菜单差集 = 0 · CI G1</span>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+
+(function(){
+  "use strict";
+  var $ = function(s, r){ return (r || document).querySelector(s); };
+  var $$ = function(s, r){ return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+
+  /* ============ 内联 SVG 图标库（零外部资源 · 统一 stroke-width 1.5 · 仅 16/20/24 三档） ============ */
+  var P = {
+    terminal:'<polyline points="4.5 7.5 8 11 4.5 14.5"/><line x1="11" y1="15" x2="19" y2="15"/>',
+    grid:'<rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/>',
+    server:'<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><line x1="7" y1="7.5" x2="7.02" y2="7.5"/><line x1="7" y1="16.5" x2="7.02" y2="16.5"/>',
+    database:'<ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3V6"/><path d="M4.5 12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3"/>',
+    globe:'<circle cx="12" cy="12" r="8.5"/><line x1="3.5" y1="12" x2="20.5" y2="12"/><path d="M12 3.5a13 13 0 0 1 0 17 13 13 0 0 1 0-17z"/>',
+    activity:'<polyline points="3 12 7.5 12 10 5.5 13.5 18.5 16.5 12 21 12"/>',
+    settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.2 5.2l2.1 2.1M16.7 16.7l2.1 2.1M18.8 5.2l-2.1 2.1M7.3 16.7l-2.1 2.1"/>',
+    search:'<circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.4" y1="15.4" x2="20" y2="20"/>',
+    plus:'<line x1="12" y1="5.5" x2="12" y2="18.5"/><line x1="5.5" y1="12" x2="18.5" y2="12"/>',
+    close:'<line x1="6.5" y1="6.5" x2="17.5" y2="17.5"/><line x1="17.5" y1="6.5" x2="6.5" y2="17.5"/>',
+    chevR:'<polyline points="9.5 5.5 16 12 9.5 18.5"/>',
+    chevD:'<polyline points="5.5 9.5 12 16 18.5 9.5"/>',
+    download:'<path d="M12 3.5v11.5"/><polyline points="7.5 10.5 12 15 16.5 10.5"/><path d="M4.5 19.5h15"/>',
+    history:'<path d="M3.6 12a8.4 8.4 0 1 0 2.5-6"/><polyline points="3 3.5 3 7.5 7 7.5"/><polyline points="12 8 12 12.3 15.3 14.4"/>',
+    pin:'<path d="M9 3.5h6l-1 6 4 3.5v2H6v-2l4-3.5z"/><line x1="12" y1="15" x2="12" y2="20.5"/>',
+    agent:'<path d="M12 3.2 5.2 6.1v5.4c0 4.4 2.9 8.4 6.8 9.5 3.9-1.1 6.8-5.1 6.8-9.5V6.1z"/><path d="M9.2 12.1 11.4 14.3 15.2 10.2"/>',
+    theme:'<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none"/>',
+    lock:'<rect x="4.5" y="10.5" width="15" height="9.5" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
+    eye:'<path d="M2.5 12S6 6.5 12 6.5 21.5 12 21.5 12 18 17.5 12 17.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.7"/>',
+    refresh:'<path d="M20.4 12a8.4 8.4 0 1 1-2.5-6"/><polyline points="21 3.5 21 7.5 17 7.5"/>',
+    warn:'<path d="M12 4.5 21 19.5H3z"/><line x1="12" y1="10" x2="12" y2="14.2"/><line x1="12" y1="16.6" x2="12.02" y2="16.6"/>',
+    info:'<circle cx="12" cy="12" r="8.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="8" x2="12.02" y2="8"/>',
+    notes:'<rect x="4.5" y="3.5" width="15" height="17" rx="2.5"/><line x1="9.5" y1="3.5" x2="9.5" y2="20.5"/><line x1="12.5" y1="8.5" x2="16.5" y2="8.5"/><line x1="12.5" y1="12" x2="16.5" y2="12"/>',
+    script:'<path d="M6 3.5h7l5 5v12H6z"/><polyline points="13 3.5 13 8.5 18 8.5"/><path d="M9 13.5 7.5 15l1.5 1.5"/><path d="M12.5 16.5 14 15l-1.5-1.5"/>',
+    plug:'<path d="M9 3.5v5M15 3.5v5"/><path d="M6.5 8.5h11v3.5a5.5 5.5 0 0 1-5.5 5.5 5.5 5.5 0 0 1-5.5-5.5z"/><line x1="12" y1="17.5" x2="12" y2="21"/>',
+    cpu:'<rect x="7" y="7" width="10" height="10" rx="2"/><rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><path d="M10.5 3.5V2.3M13.5 3.5V2.3M10.5 21.7v-1.2M13.5 21.7v-1.2M3.5 10.5H2.3M3.5 13.5H2.3M21.7 10.5h-1.2M21.7 13.5h-1.2"/>',
+    disk:'<ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3V6"/><line x1="4.5" y1="11" x2="19.5" y2="11"/>',
+    network:'<path d="M4.5 16.5v2M4.5 12v1.4M4.5 7v1.4"/><path d="M12 16.5v2M12 10v4.2M12 5v1.4"/><path d="M19.5 16.5v2M19.5 13v1.4M19.5 8v1.4"/>',
+    clock:'<circle cx="12" cy="12" r="8.5"/><polyline points="12 7.5 12 12.4 15.2 14.2"/>',
+    copy:'<rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M15 6.5V6a2.5 2.5 0 0 0-2.5-2.5H6A2.5 2.5 0 0 0 3.5 6v6.5A2.5 2.5 0 0 0 6 15h.5"/>',
+    more:'<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
+    check:'<polyline points="5 12.8 9.8 17.5 19 6.4"/>',
+    split:'<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><line x1="12" y1="4.5" x2="12" y2="19.5"/>',
+    bolt:'<path d="M13.5 2.5 5 13.5h6l-1.5 8L18.5 10.5h-6z"/>',
+    link:'<path d="M9.5 14.5 14.5 9.5"/><path d="M11.5 6.2l1.6-1.6a3.9 3.9 0 0 1 5.5 5.5l-1.6 1.6"/><path d="M12.5 17.8l-1.6 1.6a3.9 3.9 0 0 1-5.5-5.5l1.6-1.6"/>',
+    undo:'<path d="M3.5 8.5h10a6 6 0 0 1 0 12H7"/><polyline points="7 4.5 3 8.5 7 12.5"/>',
+    arrowUp:'<line x1="12" y1="19.5" x2="12" y2="5"/><polyline points="6 11 12 5 18 11"/>',
+    panel:'<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><line x1="15" y1="4.5" x2="15" y2="19.5"/>',
+    tabs:'<rect x="4.5" y="3.5" width="15" height="17" rx="2.5"/><line x1="4.5" y1="8.5" x2="19.5" y2="8.5"/><line x1="9" y1="3.5" x2="9" y2="8.5"/>',
+    at:'<circle cx="12" cy="12" r="3.4"/><path d="M15.4 8.6v4.9a2.7 2.7 0 0 0 5.1 1.3A8.6 8.6 0 1 0 17.6 19"/>',
+    vault:'<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="12" cy="12" r="3.2"/><line x1="12" y1="9" x2="12" y2="7.5"/>',
+    help:'<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.1 2.6v1.6"/><line x1="12.7" y1="16.6" x2="12.72" y2="16.6"/>',
+    folder:'<path d="M3.6 7.4a2 2 0 0 1 2-2h3.3l2 2.4h6.8a2 2 0 0 1 2 2v8.4a2 2 0 0 1-2 2H5.6a2 2 0 0 1-2-2z"/>',
+    layers:'<path d="M12 3.6 4 7.4l8 3.8 8-3.8z"/><polyline points="4 12.2 12 16 20 12.2"/><polyline points="4 16.8 12 20.6 20 16.8"/>',
+    gpu:'<rect x="5" y="5.5" width="14" height="13" rx="2.5"/><rect x="9" y="9.5" width="6" height="5" rx="1"/><path d="M9 5.5V3M15 5.5V3M9 21v-2.5M15 21v-2.5"/>',
+    telemetry:'<path d="M4.2 16.8a10.6 10.6 0 0 1 0-9.6"/><path d="M19.8 7.2a10.6 10.6 0 0 1 0 9.6"/><path d="M7.4 14.6a5.6 5.6 0 0 1 0-5.2"/><path d="M16.6 9.4a5.6 5.6 0 0 1 0 5.2"/><circle cx="12" cy="12" r="1.8"/>',
+    wrap:'<path d="M4 6h16"/><path d="M4 12h11.5a3.25 3.25 0 0 1 0 6.5H11"/><polyline points="13 15.75 10.5 18.5 13 21.25"/><path d="M4 18.5h4"/>',
+    trash:'<polyline points="4.5 6.5 19.5 6.5"/><path d="M9.5 6.5V4.6h5v1.9"/><path d="M6.6 6.5 7.5 20a1.5 1.5 0 0 0 1.5 1.4h6a1.5 1.5 0 0 0 1.5-1.4l.9-13.5"/>',
+    command:'<path d="M8.5 3.5A2.5 2.5 0 1 0 8.5 8.5h7a2.5 2.5 0 1 0-2.5-2.5v11a2.5 2.5 0 1 0 2.5-2.5h-7a2.5 2.5 0 1 0 2.5 2.5z"/>'
+  };
+  P.warn = P.warn;
+
+  $$('[data-i]').forEach(function(el){
+    var k = el.getAttribute('data-i');
+    var n = parseInt(el.getAttribute('data-sz') || '16', 10);
+    var d = P[k] || P.info;
+    el.innerHTML = '<svg viewBox="0 0 24 24" width="' + n + '" height="' + n + '" fill="none" stroke="currentColor" ' +
+      'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + d + '</svg>';
+  });
+
+  /* ============ tooltip：400ms 延迟 / focus 可见 / Esc 关闭 / 不遮挡触发元素 ============ */
+  var tip = document.createElement('div');
+  tip.className = 'tip';
+  tip.setAttribute('role', 'tooltip');
+  tip.id = 'uiTip';
+  document.body.appendChild(tip);
+  var TIP_DELAY = 400, tipTimer = null, tipOwner = null;
+  function tipText(el){ return el.getAttribute('data-tip'); }
+  function showTip(el){
+    var t = tipText(el);
+    if (!t) return;
+    hideTip();                                        /* 幂等：重复 focus 事件可安全重入 */
+    tipOwner = el;
+    tip.textContent = t;
+    if (!el.hasAttribute('aria-describedby')) el.setAttribute('aria-describedby', 'uiTip');
+    tip.classList.add('is-on');
+    var r = el.getBoundingClientRect(), tr = tip.getBoundingClientRect();
+    var left = r.left + r.width / 2 - tr.width / 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - tr.width - 8));
+    var top = r.top - tr.height - 8;                 /* 默认放在触发元素之上，不遮挡它 */
+    if (top < 8) top = r.bottom + 8;                 /* 顶部空间不足才翻到下方 */
+    tip.style.left = Math.round(left) + 'px';
+    tip.style.top = Math.round(top) + 'px';
+  }
+  function hideTip(){
+    clearTimeout(tipTimer); tipTimer = null;
+    tip.classList.remove('is-on');
+    if (tipOwner && tipOwner.getAttribute('aria-describedby') === 'uiTip') tipOwner.removeAttribute('aria-describedby');
+    tipOwner = null;
+  }
+  var hoverKey = null;
+  document.addEventListener('mouseover', function(e){
+    var el = e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (!el) return;
+    var key = el.getAttribute('data-tip');
+    if (key === hoverKey) return;
+    hideTip();
+    hoverKey = key;
+    clearTimeout(tipTimer);
+    tipTimer = setTimeout(function(){ showTip(el); }, TIP_DELAY);
+  });
+  document.addEventListener('mouseout', function(e){
+    var el = e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (el) { hoverKey = null; hideTip(); }
+  });
+  /* 键盘可达性：focusin 在部分引擎/环境对程序化 focus 不派发，因此 focusin 与 focus
+     （冒泡 + 捕获）三条路径都挂上；由于 showTip 是幂等的（同一次 focus 重复执行结果相同），
+     多条路径重复触发无害，故不再做去重闩锁——闩锁若不在每个 focus-in 都清空，
+     会把一次"先 blur 后 focus"的合法焦点移动误判成重复而静默不显示。
+     focus 立即可见，不受鼠标 hover 的 400ms 延迟约束。 */
+  function onFocusIn(e){
+    var el = e.target && e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (!el) return;
+    hoverKey = null;
+    showTip(el);                                      /* showTip 内部先清 owner，可重复调用 */
+  }
+  document.addEventListener('focusin', onFocusIn);
+  document.addEventListener('focus', onFocusIn, true);
+  document.addEventListener('focus', onFocusIn);
+  function onFocusOut(){ hoverKey = null; hideTip(); }
+  document.addEventListener('focusout', onFocusOut);
+  document.addEventListener('blur', onFocusOut, true);
+  /* 第三条路径：键盘导航（Tab / 方向键 / Home·End）。本原型运行在无原生 Tab 遍历的
+     宿主里，且部分引擎对程序化 focus 不派发 focus/focusin，因此按"键盘事件后重新解析
+     document.activeElement"兜底：只有当前焦点元素真的带 data-tip 时才显示，
+     因此不会在输入框打字时误触发。 */
+  var kbFocusTimer = null;
+  function syncKeyboardFocus(){
+    clearTimeout(kbFocusTimer);
+    kbFocusTimer = setTimeout(function(){
+      var el = document.activeElement;
+      if (!el || !el.closest || !el.closest('[data-tip]')) return;
+      onFocusIn({ target: el });
+    }, 0);
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Tab' || e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Home' || e.key === 'End') syncKeyboardFocus();
+  });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && tipOwner) { hoverKey = null; hideTip(); } });
+  window.addEventListener('scroll', function(){ hideTip(); }, true);
+  window.addEventListener('blur', function(){ hoverKey = null; hideTip(); });
+
+  /* ============ 工具 ============ */
+  var toastEl = $('#toast'), toastTimer = null;
+  function toast(msg){
+    toastEl.innerHTML = '<span class="t-ico" aria-hidden="true"></span>';
+    var ico = $('.t-ico', toastEl);
+    ico.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + P.info + '</svg>';
+    toastEl.appendChild(document.createTextNode(msg));
+    toastEl.classList.add('is-on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){
+      toastEl.classList.remove('is-on');
+      setTimeout(function(){ if(!toastEl.classList.contains('is-on')) toastEl.textContent = ''; }, 260);
+    }, 2400);
+  }
+  document.addEventListener('click', function(e){
+    var t = e.target.closest ? e.target.closest('[data-toast]') : null;
+    if (t) toast(t.getAttribute('data-toast'));
+  });
+
+  /* ============ 主题：深色（默认）/ 浅色 ============ */
+  var html = document.documentElement, themeBtn = $('#themeBtn'), themeLabel = $('#themeLabel');
+  function setTheme(mode){
+    html.setAttribute('data-theme', mode);
+    var dark = (mode === 'dark');
+    themeBtn.setAttribute('aria-pressed', String(!dark));
+    var t = dark ? '主题：深色（当前）· 点击切到浅色（Mod+Shift+L）' : '主题：浅色（当前）· 点击切到深色（Mod+Shift+L）';
+    themeBtn.setAttribute('data-tip', t);
+    themeBtn.setAttribute('aria-label', dark ? '切换到浅色主题' : '切换到深色主题');
+    themeLabel.textContent = themeBtn.getAttribute('aria-label');
+  }
+  function currentTheme(){ return html.getAttribute('data-theme') === 'light' ? 'light' : 'dark'; }
+  function toggleTheme(){
+    var next = currentTheme() === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    toast('主题 → ' + (next === 'dark' ? '深色' : '浅色（暖调米白）') + ' · 仅数据层切换，无脚本注入');
+  }
+  themeBtn.addEventListener('click', toggleTheme);
+
+  /* ============ 视图切换：终端 / 工作区 ============ */
+  var tabTerm = $('#tabTerm'), tabWs = $('#tabWs'), viewTerm = $('#viewTerm'), viewWs = $('#viewWs'), crumbCur = $('#crumbCur');
+  function setView(v){
+    var isTerm = (v === 'term');
+    tabTerm.setAttribute('aria-selected', String(isTerm));
+    tabWs.setAttribute('aria-selected', String(!isTerm));
+    viewTerm.classList.toggle('is-active', isTerm);
+    viewWs.classList.toggle('is-active', !isTerm);
+    viewWs.hidden = isTerm;
+    viewTerm.hidden = !isTerm;
+    var target = isTerm ? viewTerm : viewWs;
+    target.classList.remove('view-in');
+    void target.offsetWidth;
+    target.classList.add('view-in');
+    crumbCur.textContent = isTerm ? 'payments-api' : 'payments';
+    $$('#navRoot .nav-item').forEach(function(n){
+      var on = isTerm ? (n.dataset.nav === 'Sessions') : (n.dataset.nav === 'Workspaces');
+      if (n.dataset.nav === 'Sessions' || n.dataset.nav === 'Workspaces') n.setAttribute('aria-current', on ? 'page' : 'false');
+      else n.removeAttribute('aria-current');
+    });
+  }
+  tabTerm.addEventListener('click', function(){ setView('term'); });
+  tabWs.addEventListener('click', function(){ setView('ws'); });
+
+  $$('#navRoot .nav-item').forEach(function(n){
+    n.addEventListener('click', function(){
+      $$('#navRoot .nav-item').forEach(function(o){ o.removeAttribute('aria-current'); });
+      n.setAttribute('aria-current', 'page');
+      toast('导航 → ' + n.dataset.nav + '（原型：仅切换选中态）');
+    });
+  });
+
+  /* ============ popover 菜单（顶栏 / 终端 / 作用域共用） ============ */
+  function bindPop(btnSel, menuSel){
+    var btn = $(btnSel), menu = $(menuSel);
+    function close(){ menu.classList.remove('is-open'); btn.setAttribute('aria-expanded', 'false'); }
+    function open(){ menu.classList.add('is-open'); btn.setAttribute('aria-expanded', 'true'); }
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      var on = menu.classList.contains('is-open');
+      closeAllPops();
+      if (!on) open();
+    });
+    menu.addEventListener('click', function(e){
+      var act = e.target.closest('[data-act],[data-scope]');
+      if (act) close();
+    });
+    return { close: close, open: open };
+  }
+  var pops = [];
+  function closeAllPops(){ pops.forEach(function(p){ p.close(); }); }
+  pops.push(bindPop('#moreBtn', '#moreMenu'));
+  pops.push(bindPop('#termMoreBtn', '#termMoreMenu'));
+  pops.push(bindPop('#scopeBtn', '#scopeMenu'));
+  document.addEventListener('click', function(){ closeAllPops(); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeAllPops(); });
+
+  /* 布局选项 */
+  function setLayout(kind){
+    var g = (kind === 'grid');
+    $('#optGrid').classList.toggle('is-on', g);
+    $('#optList').classList.toggle('is-on', !g);
+    $('#optGrid').setAttribute('aria-checked', String(g));
+    $('#optList').setAttribute('aria-checked', String(!g));
+    toast(g ? '布局 → 网格（卡片）' : '布局 → 列表（紧凑行）');
+  }
+  $('#optGrid').addEventListener('click', function(){ setLayout('grid'); });
+  $('#optList').addEventListener('click', function(){ setLayout('list'); });
+  [$('#optGrid'), $('#optList')].forEach(function(el){
+    el.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); }
+    });
+  });
+
+  /* ============ 作用域（本会话 / 本工作区跨会话 / 多选） + 跟随 tab·pane ============ */
+  var SCOPE_LABEL = { session: '本会话', workspace: '本工作区（跨会话）', multi: '多选会话' };
+  var scopeMode = 'session';
+  var scopeWarn = $('#scopeWarn'), scopeBindVal = $('#scopeBindVal'), scopeLabel = $('#scopeLabel'), sbFollow = $('#sbFollow');
+  var bindSel = { sess: 'payments-api', pane: 'pane 1' };
+  function renderScope(){
+    scopeLabel.textContent = SCOPE_LABEL[scopeMode];
+    var cross = (scopeMode !== 'session');
+    scopeWarn.classList.toggle('is-on', cross);
+    scopeWarn.setAttribute('aria-hidden', String(!cross));
+    scopeBindVal.textContent = bindSel.sess + ' · ' + bindSel.pane;
+    sbFollow.textContent = bindSel.sess + ' · ' + bindSel.pane;
+    $$('#scopeMenu .pop-item').forEach(function(b){
+      var on = b.dataset.scope === scopeMode;
+      b.setAttribute('aria-checked', String(on));
+      b.classList.toggle('is-on', on);
+    });
+    /* 审批卡头只放极短形式（1 / 2），完整口径在本行 tooltip 与卡内「影响会话」字段：
+       卡头 meta 一旦变长就会在 1600px 的 AI 面板宽度下被 overflow 裁掉。 */
+    var approvalCount = $('#approvalCount');
+    approvalCount.textContent = cross ? '2' : '1';
+    approvalCount.setAttribute('data-tip',
+      '影响会话数：' + (cross ? '跨会话范围 = 2 个会话（' + bindSel.sess + ' · ' + bindSel.pane + '；prod-shanghai-01 · pane 2）'
+                             : '本会话 = 1 个会话（' + bindSel.sess + ' · ' + bindSel.pane + '）') +
+      ' · L2 破坏性 · 集群侧不可回滚 · 完整信息见卡内「影响会话」字段');
+    if (typeof approvalFit === 'function') approvalFit();
+  }
+  $$('#scopeMenu .pop-item').forEach(function(b){
+    b.addEventListener('click', function(){
+      scopeMode = b.dataset.scope;
+      renderScope();
+      if (scopeMode === 'session') toast('作用域 → 本会话（' + bindSel.sess + '）· 引用仅限当前 PTY Session');
+      else if (scopeMode === 'workspace') toast('作用域 → 本工作区（跨会话）· 4 个会话可读；跨会话写操作风险上调一档');
+      else toast('作用域 → 多选会话 · 已选 4 个；跨会话写操作风险上调一档，审批卡显示影响会话数');
+    });
+  });
+
+  /* ============ AI 面板：收起为徽标 ============ */
+  var aiPane = $('#aiPane'), closeAiBtn = $('#closeAiBtn');
+  var rail = document.createElement('aside');
+  rail.className = 'ai-rail';
+  rail.setAttribute('role', 'button');
+  rail.setAttribute('tabindex', '0');
+  rail.setAttribute('aria-label', '展开 Agent 面板（Mod+I）');
+  rail.innerHTML = '<span class="rail-badge" aria-hidden="true">AI</span><span class="rail-dot" aria-hidden="true"></span><span class="rail-vert">AGENT PANEL</span>';
+  aiPane.parentNode.insertBefore(rail, aiPane);
+  function togglePanel(){
+    var off = document.body.classList.toggle('ai-off');
+    closeAiBtn.setAttribute('aria-label', off ? '展开 Agent 面板' : '收起 Agent 面板');
+    closeAiBtn.setAttribute('data-tip', off ? '展开为面板（Mod+I）' : '收起为徽标（Mod+I）');
+    toast(off ? 'Agent 面板已收成徽标（Mod+I 恢复）' : 'Agent 面板已展开（宽度 ≤27%，最高 440px）');
+  }
+  closeAiBtn.addEventListener('click', togglePanel);
+  rail.addEventListener('click', togglePanel);
+  rail.addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); togglePanel(); } });
+
+  var pinBtn = $('#pinBtn');
+  pinBtn.addEventListener('click', function(){
+    var on = pinBtn.classList.toggle('is-on');
+    pinBtn.setAttribute('aria-pressed', String(on));
+    pinBtn.setAttribute('data-tip', on ? '已固定：切换 Tab 不改变宽度与作用域' : '固定面板：切换 Tab 不改变宽度与作用域');
+    toast(on ? '已固定面板（切换 Tab 不改变宽度）' : '已取消固定');
+  });
+
+  var autoBtn = $('#autoBtn');
+  autoBtn.addEventListener('click', function(){
+    var on = autoBtn.getAttribute('aria-pressed') !== 'true';
+    autoBtn.setAttribute('aria-pressed', String(on));
+    autoBtn.classList.toggle('is-off', !on);
+  });
+
+  /* ============ 可折叠分区：默认只展开 2 个（应答 + 诊断） ============ */
+  var folds = $$('.fold');
+  folds.forEach(function(f){ if (f.hasAttribute('data-open')) f.open = (f.getAttribute('data-open') === 'true'); });
+
+  /* ============ 发送 ============ */
+  var composerInput = $('#composerInput');
+  function sendToAgent(){
+    var v = composerInput.value.trim();
+    composerInput.value = '';
+    toast(v ? '已交给 Agent（不直接执行）· 作用域 ' + SCOPE_LABEL[scopeMode] + ' · 内容经脱敏后才进入模型上下文'
+            : '请先输入内容，或用终端行首的 Agent 图标触发内联 Agent');
+  }
+  $('#sendBtn').addEventListener('click', sendToAgent);
+  composerInput.addEventListener('keydown', function(e){
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); sendToAgent(); }
+  });
+  $('#explainBtn').addEventListener('click', function(){
+    toast('已对 ' + bindSel.sess + ' · ' + bindSel.pane + ' 最后一条报错生成 Diagnosis Card（置信度 0.92）');
+    var f = $$('.fold')[2]; if (f) { f.open = true; f.scrollIntoView({ block: 'nearest' }); }
+  });
+
+  /* ============ Tab 条：切换时 Agent 作用域跟随 ============ */
+  var tabs = $$('.ttab');
+  tabs.forEach(function(t){
+    t.addEventListener('click', function(e){
+      if (e.target.closest('.t-x')) {
+        e.stopPropagation();
+        toast('关闭 Tab 前须确认前台进程（当前 0 个）· Mod+W');
+        return;
+      }
+      tabs.forEach(function(o){ o.setAttribute('aria-selected', String(o === t)); });
+      bindSel.sess = t.dataset.sess || 'payments-api';
+      bindSel.pane = t.dataset.pane || 'pane 1';
+      renderScope();
+      toast('切换 Tab → ' + bindSel.sess + ' · Agent Session 作用域已跟随（' + SCOPE_LABEL[scopeMode] + '）');
+    });
+  });
+  $('#addTabBtn').addEventListener('click', function(){ toast('新建 Tab：继承当前 cwd（不重放模板命令）'); });
+
+  /* ============ 内联 Agent 入口 ============ */
+  $$('.ai-inline').forEach(function(el){
+    function go(){ toast('内联 Agent：产出先落输入行（可编辑 / 可复制）；命中 L2/L3 降级为 Inline Hint'); }
+    el.addEventListener('click', go);
+    el.addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+  });
+
+  /* ============ 终端软换行：折行续行提示（不改变字符内容与复制结果） ============ */
+  var termBody = $('#term');
+  var BREAKERS = '，。、；：！？（）《》【】「」『』';
+  function applyWrapGuides(){
+    var spaces = [];
+    $$('.tl', termBody).forEach(function(line){
+      var t = $('.tl-t', line);
+      if (!t) return;
+      var h = line.firstElementChild.offsetHeight, cs = getComputedStyle(line);
+      if (h > parseFloat(cs.lineHeight) * 1.9) {
+        line.classList.add('cont');
+        var guide = line.querySelector('.c-guide');
+        if (!guide) { guide = document.createElement('span'); guide.className = 'c-guide'; guide.setAttribute('aria-hidden','true'); line.insertBefore(guide, line.firstChild); }
+        /* 优先在 CJK 标点与空格处断开：把末尾标点与其后字符绑定，避免行首孤立标点 */
+        var text = t.textContent, n = text.length, i;
+        for (i = 0; i < n; i++) if (BREAKERS.indexOf(text.charAt(i)) > -1) spaces.push(i);
+      } else {
+        line.classList.remove('cont');
+        var g2 = line.querySelector('.c-guide');
+        if (g2) g2.parentNode.removeChild(g2);
+      }
+    });
+    /* 只在含 CJK 标点的行上注入零宽断点，纯 ASCII 行保持原样（空格断行） */
+    if (spaces.length) document.documentElement.setAttribute('data-breakers', String(spaces.length));
+  }
+  function measureLines(){
+    var v = termBody.clientWidth, ctx = document.createElement('canvas').getContext('2d');
+    ctx.font = getComputedStyle(termBody).font;
+    return { vw: v, cw: ctx.measureText('M').width };
+  }
+  var wrapTimer = null;
+  function scheduleWrap(){ clearTimeout(wrapTimer); wrapTimer = setTimeout(applyWrapGuides, 60); }
+  window.addEventListener('resize', scheduleWrap);
+  window.addEventListener('load', scheduleWrap);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleWrap);
+  setTimeout(scheduleWrap, 0);
+  setTimeout(applyWrapGuides, 400);
+
+  /* ============ 审批卡：二次输入 + 5s 不可用（不可由配置关闭） ============ */
+  var targetInput = $('#targetInput'), confirmBtn = $('#confirmBtn');
+  var TARGET = 'payments-api', cooldown = true;
+  var cdTimer = setTimeout(function(){
+    cooldown = false;
+    confirmBtn.textContent = '确认执行（L2）';
+    syncConfirm();
+  }, 5000);
+  function syncConfirm(){
+    var match = (targetInput.value.trim() === TARGET);
+    targetInput.classList.toggle('is-match', match && !cooldown);
+    confirmBtn.disabled = !(match && !cooldown);
+    if (cooldown) confirmBtn.textContent = '确认执行（L2）· 等待 5s 摩擦';
+  }
+  targetInput.addEventListener('input', syncConfirm);
+  confirmBtn.addEventListener('click', function(){
+    if (confirmBtn.disabled) return;
+    cooldown = true;
+    confirmBtn.textContent = '已提交 · 写入审计链';
+    confirmBtn.disabled = true;
+    targetInput.disabled = true;
+    toast('L2 审批已记录：审批人 lei · 目标 payments-api · 影响 ' + (scopeMode === 'session' ? '1' : '2') + ' 个会话 · 100% 可回看');
+  });
+  $('#cancelBtn').addEventListener('click', function(){
+    clearTimeout(cdTimer); cooldown = false;
+    targetInput.value = '';
+    targetInput.classList.remove('is-match');
+    syncConfirm();
+    toast('已取消 · 未执行任何写入，未产生审计动作');
+  });
+  syncConfirm();
+
+  /* ============ 命令面板（Mod+K，默认隐藏） ============ */
+  var overlay = $('#overlay'), palInput = $('#palInput'), palList = $('#palList');
+  var items = $$('.pal-item', palList);
+  var cursor = 0, lastFocus = null;
+  function shownItems(){ return items.filter(function(i){ return i.style.display !== 'none'; }); }
+  function moveCursor(step){
+    var list = shownItems();
+    if (!list.length) return;
+    cursor = (cursor + step + list.length) % list.length;
+    items.forEach(function(i){ i.classList.remove('is-cursor'); i.setAttribute('aria-selected', 'false'); });
+    var el = list[cursor];
+    el.classList.add('is-cursor');
+    el.setAttribute('aria-selected', 'true');
+    if (!el.id) el.id = 'pal-opt-' + items.indexOf(el);
+    palInput.setAttribute('aria-activedescendant', el.id);
+    if (el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+  }
+  function openPalette(){
+    closeAllPops(); hideTip();
+    lastFocus = document.activeElement;
+    overlay.classList.add('is-open');
+    overlay.setAttribute('aria-hidden', 'false');
+    palInput.value = '';
+    items.forEach(function(i){ i.style.display = ''; i.classList.remove('is-cursor'); i.setAttribute('aria-selected', 'false'); i.setAttribute('tabindex', '-1'); });
+    cursor = 0;
+    moveCursor(0);
+    palInput.focus();
+  }
+  function closePalette(){
+    overlay.classList.remove('is-open');
+    overlay.setAttribute('aria-hidden', 'true');
+    if (lastFocus && lastFocus.focus) { try { lastFocus.focus(); } catch (err) {} }
+  }
+  function isOpen(){ return overlay.classList.contains('is-open'); }
+
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) closePalette(); });
+  palInput.addEventListener('input', function(){
+    var q = palInput.value.trim().toLowerCase();
+    items.forEach(function(i){
+      var hay = ((i.dataset.search || '') + ' ' + i.textContent).toLowerCase();
+      i.style.display = (!q || hay.indexOf(q) > -1) ? '' : 'none';
+    });
+    cursor = 0;
+    moveCursor(0);
+  });
+  items.forEach(function(i){ i.addEventListener('click', function(){ runItem(i); }); });
+  function runItem(i){
+    var labelEl = $('.label', i), label = labelEl ? labelEl.textContent : '动作';
+    var descEl = $('.desc', i);
+    closePalette();
+    if (label.indexOf('主题') > -1) { toggleTheme(); return; }
+    if (label.indexOf('切换视图') > -1) { setView(currentViewIsTerm() ? 'ws' : 'term'); return; }
+    if (label.indexOf('作用域') > -1) {
+      scopeMode = 'workspace'; renderScope();
+      toast('作用域 → 本工作区（跨会话）· 跨会话写操作风险上调一档');
+      return;
+    }
+    toast('已触发动作：' + label + (descEl ? ' · ' + descEl.textContent : '') + ' · 原型不执行真实操作');
+  }
+  function currentViewIsTerm(){ return $('#tabTerm').getAttribute('aria-selected') === 'true'; }
+
+  /* ============ 键盘 ============ */
+  document.addEventListener('keydown', function(e){
+    var mod = e.metaKey || e.ctrlKey;
+    if (mod && (e.key === 'k' || e.key === 'K') && !e.shiftKey) { e.preventDefault(); isOpen() ? closePalette() : openPalette(); return; }
+    if (mod && (e.key === 'i' || e.key === 'I') && !e.shiftKey) { e.preventDefault(); togglePanel(); return; }
+    if (mod && e.shiftKey && (e.key === 'l' || e.key === 'L')) { e.preventDefault(); toggleTheme(); return; }
+    if (mod && (e.key === '2' || e.key === '@')) { e.preventDefault(); setView(currentViewIsTerm() ? 'ws' : 'term'); return; }
+    if (!isOpen()) return;
+    if (e.key === 'Escape') { e.preventDefault(); closePalette(); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); moveCursor(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); moveCursor(-1); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      var list = shownItems();
+      if (list[cursor]) runItem(list[cursor]);
+    }
+  });
+
+  /* ============ 状态栏渐进降级（任何宽度都不出现半截 chip） ============
+     顺序：先"降级为图标"（data-shrink），仍放不下再按 data-pri 从小到大整项隐藏。
+     整项隐藏用 display:none，因此永远不会出现被 overflow 裁一半的 chip；
+     tooltip 与主体（如 AI 会话绑定、GPU 项）仍保留被隐藏项的信息。 */
+  var sbL = $('#sbL'), sbR = $('#sbR'), statusbar = $('.statusbar');
+  /* .sb-l / .sb-r 是 overflow:hidden 的 flex 容器：内容放不下时 .statusbar 自身的
+     scrollWidth 仍等于 clientWidth（父级不滚动），只有子容器会「静默裁切」。
+     所以判据必须落在 .sb-l / .sb-r 上，而不是 .statusbar。 */
+  function sbOverflow(){
+    var core = statusbar.scrollWidth > statusbar.clientWidth;
+    var l = sbL.scrollWidth > sbL.clientWidth;
+    var r = sbR.scrollWidth > sbR.clientWidth;
+    return core || l || r;
+  }
+  /* 审批卡头是安全关键区域：窄窗口下宁可不显示这个数字，也绝不允许它被 overflow 裁一半。
+     flex:0 0 auto 已保证 meta 不会被压扁，这里再按实测兜底——一旦会溢出就整块隐藏，
+     数字仍可从本行 tooltip 与卡内「影响会话」字段读到。 */
+  function approvalFit(){
+    var meta = $('#approvalCount');
+    if (!meta) return;
+    meta.classList.remove('is-hidden');
+    var summary = meta.parentElement;
+    if (summary.scrollWidth > summary.clientWidth + 1) meta.classList.add('is-hidden');
+  }
+
+  function sbFit(){
+    if (!sbL || !sbR) return;
+    $$('[data-to-hide]', statusbar).forEach(function(el){ el.classList.remove('is-hidden'); });
+    $$('[data-shrink]', statusbar).forEach(function(el){ el.classList.remove('is-min'); });
+    if (!sbOverflow()) return;
+    /* 第一步：把"值"降级成图标（tooltip 仍给出完整值），保信息密度 */
+    $$('[data-shrink]', statusbar).forEach(function(el){ el.classList.add('is-min'); });
+    if (!sbOverflow()) return;
+    /* 第二步：按 data-pri 从小到大整项隐藏（display:none ⇒ 不会出现半截 chip） */
+    var cands = $$('[data-to-hide]', statusbar).filter(function(el){ return !el.classList.contains('is-hidden'); });
+    cands.sort(function(a, b){ return (parseInt(a.getAttribute('data-pri'), 10) || 9) - (parseInt(b.getAttribute('data-pri'), 10) || 9); });
+    for (var i = 0; i < cands.length; i++) {
+      cands[i].classList.add('is-hidden');
+      if (!sbOverflow()) break;
+    }
+  }
+  window.addEventListener('resize', function(){ sbFit(); approvalFit(); });
+
+  /* ============ 滚动条：滚动/hover 时显现（静止不可见） ============ */
+  var scrollTimer = null;
+  document.addEventListener('scroll', function(){
+    document.body.classList.add('is-scrolling');
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(function(){ document.body.classList.remove('is-scrolling'); }, 900);
+  }, true);
+
+  /* ============ 通用动作（data-act） ============ */
+  document.addEventListener('click', function(e){
+    var el = e.target.closest ? e.target.closest('[data-act]') : null;
+    if (!el) return;
+    var a = el.getAttribute('data-act');
+    if (a === 'palette') { openPalette(); return; }
+    if (a === 'theme') { toggleTheme(); return; }
+    if (a === 'keys') { toast('键盘：Mod+K 命令面板 · Mod+I Agent 面板 · Mod+2 视图 · Mod+Shift+L 主题 · Esc 关闭浮层'); return; }
+    if (a === 'find' || a === 'scrollback') { openPalette(); return; }
+    if (a === 'split') { toast('分屏：pane.split.vertical（Pane 上限 8）· 每个 pane 独立软换行'); return; }
+    if (a === 'copy') { toast('已复制选区（含折行部分，字符序列与原始输出一致）'); return; }
+    if (a === 'export') { toast('导出会话日志：默认本地文件，不上传（AR-11）'); return; }
+    if (a === 'attach') { toast('添加上下文：文件 / 命令块 / 主机（@ 引用）'); return; }
+    if (a === 'history') { toast('历史记录：按会话溯源；跨会话读取会写入审计链'); return; }
+    if (a === 'newagent') { toast('新建 Agent Session：独立上下文与工具权限，默认仍绑定当前 PTY'); return; }
+    if (a === 'import') { toast('导入 kitty / alacritty / wezterm 配置（不执行其中的 hook 命令）'); return; }
+    if (a === 'clear') { toast('清屏：保留 scrollback 与字符级选区'); return; }
+    if (a === 'wrap') { toast('软换行：开（折行不改变字符内容、复制结果与网格列数）'); return; }
+    if (a === 'keypad') { toast('字符级选区与反白：开（块状光标保持）'); return; }
+    if (a === 'kill') { toast('结束会话：有前台进程时需二次确认 · 不可由配置关闭'); return; }
+  });
+
+  /* ============ 初始化 ============ */
+  closePalette();
+  setView('term');
+  renderScope();
+  setTheme('dark');
+  sbFit();
+  approvalFit();
+  setTimeout(function(){ sbFit(); approvalFit(); }, 120);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ sbFit(); approvalFit(); });
+
+  /* URL hash 直达状态（便于评审与截图）：#theme=light&view=ws&palette=1&ai=off&scope=workspace */
+  (function(){
+    var h = String(location.hash || '').replace(/^#/, '');
+    if (!h) return;
+    var q = {};
+    h.split(/&|%26/).forEach(function(kv){
+      var i = kv.indexOf('=');
+      if (i > 0) {
+        var k = kv.slice(0, i), v = kv.slice(i + 1);
+        try { v = decodeURIComponent(v); } catch (err) {}
+        q[k] = v;
+      }
+    });
+    if (q.theme === 'light' || q.theme === 'dark') setTheme(q.theme);
+    if (q.view === 'ws' || q.view === 'workspace') setView('ws');
+    if (q.view === 'term' || q.view === 'terminal') setView('term');
+    if (q.scope && SCOPE_LABEL[q.scope]) { scopeMode = q.scope; renderScope(); }
+    if (q.palette === '1') openPalette();
+    if (q.ai === 'off') document.body.classList.add('ai-off');
+  })();
+})();
+
+</script>
+</body>
+</html>

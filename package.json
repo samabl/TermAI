@@ -1,0 +1,21 @@
+{
+  "name": "termai",
+  "version": "0.0.0",
+  "private": true,
+  "description": "TermAI - terminal-first AI workspace. Design tokens are the single source of truth for the visual language (DC-09 / AR-22).",
+  "license": "Apache-2.0 OR MIT",
+  "scripts": {
+    "tokens:build": "node tools/tokens/build.mjs",
+    "tokens:check": "node tools/tokens/check.mjs",
+    "tokens:selftest": "node tools/tokens/check.mjs --selftest",
+    "design:check": "node tools/design-gates/check-design.mjs",
+    "design:check:static": "node tools/design-gates/check-design.mjs --static",
+    "design:selftest": "node tools/design-gates/check-design.mjs --selftest",
+    "design:baseline": "node tools/design-gates/check-design.mjs --update-baseline",
+    "kernel:check": "node tools/kernel-gates/check.mjs",
+    "kernel:selftest": "node tools/kernel-gates/check.mjs --selftest"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

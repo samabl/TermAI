@@ -1,0 +1,32 @@
+{
+  "$schema": "../tokens.schema.json",
+  "group": "motion",
+  "version": "1.0.0",
+  "tokens": {
+    "m-fast": {
+      "type": "duration",
+      "value": "120ms",
+      "description": "快速 120ms"
+    },
+    "m-base": {
+      "type": "duration",
+      "value": "180ms",
+      "description": "基础 180ms"
+    },
+    "m-slow": {
+      "type": "duration",
+      "value": "240ms",
+      "description": "慢速 240ms"
+    },
+    "ease": {
+      "type": "timingFunction",
+      "value": "cubic-bezier(.2,0,0,1)",
+      "description": "标准缓动"
+    },
+    "ease-out": {
+      "type": "timingFunction",
+      "value": "cubic-bezier(.25,1,.5,1)",
+      "description": "进入缓动"
+    }
+  }
+}

@@ -1,0 +1,4 @@
+# wide characters occupy two columns; row text copies byte for byte
+KEY "A汉B"
+ASSERT ROW 0 = A汉B
+ASSERT CURSOR 0 4

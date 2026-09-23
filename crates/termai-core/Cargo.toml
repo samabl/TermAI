@@ -1,0 +1,16 @@
+[package]
+name = "termai-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "TermAI leaf contract crate: core-dto types, InputEncoder, risk tiers, capability gate (AR-29 / DC-26 / DC-35)."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+
+[lints.rust]
+unsafe_code = "forbid"

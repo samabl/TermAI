@@ -1,0 +1,17 @@
+{
+  "name": "@termai/tokens",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Generated TermAI design tokens (DC-09). Do not edit dist/ by hand - run node tools/tokens/build.mjs.",
+  "license": "Apache-2.0 OR MIT",
+  "type": "module",
+  "exports": {
+    ".": "./dist/tokens.ts",
+    "./tokens.css": "./dist/tokens.css",
+    "./tokens.json": "./dist/tokens.json",
+    "./theme.schema.json": "./dist/theme.schema.json"
+  },
+  "files": [
+    "dist"
+  ]
+}

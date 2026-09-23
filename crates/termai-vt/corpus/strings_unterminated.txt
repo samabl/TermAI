@@ -1,0 +1,22 @@
+# unterminated string states must return to ground after CAN/SUB and keep printing
+KEY "\x1b]0;secret"
+KEY "\x18"
+KEY "after-osc"
+ASSERT ROW 0 = after-osc
+ASSERT COUNTER string_cancelled = 1
+KEY "\x1b_payload"
+KEY "\x1a"
+KEY "after-apc"
+ASSERT ROW 0 = after-oscafter-apc
+ASSERT COUNTER string_cancelled = 2
+KEY "\x1bPqdata"
+KEY "\x18"
+KEY "after-dcs"
+ASSERT ROW 0 = after-oscafter-apcafter-dcs
+ASSERT COUNTER string_cancelled = 3
+# a properly terminated OSC still sets the title
+KEY "\x1b]2;my title\x07"
+ASSERT TITLE my title
+# ESC aborts an OSC and starts a new escape sequence
+KEY "\x1b]0;oops\x1bA"
+ASSERT COUNTER osc_aborted = 1

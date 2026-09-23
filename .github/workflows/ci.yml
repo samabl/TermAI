@@ -1,0 +1,127 @@
+# TermAI CI - merge-blocking gates.
+#
+# Contract: docs/spec/07-engineering-quality-and-release.md.
+# Only actions/checkout and actions/setup-node are used; no other third-party actions.
+#
+# jobs:
+#   tokens - design-token codegen is idempotent (no drift) + ruler/contrast/hex gates + validator selftest
+#   rust   - crates/termai-tokens is formatted and compiles (generated leaf crate, no dependencies)
+#   design - tools/design-gates: static layer S1-S10 always (S8 hex debt = blocking by default),
+#            browser layer B1-B10 on the runner's preinstalled Chrome
+#            (install instructions: tools/design-gates/README.md section 6)
+#   kernel - tools/kernel-gates: K1 fmt / K2 clippy / K3 test / K4 dep shape / K5 license /
+#            K6 spec-defects, plus the injection selftest (proves the gates are not always-green)
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tokens:
+    name: tokens (codegen drift + ruler / contrast / hex gates)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Regenerate tokens and fail on artifact drift
+        run: |
+          node tools/tokens/build.mjs
+          echo '--- generated artifacts must be committed (DC-09 idempotency) ---'
+          git diff --stat -- packages/tokens crates/termai-tokens prototype/termai-ui-terminal-first.html
+          git diff --exit-code -- packages/tokens crates/termai-tokens prototype/termai-ui-terminal-first.html
+      - name: tokens:check (schema / rulers / WCAG contrast / drift / hex debt)
+        run: npm run tokens:check
+      - name: tokens:selftest (validator rejects injected faults)
+        run: npm run tokens:selftest
+
+  rust:
+    name: rust (crates/termai-tokens fmt + check)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Show toolchain
+        run: rustc --version && cargo --version
+      - name: cargo fmt --check
+        run: cargo fmt --manifest-path crates/termai-tokens/Cargo.toml -- --check
+      - name: cargo check
+        run: cargo check --manifest-path crates/termai-tokens/Cargo.toml
+
+  design:
+    name: design (static S1-S10 always + browser B1-B10 on Chrome)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # Static layer: pure Node, no browser, runs on every runner/commit.
+      # --strict is explicit (and now a no-op): S8 hardcoded-hex debt is blocking by default,
+      # AR-22 target = 0. The flag is kept so the intent is visible in the pipeline.
+      - name: design:check static layer (S1-S10, spec 02 A17-A35 / G11-G17)
+        run: npm run design:check:static -- --strict
+      # Browser layer: needs Chrome. ubuntu-latest ships google-chrome; if the image
+      # ever drops it, install it here (see tools/design-gates/README.md section 6) and
+      # export CHROME_PATH. The layer SKIPs with an explicit reason when Chrome is absent.
+      - name: Browser layer prerequisite (Chrome)
+        run: |
+          if command -v google-chrome >/dev/null 2>&1; then
+            echo 'google-chrome: ' $(command -v google-chrome)
+          elif command -v chromium >/dev/null 2>&1; then
+            echo 'chromium: ' $(command -v chromium)
+          else
+            echo '::warning::no preinstalled Chrome found; installing google-chrome-stable'
+            sudo apt-get update
+            sudo apt-get install -y google-chrome-stable
+          fi
+      - name: "design:check (full: static + browser, animation frozen)"
+        run: npm run design:check
+      - name: design:selftest (inject faults on temp copies; prove gates are not always-green)
+        run: npm run design:selftest
+      - name: Visual baseline note
+        run: |
+          echo 'B4 compares against prototype/baseline/<platform>-<arch>-*.png.'
+          echo 'This repository commits win32-x64 baselines; a linux-x64 baseline must be'
+          echo 'generated once on a Linux box (npm run design:baseline) and committed before'
+          echo 'B4 becomes blocking on this runner. Until then B4 reports SKIP with that reason.'
+
+  kernel:
+    name: kernel (K1-K6 fmt / clippy / test / dep-shape / license / spec-defects)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Ensure stable Rust toolchain (preinstalled rustup; no third-party action)
+        run: |
+          if command -v rustup >/dev/null 2>&1; then
+            rustup toolchain install stable --profile minimal
+            rustup default stable
+          fi
+          rustc --version
+          cargo --version
+      - name: kernel:check (K1-K6, merge-blocking)
+        run: node tools/kernel-gates/check.mjs
+      - name: kernel:selftest (inject faults; prove the gates are not always-green)
+        run: node tools/kernel-gates/check.mjs --selftest

@@ -1,0 +1,52 @@
+{
+  "$schema": "../tokens.schema.json",
+  "group": "ai-semantic",
+  "version": "1.0.0",
+  "tokens": {
+    "risk-l0": {
+      "type": "color",
+      "value": "#7FB8FF",
+      "description": "风险 L0（读取类）前景"
+    },
+    "risk-l1": {
+      "type": "color",
+      "value": "#22C55E",
+      "description": "风险 L1（本地可逆）前景"
+    },
+    "risk-l2": {
+      "type": "color",
+      "value": "#F0A23C",
+      "description": "风险 L2（需审批）前景"
+    },
+    "risk-l3": {
+      "type": "color",
+      "value": "#FF8578",
+      "description": "风险 L3（破坏性）前景 / danger 实心底"
+    },
+    "risk-l3-ink": {
+      "type": "color",
+      "value": "#1A0B0A",
+      "description": "danger 实心底上的前景"
+    },
+    "risk-u": {
+      "type": "color",
+      "value": "#C9A0FF",
+      "description": "未知/未评级风险前景"
+    },
+    "code-bg": {
+      "type": "color",
+      "value": "rgba(74,158,255,.14)",
+      "description": "AI 代码片底色"
+    },
+    "code-bd": {
+      "type": "color",
+      "value": "rgba(74,158,255,.22)",
+      "description": "AI 代码片描边"
+    },
+    "code-fg": {
+      "type": "color",
+      "value": "#9CC7FF",
+      "description": "AI 代码片文字"
+    }
+  }
+}
