@@ -16,7 +16,7 @@
 | A6 | **渲染依赖在本环境无法取得 SPDX 证据**（网络受限、无本地 cargo 缓存）→ 只能落地零依赖切片 | T5 | 在可联网环境跑 `cargo-deny` 输出后补 ADR | AR-21、ADR-0015 P3 |
 | A7 | **§5 每条指标的测量实现未做**；**无 RM-A/RM-C** → `tools/bench` 打印 `gating numbers produced: 0` | T1 | 先起 RM-A；再逐指标实现（H1…H19） | B-10、AR-24.3、AR-27、ADR-0014 |
 | A8 | **sessiond 不持有 PTY**（生命周期在 `apps/termai`）→「会话关闭 → ≤2s 回收孤儿」在守护进程层**未实现**；且 `close()` **契约上不隐式杀树** | T1 | sessiond 接管 PTY 时必须显式 kill；否则首次多会话即泄漏 | AR-30 第 2 条、§8.2 |
-| A9 | **sessiond 重建 P95 ≤2s / P99 ≤5s 的验收未做** | T1 | 需要可重复的冷重建基准 | AR-26 第 4 条、§8.2 |
+| A9 | **sessiond 重建 P95 ≤2s / P99 ≤5s 的验收未做**（**测量口径已定，实现待做**） | T1 | **口径（先定，避免实现走样）**：① 该指标属 **kernel/06 方法学**，测量落 `tools/bench`（`bench-report` + 机器指纹），**不得写成单元测试里的计时断言**——否则会变成 flaky，且违反 AR-27 的「测量先自证可复现」；② 需 **N 次冷重建**（N 与统计口径由 kernel/06 定）报 p50/p95/p99；③ 在**非 RM-A** 上产出的数字一律 **NON_GATING / INCONCLUSIVE**（ADR-0014），**不得**用它判定 §8.2；④ 断言只能落在 RM-A 上，且同 commit 连测两次 verdict 不得翻转 | AR-26 第 4 条、§8.2、AR-27、kernel/06、ADR-0014 |
 | A10 | **跨段重放未实现**（TAIL_REPLAY 只读当前 segment；旋转后只会 BelowWindow） | T1 | 段滚动/归档后必须仍能重放或明确要求全量快照 | ADR-0026 §5 负面 1 |
 | A11 | **TailReplay 事件只投影 5 类** → **不能替代 GRID_SNAPSHOT** | T1 | 新增 tag 须先出 ADR | ADR-0026 D5 |
 | A12 | **新 IPC 面无 fuzz 语料**；8 MiB 上限未端到端实跑；broker 的 FRAME_TOO_LARGE 分支未单测 | T1 | AGENTS §6；G6 = 24h 无 crash | §8.1-6、DC-37 |
