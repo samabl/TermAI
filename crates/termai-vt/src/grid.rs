@@ -730,6 +730,11 @@ impl Grid {
 
     /// Resize the grid, preserving the overlapping top-left region.
     pub fn resize(&mut self, cols: u16, rows: u16) {
+        // A resize to the same dimensions is a no-op. It must not disturb the scrolling region,
+        // saved cursor or alt buffer; the conformance adapter issues RESIZE after every feed.
+        if cols == self.cols && rows == self.rows {
+            return;
+        }
         let old_cols = self.cols;
         let old_rows = self.rows;
         let mut next = vec![Cell::BLANK; usize::from(cols) * usize::from(rows)];
@@ -765,6 +770,20 @@ impl Grid {
         self.scroll_bottom = rows.saturating_sub(1);
         self.tab_stops = default_tab_stops(cols);
         self.combining.clear();
+        self.mark_full();
+    }
+
+    /// Soft reset (DECSTR / CSI ! p): state only, never the screen contents.
+    ///
+    /// xterm's DECSTR returns the scrolling region to the full screen, homes the cursor and
+    /// clears saved state. It deliberately does NOT erase the screen - which is why it cannot
+    /// reuse `reset()` below, since that rebuilds the grid via `Grid::new`.
+    fn soft_reset(&mut self) {
+        self.scroll_top = 0;
+        self.scroll_bottom = self.rows.saturating_sub(1);
+        self.cursor_row = 0;
+        self.cursor_col = 0;
+        self.wrap_pending = false;
         self.mark_full();
     }
 
@@ -1805,6 +1824,9 @@ impl Grid {
                     self.print(ch);
                 }
             }
+            // DECSTR (soft reset). esctest issues this before every case, and with no handler
+            // the scrolling region leaked from one case into the next.
+            b'p' if intermediates == [b'!'] => self.soft_reset(),
             b'p' if intermediates == [b'$'] || intermediates == [b'?', b'$'] => {
                 self.decrqm(params, private);
             }
