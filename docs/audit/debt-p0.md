@@ -34,7 +34,7 @@
 >
 > **四条出口**：E-P0-1 **未判定** ｜ E-P0-2 **未实现** ｜ E-P0-3 **未判定** ｜ E-P0-4 **部分**。
 >
-> **全部门禁（第 100 轮实跑）**：`kernel-gates` **8 PASS / 0 FAIL**；`conformance` **gating 64/64（R=1.0）**、ctlseqs 208/208、**G1: NOT_JUDGED**；`bench:check` **7 PASS / 0 FAIL** 但 **gating INCONCLUSIVE / REFERENCE_MACHINE_UNAVAILABLE**（`gatingNumbersProduced: 0`）。
+> **全部门禁（第 128 轮实跑复核，结论与第 100 轮一致）**：`kernel-gates` **8 PASS / 0 FAIL**；`conformance` **gating 64/64（R=1.0）**、ctlseqs 208/208、**G1: NOT_JUDGED**；`bench:check` **7 PASS / 0 FAIL** 但 **gating INCONCLUSIVE / REFERENCE_MACHINE_UNAVAILABLE**（`gatingNumbersProduced: 0`）。
 >
 > **E-P0-1 当前口径（已过 AR-27 两次运行自检，失败集合逐字节相同）**：**267 passed / 41 known-bug / 259 failed / substitutions 0**，调用必须带 `-- --expected-terminal xterm --xterm-checksum 336`（缺它会得到 110/117 一类**伪失败**，见计划 §6.3 规则 8）。
 >
