@@ -11,7 +11,7 @@ HARNESS §7 对 P0 的出口标准是四条，本文只做拆解，**不得改�
 
 | # | P0 出口（HARNESS §7 原文） | 判定载体 | 当前状态 |
 | --- | --- | --- | --- |
-| **E-P0-1** | vttest + esctest 全通过 | §8.1-1 **G1**（vttest/esctest/kitty 100%；xterm ≥99%，差异登记在案） | **未判定（已有可执行数字）**：harness 已落地，L0 gating **64/64（R=1.0）**，但语料 **275 / AR-31 的 ≥2000**、**真实语料 0% / ≥20%**——后者**环境阻塞**（需 Xvfb + 钉定 xterm 的 oracle 环境，见 SD-20 段）；esctest 逐 commit 可复现但当前 **110 passed / 414 failed**；**vttest 本机无法构建**（无 C 编译器） |
+| **E-P0-1** | vttest + esctest 全通过 | §8.1-1 **G1**（vttest/esctest/kitty 100%；xterm ≥99%，差异登记在案） | **未判定（已有可执行数字）**：harness 已落地，L0 gating **64/64（R=1.0）**，但语料 **275 / AR-31 的 ≥2000**、**真实语料 0% / ≥20%**——后者**环境阻塞**（需 Xvfb + 钉定 xterm 的 oracle 环境，见 SD-20 段）；esctest 当前 **267 passed / 41 known-bug / 259 failed / substitutions 0**（**必须带 `-- --expected-terminal xterm --xterm-checksum 336`**；缺该参数时 esctest 会对每格校验和取反，得出 110/117 一类的**伪失败**，见 §6.3 规则 8），**已通过 AR-27 两次运行自检**（两次结果与失败集合逐字节相同）；**vttest 本机无法构建**（无 C 编译器） |
 | **E-P0-2** | 三平台 IME/CJK 矩阵全绿 | §8.2 可访问性 + `kernel/05` IN-AC-04（截图矩阵 + 人工会签，AR-31 第 4 条：不进 §5） | **未实现**：无原生窗口 / GPU / IME 宿主；且渲染依赖（wgpu/rustybuzz/swash/winit）在本环境**无法取得 SPDX 证据**（ADR-0015 P3 未知即拒绝）→ ADR-0024 只落地了**零依赖的镜像切片** |
 | **E-P0-3** | 性能门禁进 CI | §8.1-4 **G4**（§5 全部门禁；AR-27 的 G4-PR / G4-REL 双口径）+ ADR-0014（RM-A/B/C，云 runner NON-GATING） | **未判定**：B-10 方法学已落地并自证（`bench:check` 7 PASS / `bench:selftest` 54/54），但 **§5 每条指标的测量实现未做**，且**无 RM-A/B/C 参考机** → 工具每次打印 `gating numbers produced by this run: 0` |
 | **E-P0-4** | screen 可恢复 | §8.2 可靠性（UI 崩溃 <2s 重连且屏幕一致；sessiond 重建 P95 ≤2s / P99 ≤5s，AR-26 第 4 条） | **部分**：`recover_session` + **attach 握手（WS-05a）** + **TAIL_REPLAY（WS-05b / ADR-0026）** 已交付；但 **sessiond 重建 P95/P99 的验收未做**、**跨段重放未实现**、且 sessiond 目前**不持有 PTY**（真实生命周期仍在 `apps/termai`） |
