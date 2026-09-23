@@ -335,7 +335,7 @@ tests/bench/
 | 自检 | §3.6 的 D0（场景冻结）与 D1（双跑一致，`eps_self` 5%）**先于**门禁与基线比较；`assertReproducible()` 同样适用 |
 | 报告口径 | 走 §3.7 的 `bench-report.json`；`metric` 以 `reliability.` 前缀与 §5 指标区分；顶层 `verdict` 四态不变 |
 
-**登记分离的机器保证（待实现）**：`tools/bench` 的 `B3` 只校验 `SECTION5_MAPPING` 与 §3.9；`RELIABILITY_MAPPING` 由**它自己的**完整性检查（无缺号、无重复、每条有 owner / carrier）校验，**不得**复用 `MAPPING_ROW_COUNT` / `OUT_OF_TABLE_IDS` 的口径。
+**登记分离的机器保证（已实现：`tools/bench` 的门禁 `B9` + `reliability.mjs`）**：`tools/bench` 的 `B3` 只校验 `SECTION5_MAPPING` 与 §3.9；`RELIABILITY_MAPPING` 由**它自己的**完整性检查（无缺号、无重复、每条有 owner / carrier）校验，**不得**复用 `MAPPING_ROW_COUNT` / `OUT_OF_TABLE_IDS` 的口径。
 
 **本机状态**：无 RM-A → 本节任何数值一律 `INCONCLUSIVE`；判定人待 TSC（OQ-19 / C1）。
 

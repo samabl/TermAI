@@ -12,7 +12,7 @@
 >
 > **四条出口**：E-P0-1 **未判定** ｜ E-P0-2 **未实现** ｜ E-P0-3 **未判定** ｜ E-P0-4 **部分**。
 >
-> **全部门禁（~~第 144 轮实跑复核：六个 check 与四个 selftest 全绿~~ **第 243 轮更正：七对 check/selftest**——**tokens／design／kernel／bench／conformance／ci-cost／audit-claims**，与 `GATE_PAIRS` 一致；第 232 轮加入 `audit-claims` 后未同步本行）**：`kernel-gates` **8 PASS / 0 FAIL**；`conformance` **gating 64/64（R=1.0）**、ctlseqs 208/208、**G1: NOT_JUDGED**；`bench:check` **7 PASS / 0 FAIL** 但 **gating INCONCLUSIVE / REFERENCE_MACHINE_UNAVAILABLE**（`gatingNumbersProduced: 0`）。
+> **全部门禁（~~第 144 轮实跑复核：六个 check 与四个 selftest 全绿~~ **第 243 轮更正：七对 check/selftest**——**tokens／design／kernel／bench／conformance／ci-cost／audit-claims**，与 `GATE_PAIRS` 一致；第 232 轮加入 `audit-claims` 后未同步本行）**：`kernel-gates` **8 PASS / 0 FAIL**；`conformance` **gating 64/64（R=1.0）**、ctlseqs 208/208、**G1: NOT_JUDGED**；`bench:check` ~~**7 PASS / 0 FAIL**~~ → **8 PASS / 0 FAIL（第 257 轮 ADR-0029 D-4 加 B9）** 但 **gating INCONCLUSIVE / REFERENCE_MACHINE_UNAVAILABLE**（`gatingNumbersProduced: 0`）。
 >
 > **E-P0-1 当前口径（已过 AR-27 自检；**第 145 轮在当前树上第三次确认——失败集合与第 97 轮逐字节相同**，说明第 98–144 轮的全部改动（CI 接线、`A10` 三部件、四个 selftest、K8 配对强制）**没有引入任何回归**）**：**267 passed / 41 known-bug / 259 failed / substitutions 0**，调用必须带 `-- --expected-terminal xterm --xterm-checksum 336`（缺它会得到 110/117 一类**伪失败**，见计划 §6.3 规则 8）。
 >
@@ -498,7 +498,7 @@ pub fn replay_window_check(read: &SegmentRead, from_seq: u64, head: u64)   // �
 | --- | --- | --- |
 | **E-P0-1** | 曾写「110 passed / 414 failed」 | ❌ **漂移**（第 39 轮已撤回的伪失败数字）→ **第 98 轮已修**为 **267/41/259/0 + 必备参数 + AR-27 自检** |
 | **E-P0-2** | 未实现：无原生窗口/GPU/IME 宿主；渲染依赖**拿不到 SPDX 证据**（ADR-0015 P3 未知即拒绝）；ADR-0024 只落地零依赖镜像切片 | ✅ **一致**（本会话新增的 VRM/VrmState 属 UI 层切片，不改出口状态） |
-| **E-P0-3** | 未判定：B-10 方法学已落地并自证（`bench:check` 7 PASS / ~~`bench:selftest` 54/54~~ → **第 256 轮为 65/65**），**§5 机器无关行的读取路径已落地**，但**实测仍缺**（本机只产得出 H18 与表外对照 C1）、无 RM-A/B/C → 每次打印 `gating numbers produced: 0`（**该 0 第 255 轮起是计算值，不是常量**） | ✅ **一致**（第 97 轮再次确认该数为 NON_GATING） |
+| **E-P0-3** | 未判定：B-10 方法学已落地并自证（`bench:check` ~~7 PASS~~ → **第 257 轮为 8 PASS（ADR-0029 D-4 加 B9）** / ~~`bench:selftest` 54/54~~ → **第 256 轮为 65/65、第 257 轮为 74/74**），**§5 机器无关行的读取路径已落地**，但**实测仍缺**（本机只产得出 H18 与表外对照 C1）、无 RM-A/B/C → 每次打印 `gating numbers produced: 0`（**该 0 第 255 轮起是计算值，不是常量**） | ✅ **一致**（第 97 轮再次确认该数为 NON_GATING） |
 | **E-P0-4** | 部分：`recover_session` + attach 握手 + TAIL_REPLAY 已交付；但 **sessiond 重建 P95/P99 验收未做**、跨段重放未实现、**sessiond 不持有 PTY** | ✅ **一致**（与 A8/A9 登记相符） |
 
 **结论**：**审计只发现一处漂移，已修；其余三行可以直接信任。** 并记下漂移的成因作为教训：**我更正的是细节，没回头改总表**——**总表被引用得最多，也最容易过期**。**因此「改数字时必须同时改总表」应当成为一条固定动作**（与第 86 轮的「验证与提交分离」同类：都是把纪律写成两个独立步骤）。

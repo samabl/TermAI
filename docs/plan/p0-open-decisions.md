@@ -43,7 +43,7 @@
 
 **需要 owner 补的（第 226 轮补写）**：① **P0 是否应答这四个序列**（建议 ① 不应答）；② **「不应答」的记录位置**——**进 K-04 差异表，还是写进 `kernel/01` §3.5 子集清单**（后者更彻底：把「不在子集内」变成明文而非默认）。**⚠ 第 226 轮核实：`OSC 4/10/11/12` 在 `HARNESS.md`、`docs/spec/*`、`docs/spec/kernel/*` 中**零命中**——**即：规范对此完全沉默**，**因此这不是「澄清规范」，而是**一项新的规范决定**（按 §11 的 CR 规则，改变 AR/DC 结论者须走 RFC → 新 ADR）。**
 
-## D-3 `DA` / `DA2` / `DECID` 的**设备身份**——**已由 ADR-0029 D-3 关闭（第 256 轮）：采兼容身份（与钉定 xterm oracle 逐字节一致），理由是 V-02 要求 `X=0`；`TERM_PROGRAM=TermAI` 继续如实自报**
+## D-3 `DA` / `DA2` / `DECID` 的**设备身份**——**已由 ADR-0029 D-3 关闭（第 256 轮）**，**⚠ 其「与钉定 xterm oracle 逐字节一致」已于第 257 轮由 [ADR-0030](../adr/ADR-0030-d3-vt-level-and-device-attributes.md) 更正**：DA 断言是**集合包含 + 范围**，级别 5 的 expected 要求声称本实现没有的能力（违反 AR-20）；**改为按规则声明 VT 级别（当前 = 1）并满足该级别断言**（DA1=`CSI ? 1;2 c`、DA2=`CSI > 0;314;0 c`、DECID 依 OQ-VT-14 仅非 UTF-8 模式）
 
 **被阻塞**：**约 4–6 条**（`DATests` 2、`DA2Tests` 2、`DECIDTests` 1；`DECID` 是 DA 的过时形式）。
 
@@ -94,7 +94,7 @@
 
 **被阻塞**：**E-P0-3 的「§5 每条指标的测量实现」（第 142 轮发现）**。
 
-**事实（已核实）**：**ADR-0014 的实现位置一行写着 `crates/termai-xtask（bench / perf-gate / matrix / dist / sign）`，而该 crate 不存在**（目录不存在、`Cargo.toml` 零提及）；**实际存在且已被门禁验证的是 Node 工具** `tools/bench`（B1–B7 + `--selftest` + `--report` + `--machine`）。
+**事实（已核实）**：**ADR-0014 的实现位置一行写着 `crates/termai-xtask（bench / perf-gate / matrix / dist / sign）`，而该 crate 不存在**（目录不存在、`Cargo.toml` 零提及）；**实际存在且已被门禁验证的是 Node 工具** `tools/bench`（~~B1–B7~~ → **B1–B9（第 257 轮 ADR-0029 D-4 加 B9）** + `--selftest` + `--report` + `--machine`）。
 
 | 选项 | 含义 | 代价 |
 | --- | --- | --- |
@@ -175,7 +175,7 @@
 | ② 值的进入（读取路径） | ~~❌ **要建的东西**（`--report` 现只校验 schema）~~ → **✅ 第 255 轮已落地**：`tools/bench/values.mjs` + `B8` 扩展（schema 校验 + §5 行绑定） |
 | ③ 值的呈现（标 NON_GATING） | ~~❌ 缺~~ → **✅ 第 255 轮已落地**：机器无关行逐行呈现，**缺席者打印 `NOT REPORTED`（显式，不静默省略）**；表外对照 `C1` 单独一行 |
 | ④ 计数器（从常量改为计算值） | ~~❌ 缺~~ → **✅ 第 255 轮已落地**：`gatingNumbersProduced` 由读取到的、声明 `gating:true` 的 metric 计算 |
-| ⑤ 验收（注入 + 对照 + 注入 gating 行使 `B7` FAIL） | ~~❌ 待写~~ → **✅ 第 255 轮已落地**：`bench:selftest` **63/63**（第 256 轮经 ADR-0029 D-5 增为 **65/65**），含「去掉 H18 → 显式未报告」「H19 被误标 → unit+gate 不匹配」「`gating:true` → B7 FAIL」及其对照 |
+| ⑤ 验收（注入 + 对照 + 注入 gating 行使 `B7` FAIL） | ~~❌ 待写~~ → **✅ 第 255 轮已落地**：`bench:selftest` **63/63**（第 256 轮经 ADR-0029 D-5 增为 **65/65**、第 257 轮经 ADR-0029 D-4 增为 **74/74**），含「去掉 H18 → 显式未报告」「H19 被误标 → unit+gate 不匹配」「`gating:true` → B7 FAIL」及其对照 |
 
 **结论**：**这是一件「不改动已冻结契约、只新增读取与呈现」的工作**——**在 P0 的出口里，这种性质的工作不多，而这也是它值得被排在「可立即开工」的原因。**
 **✅ 第 190 轮：D-6 的最后一处未知已查清——「值」的进入路径不存在，这是任务真正要建的东西**。**已核实**：**`--report <p>` 的用途在 `check.mjs:9` 的自述里写得很清楚**——「**additionally schema-validate a bench-report.json**」——**即：它**只做 schema 校验**，**不读取其中的测量值**（`:928`/`:927` 解析参数，`:696` 遍历 `status.reports` **只取 parseError 与校验错误**）。**结合前几轮**：**`bench` 能做的三件事是**——**① 校验报告的 schema（B8/B1–B3）**、**② 用合成夹具评估判定逻辑（B6）**、**③ 声明不产出 gating 数字（B7，其判据已死）**。**它不能做的事是**：**接收真实的测量值，并把它们作为 NON_GATING 列出来。**
@@ -234,7 +234,7 @@
 | **对照** | **同一输入补齐后，该行的 NON_GATING 值必须出现**——**以排除「它只是什么都不报」** |
 | **不得越过 `B7`** | 上述两种情形下 `gatingNumbersProduced` **都必须保持 0** |
 
-**这三条与 `kernel-gates --selftest`（~~23/23~~ **24/24**）、`bench:selftest`（**65/65**）、`conformance selftest`、`ci-cost --selftest` 是同一形态**：**新增呈现路径必须被证明「能报出它该报的东西」，而不只是「跑得通」**。
+**这三条与 `kernel-gates --selftest`（~~23/23~~ **24/24**）、`bench:selftest`（~~65/65~~ **74/74（第 257 轮）**）、`conformance selftest`、`ci-cost --selftest` 是同一形态**：**新增呈现路径必须被证明「能报出它该报的东西」，而不只是「跑得通」**。
 **✅ 第 184 轮：E-P0-3 在本机的可执行任务，现在是完全指定的（D-6 的收束）**。**已核实**：`node tools/bench/check.mjs --json` 目前**只报状态与计数**——`"state": "INCONCLUSIVE"`、`"gatingNumbersProduced": 0`、`"detail": "no reference machine on this host: every discovered value is NON_GATING / INCONCLUSIVE and 0 gating…"`——**没有任何逐行的 NON_GATING 值**（JSON 里不存在 `values` / `nonGating` 数组）。
 
 **因此任务定义为**：

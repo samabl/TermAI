@@ -3,9 +3,9 @@
 > **逐节复核（第 204 轮，对照当时的代码与 CI）**：**§1 门禁清单 ✓ 完整（八条命令，含四项 selftest）｜§2 esctest ✓ 准确（命令含必备的 `-- --expected-terminal xterm --xterm-checksum 336`；期望 267/41/259/0 与实测一致）｜§3 两个探针 ✓ 准确（含 `alt_decsc` 的期望输出）｜§4 分诊三件套 ✓ 准确（含三条坑注）｜§5 验收顺序 ◐ 已补（原缺「改动门禁本身」的情形，见该节第 3 步）｜§6 环境缺口 ✓ 准确**。**复核方式为逐节读取并与代码/CI 现状对照，不是重跑全部命令**——**§1 的命令在第 199 轮已整串实跑（全绿）。**
 
 > 目的：把本会话的可运行操作知识集中到一页。每条命令给出：做什么 / 期望输出 / 它防的坑。
-> 口径基线（第 112 轮）：kernel-gates 8 PASS ｜ conformance gating 64/64 ｜ bench:check 7 PASS（gating INCONCLUSIVE）｜ esctest 267 passed / 41 known-bug / 259 failed / 0 substitutions，且污染 0。
+> 口径基线（第 112 轮）：kernel-gates 8 PASS ｜ conformance gating 64/64 ｜ bench:check ~~7 PASS~~ → **8 PASS（第 257 轮 ADR-0029 D-4 加 B9）**（gating INCONCLUSIVE）｜ esctest 267 passed / 41 known-bug / 259 failed / 0 substitutions，且污染 0。
 
-**第 114 轮已逐条实跑验证**：5 条门禁命令全部产出文档所述结果——① kernel-gates `8 PASS / 0 FAIL`；② selftest `result: PASS - every executed injection was caught; the gates are not always-green`；③ conformance `gating 64/64`、`G1: NOT_JUDGED`；④ bench:check `7 PASS / 0 FAIL`；⑤ ci-cost `state=UNDER_WARN`、`exit=0`。**手册本身是被验证过的，不是写下来就算的**（一份命令写错的手册比没有手册更糟）。
+**第 114 轮已逐条实跑验证**：5 条门禁命令全部产出文档所述结果——① kernel-gates `8 PASS / 0 FAIL`；② selftest `result: PASS - every executed injection was caught; the gates are not always-green`；③ conformance `gating 64/64`、`G1: NOT_JUDGED`；④ bench:check ~~`7 PASS / 0 FAIL`~~ → `8 PASS / 0 FAIL`（第 257 轮加 B9）；⑤ ci-cost `state=UNDER_WARN`、`exit=0`。**手册本身是被验证过的，不是写下来就算的**（一份命令写错的手册比没有手册更糟）。
 
 ## 0. 三条铁律（各由一次事故换来）
 
@@ -19,11 +19,11 @@
 node tools/kernel-gates/check.mjs            # 期望 summary: 8 PASS / 0 FAIL / 0 SKIP
 node tools/kernel-gates/check.mjs --selftest # 注入故障后仍能报红，证明门禁非恒绿
 npm run conformance                          # 期望 gating 64/64  R_strict=1  R_gate=1；G1: NOT_JUDGED
-npm run bench:check                          # 期望 7 PASS；gating INCONCLUSIVE / REFERENCE_MACHINE_UNAVAILABLE；值区块打印「0 of 3 reported (H17, H18, H19)」（未给 --report 时）
+npm run bench:check                          # 期望 8 PASS（第 257 轮加 B9）；gating INCONCLUSIVE / REFERENCE_MACHINE_UNAVAILABLE；值区块打印「0 of 3 reported (H17, H18, H19)」（未给 --report 时）
 node tools/ci-cost/check.mjs                 # 期望 state=UNDER_WARN，exit 0
 node tools/ci-cost/check.mjs --selftest      # 期望 3 分支如文档所述（2 注入 + 1 对照）
 node tools/conformance/selftest.mjs          # 期望 PASS（注入 1 条坏期望被捕获 + 对照成立）
-npm run bench:selftest                       # 期望 PASS - every injection was caught（第 256 轮：65/65）
+npm run bench:selftest                       # 期望 PASS - every injection was caught（~~第 256 轮：65/65~~ → 第 257 轮：74/74）
 ```
 
 坑：bench:check 的 **⚠ 第 201 轮更正**：**「0 不是失败」这一条在本机**目前**有两种原因，而手册此前只说了其中一种**——**手册的原话把 0 解释为「本机不是 RM-A/RM-C，§5 数字按 ADR-0014 一律 NON_GATING」（这是**设计意图**）；**但第 188/189 轮核实：`check.mjs:672` 的 `gatingNumbersProduced` 是**字面常量 0**，**没有任何代码从结果计算它**——**因此今天的 0 是**常量**，不是「算出来发现没有 gating 数字」。** **对读者的实际影响**：**不要因为这一行而以为工具「测量过并正确地拒绝给出门禁数字」**——**它目前没有测量**。**✅ 第 255 轮：D-6 第 ④ 步已做出来**——`gatingNumbersProduced` 现由 `tools/bench/values.mjs` 从读取到的、声明 `gating:true` 的 metric 计算（注入该行会让 `B7` FAIL，见 `bench:selftest` 63/63）；**但「本工具没有测量」仍成立**：机器无关行的值由 `--report` **读入**，不是它测出来的。 gatingNumbersProduced: 0 不是失败——本机不是 RM-A/RM-C，§5 数字按 ADR-0014 一律 NON_GATING。不要在云 runner 上声称性能达标。
@@ -31,10 +31,24 @@ npm run bench:selftest                       # 期望 PASS - every injection was
 ## 2. esctest（E-P0-1 的计数字段）
 
 ```powershell
-python tools/conformance/upstream/esctest_adapter.py --esctest <esctest2 检出> --out target/conformance/<name> -- --expected-terminal xterm --xterm-checksum 336
+python tools/conformance/upstream/esctest_adapter.py --esctest <esctest2 检出> --out target/conformance/<name> -- --expected-terminal xterm --xterm-checksum 336 --max-vt-level 1
 ```
 
-期望：*** 267 tests passed, 41 known bugs, 259 TESTS FAILED *** 与 substitutions=0。
+期望（**级别 1**，第 257 轮 ADR-0030 起必须显式声明级别）：*** 99 tests passed, 378 known bugs, 90 TESTS FAILED *** 与 substitutions=0。
+
+**第 257 轮（ADR-0030）：esctest 的数字必须连「级别 + eligible 分母」一起报，缺级别的数字不得引用。**
+规则：声明的 VT 级别 = xterm DA1 在该级别的 expected 集合**全部为已实现能力**的最高级别（当前 = **1**）；**禁止**按失败数选级别。
+本机实测（同一检出、同一命令，只换 `--max-vt-level`）：
+
+| level | passed | known-bug | failed | eligible = passed+failed |
+| --- | --- | --- | --- | --- |
+| **1（当前声明）** | 99 | 378 | **90** | 189 |
+| 2 | 105 | 369 | 93 | 198 |
+| 3 | 111 | 334 | 122 | 233 |
+| 4 | 266 | 43 | 258 | 524 |
+| 5（旧口径/默认） | 267 | 41 | **259** | 526 |
+
+低级别下的 known-bug 含大量**「因级别不足未运行」**的用例——报告必须单列为 `excluded_by_vt_level`，**不得**叙述成已知缺陷。**E-P0-1 的当前口径 = level 1：90 失败 / 189 eligible，另有 378 条按级别排除；两个数字必须并列**（这是换尺子，不是改善）。
 
 必须带 --xterm-checksum 336：缺它时 esctest 对每格校验和取反，得出 110/117 一类的伪失败（第 39 轮踩过）。
 单条复现（3 秒，替代 60 秒全量）：--include <Class.test> 必须放在 -- 之后（适配器自身不认它）。
@@ -70,7 +84,7 @@ node tools/conformance/triage-single.mjs <log> <ClassPrefix 或 ALL> <outRoot>
 
 1. 协议层：用探针确认行为变了。
 2. 单元/工作区：cargo test；cargo fmt；clippy -D warnings。
-3. 契约层：node tools/kernel-gates/check.mjs（8 PASS）。**⚠ 若你的改动**改动了门禁本身**（新增判据、改判据、改阈值），还必须跑该门禁的 selftest，并**为改动的那条分支加一条注入 + 一条对照**——`kernel-gates --selftest`（~~23/23~~ **24/24**）、`bench:selftest`（**65/65**）、`conformance selftest`、`ci-cost --selftest` 是四个现成范例。理由是本会话三次抓到的同一件事**：**一个「通过」的门禁不等于一个「能失败」的门禁**——`ci-cost` 的上限分支从未执行、`K4` 的 AR-03 检查因 TDZ 假绿、~~`B7` 的第三条判据由字面常量承担~~ **（第 255 轮已改为由读取值承担）**。**第 5 步管的是「被测对象」的对照，本句管的是「门禁自身」的对照，两者不可互替。**
+3. 契约层：node tools/kernel-gates/check.mjs（8 PASS）。**⚠ 若你的改动**改动了门禁本身**（新增判据、改判据、改阈值），还必须跑该门禁的 selftest，并**为改动的那条分支加一条注入 + 一条对照**——`kernel-gates --selftest`（~~23/23~~ **24/24**）、`bench:selftest`（~~65/65~~ **74/74（第 257 轮）**）、`conformance selftest`、`ci-cost --selftest` 是四个现成范例。理由是本会话三次抓到的同一件事**：**一个「通过」的门禁不等于一个「能失败」的门禁**——`ci-cost` 的上限分支从未执行、`K4` 的 AR-03 检查因 TDZ 假绿、~~`B7` 的第三条判据由字面常量承担~~ **（第 255 轮已改为由读取值承担）**。**第 5 步管的是「被测对象」的对照，本句管的是「门禁自身」的对照，两者不可互替。**
 4. 计数层：跑 esctest 并与改动前对比；变差就回滚（不留无收益改动）。
 5. 锁死：给收益写回归测试，且含负例对照（否则会退化成恒绿）。
 6. 记账：更新登记表与出口总表（改数字必须同时改总表——第 98 轮的漂移就是这么来的）。

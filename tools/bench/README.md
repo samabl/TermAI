@@ -11,7 +11,7 @@
 ## 命令
 
 ```text
-node tools/bench/check.mjs              # 运行 B1-B7（npm run bench:check）
+node tools/bench/check.mjs              # 运行 B1-B7 + B9（npm run bench:check）
 node tools/bench/check.mjs --selftest   # 注入故障，证明判定逻辑不是恒绿（npm run bench:selftest）
 node tools/bench/check.mjs --json       # 仅输出机器可读 JSON
 node tools/bench/check.mjs --report <p> # 校验 schema（B8）**并读取其中的值**，把每个 metric 绑定到它的 §5 行
@@ -26,11 +26,12 @@ node tools/bench/check.mjs --machine <p># 显式声明本机为已登记的 RM-A
 | --- | --- |
 | `lib.mjs` | schema 引擎 + bench-report / machine-fingerprint schema、稳定 JSON 与 sha256 指纹、§3.1 判定状态机 `evaluate()`、`regression()`（G4-PR / G4-REL）、`gateAndRegression()`、`assertReproducible()`（AR-27 自证）、指标族阈值策略、`classifyMachine()` 诚实边界 |
 | `registry.mjs` | HARNESS §5 的机器可读登记：H1…H19（19 条）+ 表外对照 C1；每条含 owner / 测量定义落点 / 门禁载体 / 是否 kernel/06 管辖 / 指标族 / 参考机；`mappingIntegrity()` 做缺号与重复校验 |
+| `reliability.mjs` | **HARNESS §8.2 可靠性时序的独立登记**（ADR-0029 D-4）：`R1` = sessiond 重建 P95 ≤2000ms、`R2` = P99 ≤5000ms（ms / 族 frame / 机器 RM-A / owner kernel/06）；每条含测量定义 / 载体 / kernel/06 §3.10 锚点；`reliabilityIntegrity()` 做**独立口径**的完整性校验（恰好两行、无缺号、无重复、每条有 owner / carrier / 测量定义），**不复用** `MAPPING_ROW_COUNT` / `OUT_OF_TABLE_IDS` |
 | `fixtures.mjs` | **合成逻辑夹具（不是测量值）**：只用于把状态机推过每个分支，绝不当结果上报、绝不与基线比对 |
 | `values.mjs` | **值的读取与呈现**（D-6 第 ②–④ 步）：把报告里的每个 metric **绑定到它声称的 §5 行**（unit / gate 必须等于 registry 的转录）；机器无关行的「未报告」是**显式**的；`gatingNumbersProduced` 从读取到的值计算 |
-| `check.mjs` | 门禁入口 B1–B8 + `--selftest` 65 条注入（第 256 轮） |
+| `check.mjs` | 门禁入口 B1–B9 + `--selftest` 74 条注入（第 257 轮：ADR-0029 D-4 加 B9 的 5 注入 + 3 对照 + 1 真实树基线；~~65 条（第 256 轮）~~） |
 
-## 门禁 B1–B8
+## 门禁 B1–B9
 
 | # | 门禁 | 校验什么 | 依据 |
 | --- | --- | --- | --- |
@@ -42,6 +43,22 @@ node tools/bench/check.mjs --machine <p># 显式声明本机为已登记的 RM-A
 | B6 | §3.1 状态机分支覆盖 | 6 条对照分支 + 21 条故障分支全部产出文档规定的裁决 | kernel/06 §3.1 |
 | B7 | 机器绑定诚实边界 | 无参考机时必须 NON_GATING / INCONCLUSIVE 且产出 0 个门禁数字 | ADR-0014 铁律 5、kernel/06 §6、AR-31 第 8 条 | **⚠ 第 202 轮注**：**「产出 0 个门禁数字」这一条目前是**恒真**的——`gatingNumbersProduced` 是 `check.mjs:672` 的**字面常量 0**，没有任何代码从结果计算它（第 188/189 轮核实）。** `B7` 的另外两条判据是活的（机器分类、无指纹情形）。**因此本行描述的是**要求**，不是**当下被强制的事实**；把计数器做成计算值是 `docs/plan/p0-open-decisions.md` D-6 的第 ④ 步。** **✅ 第 255 轮：该步已完成**——`gatingNumbersProduced` 现由 `values.mjs` 读取到的 metric 计算（声明 `gating:true` 者计入），注入一个产出 gating 数字的行会被 `B7` 判 FAIL；该注入与对照已进 `bench:selftest`（63/63）。**
 | B8 | 报告 schema 校验 **+ §5 行绑定**（`--report`，或树中存在报告时） | ① 对 bench-report.json 做 §3.7 校验；② 每个 metric 若指名某个 §5 行，其 `unit` / `gate` 必须等于 registry 的转录（否则 FAIL）；③ 机器无关行的「未报告」显式列出；文件不存在则 SKIP | kernel/06 §3.7、spec 07 §3.8.2、HARNESS §5 |
+| B9 | 可靠性登记完整性（HARNESS §8.2 / kernel/06 §3.10） | 每次从 kernel/06 §3.10 正文**重新推导** P95 / P99 门禁数（2000 / 5000 ms）；核对 `RELIABILITY_MAPPING` 与正文（指标名 / 门禁 / 族 / 机器绑定）；`reliabilityIntegrity()` 报错、正文不再含该契约、或登记与正文不一致 → FAIL；并断言 `SECTION5_MAPPING` 仍恰好 19 行、B1/B3 仍 PASS，且 `reliability.mjs` 的可执行代码（去注释后）未引用 §5 的登记口径 | ADR-0029 D-4、kernel/06 §3.10、AR-26 第 4 条 |
+
+## 可靠性时序登记与门禁 B9（ADR-0029 D-4 / kernel/06 §3.10）
+
+HARNESS §8.2 的「sessiond 重建 P95 ≤2s / P99 ≤5s」（AR-26 第 4 条）**不属于 §5 的十九行**，因此**不得**进入 `SECTION5_MAPPING`——那张表是 HARNESS §5 的逐字转录，B1/B3 每次从文档重新解析比对，加一行即是假转录（ADR-0029 D-4）。`reliability.mjs` 对这份契约做**容器同一、登记分离**：
+
+| 事实 | 落点 |
+| --- | --- |
+| 两行指标 | `R1` = `reliability.sessiond_rebuild.p95`（gate ≤2000ms）、`R2` = `reliability.sessiond_rebuild.p99`（gate ≤5000ms）；`unit: ms`、`statistic: p95/p99`、`family: frame`、`machine: RM-A`、`owner: kernel/06` |
+| 契约来源 | kernel/06 §3.10（门禁行 2000 / 5000、指标族 frame、机器绑定 RM-A、Run 定义、自检 §3.6 D0/D1 + `assertReproducible()`、报告走 §3.7 `bench-report.json` 且 `metric` 以 `reliability.` 前缀区分） |
+| 完整性 | `reliabilityIntegrity()`：恰好两行、无缺号（R1/R2）、无重复、统计量集合恰为 p95/p99、每条有 owner / carrier / 测量定义 / §3.10 锚点 |
+| 独立性 | **不 import、不复用** `MAPPING_ROW_COUNT` / `OUT_OF_TABLE_IDS` / `SECTION5_MAPPING`；B9 扫描 `reliability.mjs` 的可执行代码（去注释后）确认未出现这三个标识符与 `registry.mjs` |
+| 门禁 B9 | 每次从正文重新推导两个门禁数；正文不再含该契约、登记与正文不一致、或 `reliabilityIntegrity()` 报错 → FAIL；并断言 §5 仍恰好 19 行、B1/B3 仍 PASS（**B1/B3 的行为不变**） |
+| 本机状态 | 无 RM-A → 本节任何数值一律 `INCONCLUSIVE` / `NON_GATING`；判定人待 TSC（kernel/06 §3.10「本机状态」） |
+
+第 257 轮 B9 的自证：`--selftest` 为它加了 5 条注入（重复行、缺 R2、缺 owner、门禁数与正文不符、正文不再含 §3.10）+ 3 条对照，另加 1 条真实树基线——`bench:selftest` 由 **65/65** 变为 **74/74**。
 
 ## bench-report 字段对照（kernel/06 §3.7 逐字）
 

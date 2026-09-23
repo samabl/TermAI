@@ -3,7 +3,7 @@
 // TermAI bench measurement-methodology gate (merge-blocking for the tooling itself).
 // Zero external dependencies, Node >= 22, Windows / macOS / Linux.
 //
-//   node tools/bench/check.mjs              # run B1-B7
+//   node tools/bench/check.mjs              # run B1-B7 + B9
 //   node tools/bench/check.mjs --selftest   # prove the judgement logic is not always-green
 //   node tools/bench/check.mjs --json       # machine-readable JSON only
 //   node tools/bench/check.mjs --report <p> # additionally schema-validate a bench-report.json
@@ -17,6 +17,7 @@
 //   B5 machine-fingerprint determinism                 (same input same hash; any field change changes it)
 //   B6 kernel/06 3.1 state machine branch coverage     (synthetic logic fixtures, not measurements)
 //   B7 machine-binding honesty boundary                (ADR-0014: no RM-A / RM-C -> no gate number)
+//   B9 reliability mapping integrity                  (ADR-0029 D-4 / kernel/06 3.10; own mapping, B1/B3 untouched)
 //
 // What this tool does NOT do: it does not measure anything. Production numbers come from
 // cargo xtask bench on RM-A / RM-C (crates/termai-bench, tests/bench/), which M0 has not built.
@@ -29,6 +30,7 @@ import { fileURLToPath } from 'node:url';
 
 import * as B from './lib.mjs';
 import * as R from './registry.mjs';
+import * as REL from './reliability.mjs';
 import * as F from './fixtures.mjs';
 import * as V from './values.mjs';
 
@@ -122,6 +124,38 @@ function parsePctCell(cell) {
   if (pct) return parseFloat(pct[1]) / 100;
   const plain = /(\d+(?:\.\d+)?)/.exec(cell);
   return plain ? parseFloat(plain[1]) : NaN;
+}
+
+// kernel/06 section 3.10 reliability timing block (ADR-0029 D-4): the text between the 3.10
+// heading and the next heading. Gate B9 re-derives the two thresholds from it on every run.
+function kernel06Section310(text) {
+  const lines = text.split(/\r?\n/);
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^###\s*3\.10(?:\s|$)/.test(lines[i].trim())) { start = i; break; }
+  }
+  if (start < 0) return null;
+  const out = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^#{1,3}\s/.test(lines[i].trim())) break;
+    out.push(lines[i]);
+  }
+  return out.join('\n');
+}
+
+// Re-derive "P95 <= 2000ms / P99 <= 5000ms" from the section 3.10 text. A null means the document
+// no longer states that threshold, which makes gate B9 FAIL rather than silently pass.
+function reliabilityThresholds(section) {
+  if (!section) return { p95: null, p99: null };
+  const p95 = /P95\s*(?:≤|<=)\s*\*{0,2}(\d+)\*{0,2}\s*ms/.exec(section);
+  const p99 = /P99\s*(?:≤|<=)\s*\*{0,2}(\d+)\*{0,2}\s*ms/.exec(section);
+  return { p95: p95 ? parseInt(p95[1], 10) : null, p99: p99 ? parseInt(p99[1], 10) : null };
+}
+
+// Strip // and /* */ comments so the B9 independence check reads executable code only (the header
+// comment of reliability.mjs names the section-5 identifiers on purpose, in prose).
+function stripJsComments(src) {
+  return String(src).replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
 }
 
 // JSON key names inside a fenced JSON example (the fingerprint example carries // comments, so a
@@ -934,6 +968,46 @@ function runSelftest(root) {
   st.check('inject: an out-of-table control counted into H1..H19 is caught', !R.mappingIntegrity().ids.some(function (id) { return R.OUT_OF_TABLE_IDS.indexOf(id) >= 0; }), 'C1 stays outside the 19');
   st.check('control: H1..H19 are contiguous and unique', R.mappingIntegrity().ok, 'count=' + R.MAPPING_ROW_COUNT);
 
+  // --- reliability mapping integrity (ADR-0029 D-4 / kernel/06 3.10): its own registry and its
+  //     own integrity口径, plus the injections that prove gate B9 can fail.
+  const relIntegrity = REL.reliabilityIntegrity();
+  st.check('control: RELIABILITY_MAPPING R1/R2 are contiguous and unique', relIntegrity.ok, 'count=' + REL.RELIABILITY_MAPPING.length + ', statistics=' + relIntegrity.ids.join(','));
+
+  const relDup = REL.RELIABILITY_MAPPING.concat([REL.RELIABILITY_MAPPING[0]]);
+  const rRelDup = REL.reliabilityIntegrity(relDup);
+  st.check('inject: a duplicated reliability row is caught', !rRelDup.ok && hasCode(rRelDup, 'RELIABILITY_DUPLICATE') && hasCode(rRelDup, 'RELIABILITY_ROW_COUNT'), errorCodes(rRelDup));
+
+  const relGap = REL.RELIABILITY_MAPPING.filter(function (r) { return r.id !== 'R2'; });
+  const rRelGap = REL.reliabilityIntegrity(relGap);
+  st.check('inject: dropping R2 (P99) is caught as a gap + statistic-set violation', !rRelGap.ok && hasCode(rRelGap, 'RELIABILITY_GAP') && hasCode(rRelGap, 'RELIABILITY_STATISTIC_SET'), errorCodes(rRelGap));
+
+  const relNoOwner = REL.RELIABILITY_MAPPING.map(function (r) { return Object.assign({}, r); });
+  delete relNoOwner[0].owner;
+  delete relNoOwner[0].carrier;
+  delete relNoOwner[0].measurementDefinition;
+  const rRelNoOwner = REL.reliabilityIntegrity(relNoOwner);
+  st.check('inject: a reliability row without owner/carrier/definition is caught', !rRelNoOwner.ok
+    && hasCode(rRelNoOwner, 'RELIABILITY_MISSING_OWNER')
+    && hasCode(rRelNoOwner, 'RELIABILITY_MISSING_CARRIER')
+    && hasCode(rRelNoOwner, 'RELIABILITY_MISSING_DEFINITION'), errorCodes(rRelNoOwner));
+
+  const s310 = kernel06Section310(docs.kernel06);
+  const s310thresholds = reliabilityThresholds(s310);
+  st.check('control: kernel/06 3.10 thresholds 2000 / 5000 are re-derived from the text', s310thresholds.p95 === 2000 && s310thresholds.p99 === 5000, 'P95=' + s310thresholds.p95 + ', P99=' + s310thresholds.p99);
+
+  const wrongGate = REL.RELIABILITY_MAPPING.map(function (r) { return Object.assign({}, r); });
+  wrongGate[0].gate = 2500;
+  const rWrongGate = gateB9(root, docs, wrongGate);
+  const wrongGateHit = rWrongGate.notes.some(function (n) { return /registry gate is 2500/.test(n); });
+  st.check('inject: a mapping whose P95 gate disagrees with kernel/06 3.10 makes B9 fail', rWrongGate.status === STATUS.FAIL && wrongGateHit,
+    rWrongGate.detail + (wrongGateHit ? ' -- cause: ' + rWrongGate.notes.filter(function (n) { return /registry gate is 2500/.test(n); })[0] : ' -- the injected gate mismatch was NOT the cause'));
+
+  const no310 = Object.assign({}, docs, { kernel06: docs.kernel06.replace(/###\s*3\.10[\s\S]*?(?=\n##\s)/, '') });
+  const rNo310 = gateB9(root, no310);
+  st.check('inject: a document that no longer states the 3.10 thresholds makes B9 fail', rNo310.status === STATUS.FAIL, rNo310.detail);
+
+  st.check('control: gate B9 on the real tree passes', gateB9(root, docs).status === STATUS.PASS, gateB9(root, docs).detail);
+
   // --- state-machine faults
   const caseResults = runCases();
   for (const r of caseResults) {
@@ -996,7 +1070,7 @@ function runSelftest(root) {
   // --- the real gates must still be green on the real tree
   const realGates = [
     gateB1(root, docs), gateB2(root, docs), gateB3(root, docs), gateB4(root, docs),
-    gateB5(root), gateB6(root), gateB7(root, status),
+    gateB5(root), gateB6(root), gateB7(root, status), gateB9(root, docs),
   ];
   for (const g of realGates) st.check('baseline ' + g.id + ' on the real tree passes', g.status === STATUS.PASS, g.status + ' ' + g.detail);
 
@@ -1063,6 +1137,89 @@ function gateB8(status) {
   return gate('B8', TITLE, STATUS.PASS, "report satisfies kernel/06 3.4 / 3.7 and every metric that names a section 5 row carries that row's registered unit and gate", notes);
 }
 
+// --------------------------------------------------- B9 reliability mapping integrity (ADR-0029 D-4)
+
+// HARNESS section 8.2 reliability timing is registered under its OWN mapping, separate from the
+// section-5 mapping that B1/B3 transcribe literally. This gate re-derives the two AR-26 item 4
+// thresholds from kernel/06 3.10 on every run, runs the independent reliabilityIntegrity(), and
+// asserts that the B1/B3 transcription domain is untouched.
+function gateB9(root, docs, mapping) {
+  const TITLE = 'reliability mapping integrity (HARNESS 8.2 / kernel/06 3.10)';
+  const list = mapping || REL.RELIABILITY_MAPPING;
+  const problems = [];
+  const notes = [];
+
+  const section = kernel06Section310(docs.kernel06);
+  if (!section) {
+    problems.push('kernel/06 section 3.10 heading not found; the ADR-0029 D-4 contract must be re-read');
+  }
+  const thresholds = reliabilityThresholds(section);
+  if (thresholds.p95 === null || thresholds.p99 === null) {
+    problems.push('kernel/06 3.10 no longer states both thresholds as "P95 ... Nms / P99 ... Nms" (re-derived P95=' + String(thresholds.p95) + ', P99=' + String(thresholds.p99) + '); AR-26 item 4 / HARNESS 8.2 require 2000 / 5000');
+  }
+
+  const integrity = REL.reliabilityIntegrity(mapping);
+  for (const e of integrity.errors) problems.push(e.message);
+
+  const byStat = {};
+  for (const r of list) byStat[r.statistic] = r;
+  const expected = [
+    { stat: 'p95', gate: thresholds.p95, metric: 'reliability.sessiond_rebuild.p95' },
+    { stat: 'p99', gate: thresholds.p99, metric: 'reliability.sessiond_rebuild.p99' },
+  ];
+  for (const e of expected) {
+    const row = byStat[e.stat];
+    if (!row) { problems.push('the reliability registry has no ' + e.stat + ' row'); continue; }
+    if (e.gate !== null && row.gate !== e.gate) {
+      problems.push(row.id + ' (' + e.stat + '): the registry gate is ' + row.gate + ' but kernel/06 3.10 says ' + e.gate);
+    }
+    if (row.metric !== e.metric) {
+      problems.push(row.id + ': metric is ' + JSON.stringify(row.metric) + ' but kernel/06 3.10 names ' + JSON.stringify(e.metric));
+    } else if (section && (section.indexOf('reliability.sessiond_rebuild.') < 0 || section.indexOf('.' + e.stat) < 0)) {
+      // The document writes the pair as `reliability.sessiond_rebuild.p95` / `.p99`, so the second
+      // row's full name is present only as the ".p99" shorthand; accept either spelling.
+      problems.push(row.id + ': kernel/06 3.10 no longer names the ' + e.stat + ' metric (reliability.sessiond_rebuild.' + e.stat + ' or the ".N" shorthand)');
+    }
+  }
+  if (section) {
+    if (section.indexOf('RM-A') < 0) problems.push('kernel/06 3.10 no longer binds the rows to RM-A; the machine binding must be re-derived');
+    if (section.indexOf('frame') < 0) problems.push('kernel/06 3.10 no longer names the frame family; the metric-family grade must be re-derived');
+  }
+  if (docs.kernel06.indexOf('RELIABILITY_MAPPING') < 0) {
+    problems.push('kernel/06 no longer names RELIABILITY_MAPPING; the registration-separation contract must be re-read');
+  }
+
+  // The section-5 transcription domain is untouched: exactly 19 rows and both transcription gates
+  // still pass. This is what "B1/B3 must not change" means as a machine check.
+  if (R.MAPPING_ROW_COUNT !== 19 || R.SECTION5_MAPPING.length !== 19) {
+    problems.push('SECTION5_MAPPING has ' + R.SECTION5_MAPPING.length + ' row(s) (MAPPING_ROW_COUNT=' + R.MAPPING_ROW_COUNT + '); HARNESS section 5 requires exactly 19 and the reliability mapping must not live there');
+  }
+  const b1 = gateB1(root, docs);
+  if (b1.status !== STATUS.PASS) problems.push('B1 regressed: ' + b1.detail);
+  const b3 = gateB3(root, docs);
+  if (b3.status !== STATUS.PASS) problems.push('B3 regressed: ' + b3.detail);
+
+  // Independent口径: reliability.mjs must not import or reuse the section-5 registry口径.
+  let reliabilitySrc = null;
+  try { reliabilitySrc = readText(root, 'tools/bench/reliability.mjs'); } catch (e) { reliabilitySrc = null; }
+  if (reliabilitySrc === null) {
+    problems.push('tools/bench/reliability.mjs not found; the independent RELIABILITY_MAPPING must exist');
+  } else {
+    const code = stripJsComments(reliabilitySrc);
+    for (const forbidden of ['MAPPING_ROW_COUNT', 'OUT_OF_TABLE_IDS', 'SECTION5_MAPPING', 'registry.mjs']) {
+      if (code.indexOf(forbidden) >= 0) problems.push('reliability.mjs references ' + forbidden + ' in executable code; section 3.10 forbids reusing the section-5 registry口径');
+    }
+  }
+
+  if (problems.length) {
+    return gate('B9', TITLE, STATUS.FAIL, problems.length + ' reliability-mapping violation(s)', problems.slice(0, 12));
+  }
+  notes.push('kernel/06 3.10 thresholds re-derived from the document on every run: P95 <= ' + thresholds.p95 + 'ms / P99 <= ' + thresholds.p99 + 'ms');
+  notes.push('RELIABILITY_MAPPING: ' + list.length + ' row(s) ' + integrity.ids.join(', ') + ' (' + list.map(function (r) { return r.statistic + '=' + r.gate; }).join(', ') + '); independent integrity口径, no reuse of MAPPING_ROW_COUNT / OUT_OF_TABLE_IDS / SECTION5_MAPPING');
+  notes.push('B1/B3 transcription domain untouched: SECTION5_MAPPING still has ' + R.SECTION5_MAPPING.length + ' rows and both gates pass');
+  return gate('B9', TITLE, STATUS.PASS, 'reliability rows match kernel/06 3.10 (P95/2000ms, P99/5000ms), the registration is separate from SECTION5_MAPPING, and B1/B3 are unaffected', notes);
+}
+
 function main(argv) {
   const args = parseArgs(argv);
   const root = args.root ? path.resolve(args.root) : DEFAULT_ROOT;
@@ -1081,8 +1238,12 @@ function main(argv) {
   ];
 
   // The report gate runs when --report was given or a report was discovered; the default run on a
-  // tree with no report keeps the seven structural gates B1-B7.
+  // tree with no report keeps the eight structural gates B1-B7 + B9.
   if (args.report || status.reports.length) gates.push(gateB8(status));
+
+  // B9 is structural and always runs (ADR-0029 D-4): the reliability mapping keeps its own
+  // registry, separate from the SECTION5_MAPPING that B1/B3 transcribe.
+  gates.push(gateB9(root, docs));
 
   const report = buildReport(root, gates, status);
   if (args.json) {
