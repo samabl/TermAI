@@ -81,6 +81,19 @@ $s | & .\target\debug\termai-vt-conformance.exe --server
 **同时解释了第 61/63 轮的「无效果」**：那两次 `cargo build` 输出 `Finished ... in 0.04s` 且**没有 `Compiling` 行**——**量的是未含改动的旧二进制**。**教训：`cargo build` 必须看到 `Compiling termai-vt` 才算重建；否则测的是旧产物。**
 
 **仍未解**：同一份 exe 直接 `FEED` 得到第 4 行，但**经适配器跑 esctest 仍是 `got 24`**（passed 仍 224 / failed 302）。**差异在适配器发送的内容或其建立的状态，不在此改动**。**因此那两条用例不声称已修好**；下一步：对单条用例 dump 适配器实际 FEED 的字节。
+### A4 附：第 65 轮——单条用例的 3 秒复现回路（下一轮直接用）
+
+**复现一条失败用例，不必跑 60 秒全量**（注意：`--include` 与 `--v` 都是 **esctest 参数，必须放在 `--` 之后**；适配器自己不认识它们）：
+
+```powershell
+python tools/conformance/upstream/esctest_adapter.py --esctest C:\Users\z5075\AppData\Local\Temp\termai-conformance-upstream\esctest2 `
+  --out target/conformance/dbgcud -- --expected-terminal xterm --xterm-checksum 336 `
+  --include test_CUD_StopsAtBottomMarginInScrollRegion --v 2
+```
+
+**已确认**：单条运行**照样复现**（`0 passed / 1 failed`，`got 24`），所以这个回路可用于快速迭代。
+
+**但 `esctest.log` 里没有线缆字节**（`--v 2` 不含发送序列），所以下一步必须在**适配器边界**取数，二选一：① 临时在 `esctest_adapter.py` 的 `link.feed` 处打印 `data.hex()`（改一行，用完撤）；② 用适配器的 `--harness` 参数指向一个**会 tee stdin 的包装脚本**，再把包的 stdin 落盘。**取到真实 FEED 字节后，与第 64 轮手工 FEED 的 `1b5b323b3472 1b5b333b3148 1b5b393942` 逐字节比对**——差异就是答案。
 ## B. 尚未闭合的契约 / 规格登记（SD 系列）
 
 | 编号 | 内容 | 状态 |
