@@ -28,7 +28,7 @@ node tools/bench/check.mjs --machine <p># 显式声明本机为已登记的 RM-A
 | `registry.mjs` | HARNESS §5 的机器可读登记：H1…H19（19 条）+ 表外对照 C1；每条含 owner / 测量定义落点 / 门禁载体 / 是否 kernel/06 管辖 / 指标族 / 参考机；`mappingIntegrity()` 做缺号与重复校验 |
 | `fixtures.mjs` | **合成逻辑夹具（不是测量值）**：只用于把状态机推过每个分支，绝不当结果上报、绝不与基线比对 |
 | `values.mjs` | **值的读取与呈现**（D-6 第 ②–④ 步）：把报告里的每个 metric **绑定到它声称的 §5 行**（unit / gate 必须等于 registry 的转录）；机器无关行的「未报告」是**显式**的；`gatingNumbersProduced` 从读取到的值计算 |
-| `check.mjs` | 门禁入口 B1–B8 + `--selftest` 63 条注入 |
+| `check.mjs` | 门禁入口 B1–B8 + `--selftest` 65 条注入（第 256 轮） |
 
 ## 门禁 B1–B8
 
@@ -112,6 +112,8 @@ runner / commit / toolchain / ts + 顶层 commit）逐字保留」）。任一�
 2. **H18 的值是 53 而不是 26**。`tokens:check` 第 5 关对**三个** HTML 文件给数（netcatty 27 / prototype 26 / terminal-first 0），只取其中一个不是 §5 门禁「= 0」所指的量。
 
 **本机可得性（环境问题，不是排期问题）**：**H18** 的值在本机可得（`tokens:check` 第 5 关，warn-only）；**H17** 需 `design:check` 的浏览器层（本机无 `CHROME_PATH`）；**H19** 需 RM-C 的 golden 像素渲染（本机无渲染管线）。**因此本机可产出的 §5 行目前只有 H18，另加表外对照 C1**——其余行在报告里缺席是如实的 `NOT REPORTED`，不是失败。
+
+**H13 / B7（ADR-0029 D-5）**：`gatingNumbersProduced` 只计**机器绑定**的门禁数字——`H13`（安装包，`governed: yes` 且 `machine: none`）可以声明 `gating: true` 而不触发 `B7`；`H18`（`governed: no`）声明 `gating: true` 是**假的**，由 `B8` 的行绑定判为违规。
 
 **SD-24（已登记）**：kernel/06 §3.4 把「网格对齐 / 视觉 golden」的**测量**绑到 **RM-C**，而 registry 对 H17 / H19 写 `machine: 'none'`（因为它们的**门禁判定**归 `tools/design-gates`）。本工具跟随 registry；这条「测量机器 vs 判定机器」的分歧见 `docs/plan/p0-spec-defects.md` SD-24。
 

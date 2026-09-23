@@ -256,7 +256,7 @@ export const SECTION5_MAPPING = [
     unit: 'pct',
     statistic: 'exact',
     apm: null,
-    notes: 'Judgeable only in the L0 parser lane (AR-25 item 1). Gate B1/B3 record this row; the measurement itself belongs to kernel/05 and G1/G2.',
+    notes: 'Judgeable only in the L0 parser lane (AR-25 item 1). Gate B1/B3 record this row; the measurement itself belongs to kernel/05 and G1/G2. ADR-0029 D-6 defines governed="partial" as exactly this split (method from kernel/06, corpus and lane from kernel/05 + G1/G2), so this row is NOT one of the machine-free rows the value reader expects.',
   },
   {
     id: 'H13',

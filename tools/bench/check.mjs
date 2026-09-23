@@ -986,6 +986,13 @@ function runSelftest(root) {
     return v.gatingNumbersProduced === 0 && gateB7(root, s).status === STATUS.PASS;
   })(), 'counter=0, B7=PASS');
 
+  // ADR-0029 D-5: only machine-bound gate numbers count.
+  const h13Gating = V.collectValues([{ rel: 'synthetic-h.json', json: F.syntheticMetricsReport([F.syntheticMetricRow('H13', { value: 40, unit: 'MiB', gate: 60, gating: true, verdict: 'NON_GATING' })]) }]);
+  const h13Status = Object.assign({}, status, { gatingNumbersProduced: h13Gating.gatingNumbersProduced, gatingSources: h13Gating.gating, values: h13Gating });
+  st.check('control: H13 (a gate row with no reference machine) may declare gating=true without failing B7', h13Gating.gatingNumbersProduced === 0 && h13Gating.problems.length === 0 && gateB7(root, h13Status).status === STATUS.PASS, 'counter=' + h13Gating.gatingNumbersProduced + ', binding problems=' + h13Gating.problems.length + ', B7=' + gateB7(root, h13Status).status);
+  const h18Gating = V.collectValues([{ rel: 'synthetic-i.json', json: F.syntheticMetricsReport([F.syntheticMetricRow('H18', { value: 53, unit: 'count', gate: 0, gating: true, verdict: 'NON_GATING' })]) }]);
+  st.check('inject: H18 (governed: no) declaring gating=true is caught as a binding problem', h18Gating.problems.length === 1 && /not a gate/.test(h18Gating.problems[0]), h18Gating.problems.join(' | '));
+
   // --- the real gates must still be green on the real tree
   const realGates = [
     gateB1(root, docs), gateB2(root, docs), gateB3(root, docs), gateB4(root, docs),

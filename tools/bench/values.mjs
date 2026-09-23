@@ -13,6 +13,9 @@
 // Honesty boundary (AR-20 / ADR-0014 iron law 5): every value read here is NON_GATING on a host with
 // no registered RM-A / RM-C fingerprint. A metric that declares gating=true is counted by
 // gatingNumbersProduced and makes gate B7 fail; check.mjs owns that counter, this file only finds it.
+// ADR-0029 D-5 narrows that counter: only a **machine-bound** gate number counts. H13 (package bytes,
+// governed yes, machine none) is a release gate that no reference machine judges, so it may declare
+// gating=true; H18 (governed no) is not a gate, so declaring gating=true there is a binding violation.
 
 import * as R from './registry.mjs';
 
@@ -62,8 +65,10 @@ export function bindMetric(metric, row) {
   if (metric.gate !== row.gate) {
     problems.push(row.id + ': gate mismatch -- the registry says ' + row.gate + ' but the report says ' + String(metric.gate));
   }
-  if (row.machine === 'none' && metric.gating === true) {
-    problems.push(row.id + ': the metric declares gating=true but this row is not a machine gate (registry machine: none); a value here must never be presented as a gate number');
+  // ADR-0029 D-5: a row that is NOT a gate (governed: no) must not declare gating=true; a gate row
+  // that merely has no reference machine (H13: governed yes, machine none) may.
+  if (row.machine === 'none' && row.governed === 'no' && metric.gating === true) {
+    problems.push(row.id + ': the metric declares gating=true but this row is not a gate (registry governed: no); a value here must never be presented as a gate number');
   }
   return problems;
 }
@@ -85,7 +90,11 @@ export function collectValues(reportFiles) {
     const m = e.metric || {};
     const id = String(m.metric);
     const row = registryRow(id);
-    if (m.gating === true) gating.push({ source: e.source, id: id, value: m.value });
+    // ADR-0029 D-5: count only machine-bound gate numbers; an unbound metric is counted fail-closed
+    // (we cannot prove it is not machine-bound).
+    if (m.gating === true && (!row || row.machine === 'RM-A' || row.machine === 'RM-C')) {
+      gating.push({ source: e.source, id: id, value: m.value });
+    }
     if (!row) {
       unbound.push({ source: e.source, id: id });
       continue;
