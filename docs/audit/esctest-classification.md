@@ -4,16 +4,16 @@
 > Implementation set read from crates/termai-vt/src/grid.rs (set_private_mode / set_standard_mode):
 > private 1/6/7/25/47/1047/1049/2004, standard 4.
 
-- tests classified: 308
-- uses-unimplemented-mode: 81
-- no-extension-mode (core-defect candidates): 227 (of which 218 make no DECSET/DECRESET/DECRQM call at all)
+- tests classified: 287
+- uses-unimplemented-mode: 80
+- no-extension-mode (core-defect candidates): 207 (of which 198 make no DECSET/DECRESET/DECRQM call at all)
 - unresolved: 0
 
 ## Top unimplemented modes among failing tests
 
 | mode | failing tests citing it |
 | --- | --- |
-| 69 | 72 |
+| 69 | 71 |
 | 40 | 5 |
 | 45 | 4 |
 | 3 | 4 |
@@ -30,11 +30,9 @@
 | BSTests.test_BS_WrapsInWraparoundMode | 7 |
 | CBTTests.test_CBT_ExplicitParameter | - |
 | CBTTests.test_CBT_OneTabStopByDefault | - |
-| CBTTests.test_CBT_StopsAtLeftEdge | - |
 | CHTTests.test_CHT_ExplicitParameter | - |
 | CHTTests.test_CHT_OneTabStopByDefault | - |
-| CUDTests.test_CUD_StopsAtBottomMarginInScrollRegion | - |
-| CUUTests.test_CUU_StopsAtTopMarginInScrollRegion | - |
+| CUUTests.test_CUU_StopsAtTopLineWhenBegunAboveScrollRegion | - |
 | ChangeColorTests.test_ChangeColor_CIELab | - |
 | ChangeColorTests.test_ChangeColor_CIELuv | - |
 | ChangeColorTests.test_ChangeColor_CIEXYZ | - |
@@ -79,6 +77,7 @@
 | DA2Tests.test_DA2_NoParameter | - |
 | DATests.test_DA_0 | - |
 | DATests.test_DA_NoParameter | - |
+| DCHTests.test_DCH_WorksOutsideTopBottomMargin | - |
 | DECBITests.test_DECBI_Basic | - |
 | DECBITests.test_DECBI_WholeScreenScrolls | - |
 | DECCRATests.test_DECCRA_defaultValuesInDest | - |
@@ -172,9 +171,6 @@
 | DECSERATests.test_DECSERA_ignoresMargins | - |
 | DECSERATests.test_DECSERA_overlyLargeSourceClippedToScreenSize | - |
 | DECSERATests.test_DECSERA_respectsOriginMode | - |
-| DECSETTests.test_DECSET_ALTBUF | - |
-| DECSETTests.test_DECSET_OPT_ALTBUF | - |
-| DECSETTests.test_DECSET_OPT_ALTBUF_CURSOR | - |
 | DECSETTests.test_DECSET_ReverseWraparoundLastCol_BS | 7 |
 | DECSETTests.test_DECSET_ReverseWraparound_BS | 7 |
 | DECSETTests.test_DECSET_ReverseWraparound_Multi | 7 |
@@ -182,19 +178,13 @@
 | DECSETTiteInhibitTests.test_SaveRestoreCursor_Basic | - |
 | DECSETTiteInhibitTests.test_SaveRestoreCursor_MoveToHomeWhenNotSaved | - |
 | DECSETTiteInhibitTests.test_SaveRestoreCursor_Reset | - |
+| DECSETTiteInhibitTests.test_SaveRestoreCursor_ResetsOriginMode | - |
 | DECSETTiteInhibitTests.test_SaveRestoreCursor_WorksInLRM | - |
-| DECSTBMTests.test_DECSTBM_CursorBelowRegionAtBottomTriesToScroll | - |
-| DECSTBMTests.test_DECSTBM_ScrollsOnNewline | - |
-| DECSTBMTests.test_DECSTBM_TopOfZeroIsTopOfScreen | - |
+| DECSTRTests.test_DECSTR_CursorStaysPut | - |
 | DECSTRTests.test_DECSTR_DECSC | - |
-| DLTests.test_DL_InScrollRegion | - |
-| DLTests.test_DL_OutsideScrollRegion | - |
 | ECHTests.test_ECH_respectsISOProtection | - |
 | EDTests.test_ED_respectsISOProtection | - |
 | ELTests.test_EL_respectsISOProtection | - |
-| FFTests.test_FF_ScrollsInTopBottomRegionStartingAbove | - |
-| FFTests.test_FF_ScrollsInTopBottomRegionStartingWithin | - |
-| FFTests.test_FF_StopsAtBottomLineWhenBegunBelowScrollRegion | - |
 | HTSTests.test_HTS_Basic | - |
 | INDTests.test_IND_ScrollsInTopBottomRegionStartingAbove | - |
 | INDTests.test_IND_ScrollsInTopBottomRegionStartingWithin | - |
@@ -205,11 +195,7 @@
 | NELTests.test_NEL_ScrollsInTopBottomRegionStartingAbove | - |
 | NELTests.test_NEL_ScrollsInTopBottomRegionStartingWithin | - |
 | NELTests.test_NEL_StopsAtBottomLineWhenBegunBelowScrollRegion | - |
-| REPTests.test_REP_RespectsTopBottomMargins | - |
 | RISTests.test_RIS_ResetTitleMode | - |
-| RITests.test_RI_ScrollsInTopBottomRegionStartingBelow | - |
-| RITests.test_RI_ScrollsInTopBottomRegionStartingWithin | - |
-| RITests.test_RI_StopsAtTopLineWhenBegunAboveScrollRegion | - |
 | ResetColorTests.test_ResetColor_All | - |
 | ResetColorTests.test_ResetColor_Standard | - |
 | ResetSpecialColorTests.test_ResetSpecialColor_Dynamic | - |
@@ -220,17 +206,11 @@
 | SCORCTests.test_SaveRestoreCursor_AltVsMain | - |
 | SCORCTests.test_SaveRestoreCursor_Reset | - |
 | SCORCTests.test_SaveRestoreCursor_WorksInLRM | - |
-| SDTests.test_SD_OutsideTopBottomScrollRegion | - |
-| SDTests.test_SD_RespectsTopBottomScrollRegion | - |
 | SMTests.test_SM_LNM | - |
-| SUTests.test_SU_OutsideTopBottomScrollRegion | - |
-| SUTests.test_SU_RespectsTopBottomScrollRegion | - |
 | TBCTests.test_TBC_0 | - |
 | TBCTests.test_TBC_3 | - |
 | TBCTests.test_TBC_Default | - |
-| VTTests.test_VT_ScrollsInTopBottomRegionStartingAbove | - |
-| VTTests.test_VT_ScrollsInTopBottomRegionStartingWithin | - |
-| VTTests.test_VT_StopsAtBottomLineWhenBegunBelowScrollRegion | - |
+| TBCTests.test_TBC_NoOp | - |
 | XtermSaveTests.test_XtermSave_SaveResetState | 7 |
 | XtermSaveTests.test_XtermSave_SaveSetState | 7 |
 | XtermWinopsTests.test_XtermWinops_DECSLPP | - |
