@@ -7,7 +7,7 @@
 >
 > 现状口径：**267 passed / 41 known-bug / 259 failed / substitutions 0**（同一调用、可复现）。
 
-## D-1 `SD-23`：HARNESS §7「esctest 全通过」的**判定域**（子集 vs 全集）
+## D-1 `SD-23`：HARNESS §7「esctest 全通过」的**判定域**（**§8 两条同强度条款中哪一条管辖**：套件 100%，还是 xterm ≥99%+差异登记——第 225 轮改）
 
 **被阻塞**：**约 69 条**（未登记扩展族 41 + 查询类 20 + xterm 专有 8），另加颜色 45、`XtermWinops` 19 的归属。
 
