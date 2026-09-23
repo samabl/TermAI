@@ -97,6 +97,7 @@ proposed ──accept──▶ accepted ──supersede──▶ superseded
 | ADR-0026 | TAIL_REPLAY 的传输形态、floor 语义与错误码（WS-05b errata） | Accepted | AR-04、AR-13、AR-26、AR-30、DC-22、DC-23、ADR-0023 D1 | `0x0502` 扩充为**双向**（C→S 请求 / S→C 重放）；floor **排他**且**无 floor 即拒绝**（不回退 watermark）；窗口不可满足（BelowWindow/AheadOfHead/TailUnreadable）一律**拒绝 + DROP_NOTICE**，绝不给短重放；复用 `AttachStateInvalid` 不新增码；事件子集只投影 5 类，新增 tag 须先出 ADR；线上 `confidence` 保持 f32（单位映射见 SD-21） |
 | ADR-0027 | 渲染/字体的第三方依赖准入（SPDX 待补） | **Proposed** | AR-01、AR-03、AR-14、AR-21、AR-24、DC-17、DC-21 | wgpu / winit / rustybuzz / swash / fontdb 及传递依赖的**候选清单 + 判定档位 + 验收程序**；**SPDX 列留空**（本环境无法取得许可证元数据）；表填满前任何 crate **不得进入 workspace 依赖**（ADR-0015 P3「未知即拒绝」）；同时登记 `termai-gpu` 新 crate 与 `termai-render → vt/gpu` 两条边 |
 | ADR-0028 | §5 测量与门禁的实现位置：以 `tools/bench` 为准 | Accepted | AR-19、AR-27、DC-23、ADR-0014 | ADR-0014 声明的 `crates/termai-xtask` 不存在；实际存在、且已被 B1–B8 逐字校验并已自证能失败（`bench:selftest`）的是 Node `tools/bench`。把实现与校验分属两处会立刻产生两套「有效测量」的定义。本 ADR 取代 ADR-0014 的两处实现位置引用。 |
+| ADR-0029 | P0 判定域、能力声明与 §8.2 测量归属 | Accepted | AR-18、AR-19、AR-20、AR-24.3、AR-25、AR-26.4、AR-30、AR-31 | esctest（kernel/01 **V-02**）与 xterm 语料（**V-04**）是**两个**套件：前者 `R_strict=1, X=0`、后者 ≥99%+差异——**D-1 的前提错误已更正，读法 B 被否决**（它构成 §8 放宽、需 TSC）；OSC 4/10/11/12 明文声明 v1 不实现 + `S_cap` 静态能力前置；DA/DA2/DECID 必须实现且与钉定 oracle 逐字节一致（声称集 ⊆ 实现集）；§8.2 可靠性测量入 kernel/06 §3.10 + 独立 `RELIABILITY_MAPPING`；`B7` 只约束**机器绑定**的门禁数字（H13 澄清） |
 
 ## 7. 命名与文件约定
 

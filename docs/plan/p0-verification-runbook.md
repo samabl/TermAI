@@ -23,7 +23,7 @@ npm run bench:check                          # 期望 7 PASS；gating INCONCLUSI
 node tools/ci-cost/check.mjs                 # 期望 state=UNDER_WARN，exit 0
 node tools/ci-cost/check.mjs --selftest      # 期望 3 分支如文档所述（2 注入 + 1 对照）
 node tools/conformance/selftest.mjs          # 期望 PASS（注入 1 条坏期望被捕获 + 对照成立）
-npm run bench:selftest                       # 期望 PASS - every injection was caught（第 255 轮：63/63）
+npm run bench:selftest                       # 期望 PASS - every injection was caught（第 256 轮：65/65）
 ```
 
 坑：bench:check 的 **⚠ 第 201 轮更正**：**「0 不是失败」这一条在本机**目前**有两种原因，而手册此前只说了其中一种**——**手册的原话把 0 解释为「本机不是 RM-A/RM-C，§5 数字按 ADR-0014 一律 NON_GATING」（这是**设计意图**）；**但第 188/189 轮核实：`check.mjs:672` 的 `gatingNumbersProduced` 是**字面常量 0**，**没有任何代码从结果计算它**——**因此今天的 0 是**常量**，不是「算出来发现没有 gating 数字」。** **对读者的实际影响**：**不要因为这一行而以为工具「测量过并正确地拒绝给出门禁数字」**——**它目前没有测量**。**✅ 第 255 轮：D-6 第 ④ 步已做出来**——`gatingNumbersProduced` 现由 `tools/bench/values.mjs` 从读取到的、声明 `gating:true` 的 metric 计算（注入该行会让 `B7` FAIL，见 `bench:selftest` 63/63）；**但「本工具没有测量」仍成立**：机器无关行的值由 `--report` **读入**，不是它测出来的。 gatingNumbersProduced: 0 不是失败——本机不是 RM-A/RM-C，§5 数字按 ADR-0014 一律 NON_GATING。不要在云 runner 上声称性能达标。
@@ -70,7 +70,7 @@ node tools/conformance/triage-single.mjs <log> <ClassPrefix 或 ALL> <outRoot>
 
 1. 协议层：用探针确认行为变了。
 2. 单元/工作区：cargo test；cargo fmt；clippy -D warnings。
-3. 契约层：node tools/kernel-gates/check.mjs（8 PASS）。**⚠ 若你的改动**改动了门禁本身**（新增判据、改判据、改阈值），还必须跑该门禁的 selftest，并**为改动的那条分支加一条注入 + 一条对照**——`kernel-gates --selftest`（~~23/23~~ **24/24**）、`bench:selftest`（**63/63**）、`conformance selftest`、`ci-cost --selftest` 是四个现成范例。理由是本会话三次抓到的同一件事**：**一个「通过」的门禁不等于一个「能失败」的门禁**——`ci-cost` 的上限分支从未执行、`K4` 的 AR-03 检查因 TDZ 假绿、~~`B7` 的第三条判据由字面常量承担~~ **（第 255 轮已改为由读取值承担）**。**第 5 步管的是「被测对象」的对照，本句管的是「门禁自身」的对照，两者不可互替。**
+3. 契约层：node tools/kernel-gates/check.mjs（8 PASS）。**⚠ 若你的改动**改动了门禁本身**（新增判据、改判据、改阈值），还必须跑该门禁的 selftest，并**为改动的那条分支加一条注入 + 一条对照**——`kernel-gates --selftest`（~~23/23~~ **24/24**）、`bench:selftest`（**65/65**）、`conformance selftest`、`ci-cost --selftest` 是四个现成范例。理由是本会话三次抓到的同一件事**：**一个「通过」的门禁不等于一个「能失败」的门禁**——`ci-cost` 的上限分支从未执行、`K4` 的 AR-03 检查因 TDZ 假绿、~~`B7` 的第三条判据由字面常量承担~~ **（第 255 轮已改为由读取值承担）**。**第 5 步管的是「被测对象」的对照，本句管的是「门禁自身」的对照，两者不可互替。**
 4. 计数层：跑 esctest 并与改动前对比；变差就回滚（不留无收益改动）。
 5. 锁死：给收益写回归测试，且含负例对照（否则会退化成恒绿）。
 6. 记账：更新登记表与出口总表（改数字必须同时改总表——第 98 轮的漂移就是这么来的）。
@@ -84,7 +84,7 @@ node tools/conformance/triage-single.mjs <log> <ClassPrefix 或 ALL> <outRoot>
 | 网络（仅非公网可达） | 渲染依赖的 SPDX 证据 → E-P0-2 无法准入 |
 | RM-A/B/C 参考机 | E-P0-3 的判定（接线已完成） |
 | 仓库设置 / 发起人 | C1 TSC、C2 CODEOWNERS 双签、C3 分支保护、C5 真实 CI 运行 |
-| **Chrome / Edge（`CHROME_PATH`）** | **`design:check` 的浏览器层（B4 视觉回归）：本机无浏览器时该门禁**判 FAIL**（`maxDiffPct=0` 无法比对），**而 CI 的 design job 会安装浏览器**。**第 250 轮实跑：`design:check` 得 `19 PASS / 1 FAIL`，唯一阻断项是 B4**——**因此「全绿」指的是**本机能跑的那些门禁**，设计门禁与 vttest 同属**环境受限** | **⚠ 第 251 轮补精确化**：**本机跑不了的只是 `design:check` 的**浏览器层**——**它的 `--selftest` 在本机**可以跑，且**通过**（**`injected faults caught: 19/19`**，**注入施加在临时副本上、原型源未被改动**）。**因此「环境受限」指的是**核查**，不是**自检**。**（同一轮实测：`tokens:selftest` 亦通过——**至此六个 selftest 在本机全部跑通**：kernel ~~23/23~~ **24/24（第 255 轮）**、bench **63/63（第 255 轮）**、ci-cost 3/3、conformance、tokens、design 19/19。）** **⚠ 第 252 轮再补：该门禁**半数可在本机跑****——**`design:check --static` 实测 `10 PASS / 0 FAIL / 10 SKIP`，result PASS，exit 0**（**10 个 SKIP 就是浏览器层的那些，工具明确标注「not executed: --static / --no-browser requested」**）。**因此准确的画像是**：**静态层（10 关）本机通过；浏览器层（10 关）本机无法执行——`--static` 下 SKIP，完整检查下因 B4 无法比对而 FAIL。** **而 CI 的 design job 正是分两步跑**（先 static layer、再 full）——**本机与 CI 的差别因此只在第二步。**
+| **Chrome / Edge（`CHROME_PATH`）** | **`design:check` 的浏览器层（B4 视觉回归）：本机无浏览器时该门禁**判 FAIL**（`maxDiffPct=0` 无法比对），**而 CI 的 design job 会安装浏览器**。**第 250 轮实跑：`design:check` 得 `19 PASS / 1 FAIL`，唯一阻断项是 B4**——**因此「全绿」指的是**本机能跑的那些门禁**，设计门禁与 vttest 同属**环境受限** | **⚠ 第 251 轮补精确化**：**本机跑不了的只是 `design:check` 的**浏览器层**——**它的 `--selftest` 在本机**可以跑，且**通过**（**`injected faults caught: 19/19`**，**注入施加在临时副本上、原型源未被改动**）。**因此「环境受限」指的是**核查**，不是**自检**。**（同一轮实测：`tokens:selftest` 亦通过——**至此六个 selftest 在本机全部跑通**：kernel ~~23/23~~ **24/24（第 255 轮）**、bench **65/65（第 256 轮）**、ci-cost 3/3、conformance、tokens、design 19/19。）** **⚠ 第 252 轮再补：该门禁**半数可在本机跑****——**`design:check --static` 实测 `10 PASS / 0 FAIL / 10 SKIP`，result PASS，exit 0**（**10 个 SKIP 就是浏览器层的那些，工具明确标注「not executed: --static / --no-browser requested」**）。**因此准确的画像是**：**静态层（10 关）本机通过；浏览器层（10 关）本机无法执行——`--static` 下 SKIP，完整检查下因 B4 无法比对而 FAIL。** **而 CI 的 design job 正是分两步跑**（先 static layer、再 full）——**本机与 CI 的差别因此只在第二步。**
 ## 7. 约定检查（文档自身的规则，可运行）
 
 ```powershell
