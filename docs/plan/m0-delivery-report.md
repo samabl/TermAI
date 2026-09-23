@@ -151,6 +151,30 @@ M0 实现期间本工作区**不是 git 仓库**，因此当时的交付**无法
 - **CODEOWNERS 与 PR 模板已建立**：`.github/CODEOWNERS` 逐条对齐 docs/spec/07 §3.1.2 的团队映射（T1 core-kernel / T2 shell-ux / T5 devex），并覆盖全部受版本控制的顶层目录；`.github/pull_request_template.md` 编码 AGENTS §6 的编号追溯、§2 的八条不可协商自检、HARNESS §8.1 六件套门禁与 AR-20 诚实声明。
 - **仍未完成（治理项）**：**分支保护未启用**，且 **E4 的「两侧各一名 reviewer」目前无法强制执行**——仓库只有一个所有者，同一人无法构成双签（HARNESS §11 OQ-19 的 TSC 尚未成立）。另需注意：GitHub 对 **未知的 CODEOWNERS 条目会静默忽略**，因此 `@termai/*` 团队与 `@samabl` 必须先确认可解析，否则规则会退化为空操作。这是 M1 开工前必须补上的治理项。
 
+### 6.2 GitHub Actions 实跑结果（推送到 https://github.com/samabl/TermAI 后自动触发）
+
+push 即构建已生效：run #35808461735（首次）与 run #35809183560（修复后）均由 `push` 事件自动触发，5 个作业全部在 `windows-latest` 上运行。
+
+| 作业 | run #1 | run #2 | 结论 |
+| --- | --- | --- | --- |
+| windows build（release 产物） | **success** | **success** | `termai` / `sessiond` / `pty_echo` 三个可执行文件稳定产出 |
+| tokens（codegen 漂移 + 对比度） | **success** | **success** | DC-09 幂等性在 CI 上成立 |
+| rust（termai-tokens fmt+check） | **success** | **success** | — |
+| kernel（K1–K7） | failure | failure | run #1 因工具链漂移连 K2 都红；run #2 **K1/K2/K4/K5/K6/K7 全 PASS，仅 K3 FAIL** |
+| design（S1–S10 + B1–B10） | failure | failure | run #1 崩在 `ReferenceError: WebSocket is not defined`；run #2 浏览器层真正跑起来，**19 PASS / 1 FAIL，仅 B4 FAIL** |
+
+**首次 push 暴露并已修复的两个 CI 环境缺陷（两者都不是代码缺陷，且本地无法预演）：**
+
+1. **Rust 工具链未锁定**：CI 解析 `stable` 得到 **1.98.0**，比本地 1.94.0 多出 `clippy::byte_char_slices` 等 lint，K2 在 `crates/termai-vt/src/vte_adapter.rs` 上因 10 处报错而失败。已加 **`rust-toolchain.toml` 锁定 1.94.0**（M0 全部门禁实际验证过的版本），并把 workflow 里的「安装 stable」步骤改为只读 `rustup show`。run #2 中 K2 转为 PASS，证明修复有效。
+2. **Node 版本不足**：CI 固定 Node 20，而设计门禁的 CDP 客户端需要**全局 `WebSocket`（Node ≥22）**。本地是 Node 26 所以从未暴露。已将 CI 与 `package.json engines` 统一提升到 **≥22**。run #2 中浏览器层不再崩溃并真正产出了 20 项门禁判定。
+
+**剩余两个失败（均非配置问题，需决策或需修产品）：**
+
+- **K3：ConPTY 在 GitHub 的 windows-latest 上以完全相同的方式失败**（子进程 `0xC0000142`、读到 0 字节、`live_children=0`），与本地一致。这**推翻**了「仅本机环境问题」的结论：两个相互独立的 Windows 主机（本机 + 干净 runner）同样复现，因此更可能是 **ConPTY 在 Windows Server / 非交互会话下的实现问题**，而不是参数接线。这是主平台（DC-16）的**真实产品缺陷**，不能用测试豁免掩盖。
+- **B4 视觉回归：7 个基线全部 MISMATCH**，diff 0.044%–1.245%（门禁要求 ≤0.1%，AA 容差为逐通道 ±2 且不允许有超差像素），`bbox` 覆盖整块卡片区域，属**基线来源环境不一致**（字体光栅化/Chrome 版本/DPI 差异）。B4 的比对必须由**与验证同一环境**生成基线才成立，而当前基线是开发机产物。修法明确：在 runner 上跑一次 `npm run design:baseline` 生成并入库，但这需要把产物从 runner 取回——现有 workflow 契约只允许 `actions/checkout` 与 `actions/setup-node`，加 `actions/upload-artifact` 需要一次 ADR 决策。
+
+> **结论**：**"push 后自动构建"已达成**（构建作业稳定绿、配置缺陷已修并在 CI 中验证）。但按 HARNESS §8.1，**当前 pipeline 仍是红的**：K3 是产品缺陷、B4 是基线环境问题，两者都不得标注为「已通过」。
+
 ## 7. 交付期发现的规格缺陷
 
 SD-01…SD-08，见 docs/plan/m0-spec-defects.md。
