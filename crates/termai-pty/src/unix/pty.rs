@@ -187,7 +187,7 @@ fn spawn_forkpty(cmd: &Command, sz: WinSize, o: SpawnOpts) -> Result<PtyHandle, 
             Some(list)
         }
     };
-    let mut envp: Vec<*const libc::c_char> = match &env_owned {
+    let envp: Vec<*const libc::c_char> = match &env_owned {
         Some(list) => {
             let mut pointers: Vec<*const libc::c_char> =
                 list.iter().map(|value| value.as_ptr()).collect();
@@ -206,6 +206,11 @@ fn spawn_forkpty(cmd: &Command, sz: WinSize, o: SpawnOpts) -> Result<PtyHandle, 
     };
 
     let mut master: libc::c_int = -1;
+    // forkpty takes winp as *mut winsize on Apple but *const winsize on Linux (libc
+    // 0.2.189: bsd/apple vs linux_like). A raw mutable pointer is the one form that
+    // coerces to both, and addr_of_mut! reaches the same place without forming a
+    // reference, so a single call compiles on every unix target. forkpty only reads
+    // the size, but the macro still needs a mutable place, hence the mut.
     let mut winsize = libc::winsize {
         ws_row: sz.rows,
         ws_col: sz.cols,
@@ -214,7 +219,14 @@ fn spawn_forkpty(cmd: &Command, sz: WinSize, o: SpawnOpts) -> Result<PtyHandle, 
     };
     // SAFETY: forkpty is called with valid out-pointers. In the child only
     // async-signal-safe calls (chdir / execve / execvp / _exit) are made.
-    let pid = unsafe { libc::forkpty(&mut master, ptr::null_mut(), ptr::null_mut(), &mut winsize) };
+    let pid = unsafe {
+        libc::forkpty(
+            &mut master,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::addr_of_mut!(winsize),
+        )
+    };
     if pid < 0 {
         return Err(PtyError::Io(IoError::last_os_error()));
     }
@@ -468,7 +480,9 @@ impl TreeOps for UnixTree {
                     return Ok(info);
                 }
                 WaitState::Gone => {
-                    let (code, signal) = *lock(&self.last_code);
+                    // Kill reports Sig::Kill below by contract; the recorded signal is
+                    // deliberately not reused here, so only the code is unpacked.
+                    let (code, _) = *lock(&self.last_code);
                     let info = ExitInfo {
                         code,
                         signal: Some(Sig::Kill),

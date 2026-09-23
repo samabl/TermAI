@@ -17,20 +17,40 @@
 # (>=22, because the design-gates CDP client needs a global WebSocket, which Node 20
 # does not have - the first CI run died on "ReferenceError: WebSocket is not defined").
 #
-# SCOPE (deliberate and temporary): every job runs on windows-latest.
-# Reasons: Windows x64 is the primary platform (DC-16 / ConPTY), and the visual baselines
-# committed in prototype/baseline are win32-x64, so the design gates are strongest here.
+# PLATFORM MATRIX - the v1 gate architecture is Win x64 + Linux x64 + macOS arm64
+# (ADR-0014 decision 2). Read this block before reading any green run as "P0 exit proven".
 #
-# DEVIATION TO TRACK - read before trusting this pipeline as "P0 green":
-# ADR-0014 makes Win x64 + Linux x64 + macOS arm64 the v1 gate architecture, so a
-# Windows-only pipeline does NOT satisfy the v1 platform gate. HARNESS section 7 still
-# requires the other two before P0 exit. Restoring them needs no new code:
-#   - The workspace already cross-checks clean for Linux:
-#       cargo check --workspace --all-targets --target x86_64-unknown-linux-gnu  -> exit 0
-#   - BUT K2 (clippy -D warnings) would FAIL on Linux today: the cfg(unix) forkpty path
-#     and the Windows-only test helpers emit warnings (unused variable/import, a struct
-#     that is never constructed). Clean those before adding the Linux job.
-#   - macOS arm64 has never been compiled anywhere yet.
+# windows-latest - the pre-existing runner and still the strongest one: Windows x64 is the
+#   primary platform (DC-16 / ConPTY) and the committed visual baselines are win32-x64.
+#
+# ubuntu-latest (linux-x64) - ADDED HERE, FIRST INTRODUCTION. Runs the identical kernel gate
+#   set K1-K8 plus the injection selftest, and the platform-independent Node gates (tokens,
+#   design static layer, design browser layer). The clippy blocker that stopped this job is
+#   gone: K2 was previously failing on the cfg(unix) forkpty path (unused mut/import, dead
+#   code) and those warnings are now fixed in crates/termai-pty. STILL UNVERIFIED: K1/K2
+#   were only ever checked cross-target from a Windows host
+#   (cargo clippy --workspace --all-targets --target x86_64-unknown-linux-gnu); K3
+#   (cargo test) and the Node gates have never run on Linux, so the first CI run of this job
+#   is the first real Linux signal. A red run here is a platform defect, not a flake.
+#   Visual note: B4 compares against prototype/baseline/<platform>-<arch>-*.png, which are
+#   win32-x64 only, so on this runner B4 SKIPs with the explicit "no baseline for linux-x64"
+#   reason; if Chrome is absent the whole B layer SKIPs with "Chrome not found". Both are
+#   printed and neither is a silent pass. No `|| true` is used anywhere.
+#
+# macos-latest (macos-arm64) - ADDED HERE, FIRST INTRODUCTION, NOT VERIFIED ON macOS.
+#   macOS has NEVER been compiled anywhere before this job. Local evidence is a cross
+#   `cargo clippy --workspace --all-targets --target aarch64-apple-darwin -- -D warnings`
+#   from a Windows host, which type-checks clean - but that is check-only: it does not link,
+#   it does not build blake3's native code and it runs no test. This job therefore exists to
+#   produce the first macOS signal, and must not be described as "macOS passes" until a green
+#   run exists. The job asserts the runner is arm64, because an Intel result would not
+#   satisfy ADR-0014.
+#
+# NOT IN THIS FILE (and therefore still blocking P0 exit, HARNESS section 7): the ADR-0014
+# gate machines RM-A / RM-B / RM-C and the gates that need them - L4 performance, L5 fuzz,
+# L6 12-combination shell x font matrix, L7 visual on RM-C, L8 soak. Cloud runners are
+# explicitly NON-GATING for every performance and compatibility number (ADR-0014 decision 1
+# rule 5), so a green CI run never substitutes for a reference-machine result.
 #
 # jobs:
 #   tokens        - design-token codegen is idempotent (no drift) + ruler/contrast/hex gates + validator selftest
@@ -40,7 +60,11 @@
 #   design-baseline - regenerate prototype/baseline on this runner; workflow_dispatch ONLY
 #                   (ADR-0022: a pixel baseline is an environment fingerprint)
 #   kernel        - tools/kernel-gates: K1 fmt / K2 clippy / K3 test / K4 dep shape / K5 license /
-#                   K6 spec-defects / K7 CODEOWNERS coverage, plus the injection selftest
+#                   K6 spec-defects / K7 CODEOWNERS coverage / K8 artifacts, plus the injection selftest
+#   linux-x64     - the same kernel gates on a native Linux x64 runner (ADR-0014), plus tokens and
+#                   the design static layer; browser B4 SKIPs without a linux-x64 baseline
+#   macos-arm64   - fmt / check / clippy / test on a native arm64 macOS runner (ADR-0014);
+#                   first introduction, UNVERIFIED until its first green run
 #   windows-build - release build of the whole workspace (the artifact-producing job)
 name: CI
 
@@ -223,7 +247,7 @@ jobs:
           if-no-files-found: error
 
   kernel:
-    name: kernel (K1-K7 fmt / clippy / test / dep-shape / license / defects / CODEOWNERS)
+    name: kernel (K1-K8 fmt / clippy / test / dep-shape / license / defects / CODEOWNERS / artifacts)
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -246,10 +270,93 @@ jobs:
       # console host, apps/termai/tests/e2e.rs fails with 0xC0000142 and zero bytes read;
       # that is a real platform defect being surfaced, not a flaky test, so it is reported
       # rather than skipped. crates/termai-pty/src/windows/conpty.rs carries the analysis.
-      - name: kernel:check (K1-K7, merge-blocking)
+      - name: kernel:check (K1-K8, merge-blocking)
         run: node tools/kernel-gates/check.mjs
       - name: kernel:selftest (inject faults; prove the gates are not always-green)
         run: node tools/kernel-gates/check.mjs --selftest
+
+  # ADR-0014 decision 2: Linux x64 is a first-class gate platform, so it gets a native
+  # runner instead of a cross-check issued from Windows. See the platform-matrix block at the
+  # top of this file for the exact verified / unverified split. Nothing here is allowed to
+  # pass silently: a missing browser or a missing linux-x64 baseline produces an explicit
+  # SKIP line with a reason.
+  linux-x64:
+    name: linux x64 (kernel K1-K8 + tokens + design static; browser B4 SKIPs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # rust-toolchain.toml pins 1.94.0 with rustfmt + clippy; rustup installs it on first
+      # use, so no third-party toolchain action is needed (ADR-0021 admits none).
+      # x86_64-unknown-linux-gnu is this runner's host triple, so no cross target is required
+      # and rust-toolchain.toml deliberately carries no "targets" entry for this job.
+      - name: Rust toolchain (pinned by rust-toolchain.toml)
+        run: |
+          rustup show
+          rustc -vV
+          cargo --version
+      - name: kernel:check (K1-K8, merge-blocking)
+        run: node tools/kernel-gates/check.mjs
+      - name: kernel:selftest (inject faults; prove the gates are not always-green)
+        run: node tools/kernel-gates/check.mjs --selftest
+      - name: Regenerate tokens and fail on artifact drift
+        run: |
+          node tools/tokens/build.mjs
+          git diff --stat -- packages/tokens crates/termai-tokens prototype/termai-ui-terminal-first.html
+          git diff --exit-code -- packages/tokens crates/termai-tokens prototype/termai-ui-terminal-first.html
+      - name: tokens:check (schema / rulers / WCAG contrast / drift / hex debt)
+        run: npm run tokens:check
+      - name: tokens:selftest (validator rejects injected faults)
+        run: npm run tokens:selftest
+      # The static layer is pure Node and runs in any environment (check-design.mjs header);
+      # --strict is explicit even though it is a no-op, same as the Windows design job.
+      - name: design:check static layer (S1-S10, no browser)
+        run: npm run design:check:static -- --strict
+      # The browser layer runs wherever Chrome is present (browser.mjs probes the standard
+      # Linux locations). B4 has no linux-x64 baseline and SKIPs with its own printed reason;
+      # with no Chrome at all the whole B layer SKIPs with "Chrome not found". A real B-layer
+      # FAIL must still block, so this step has no "|| true" and no continue-on-error.
+      - name: "design:check (full: static + browser, animation frozen)"
+        run: npm run design:check
+
+  # ADR-0014 decision 2: macOS arm64 is a first-class gate platform. This job is the first
+  # time the workspace is ever compiled on macOS, so it is labelled UNVERIFIED and must stay
+  # labelled that way until a green run exists. See the platform-matrix block at the top.
+  macos-arm64:
+    name: "macos arm64 (fmt + check + clippy + test) [first introduction, UNVERIFIED]"
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      # ADR-0014 makes macOS *arm64* the gate; an Intel image would produce a result that
+      # cannot be cited for the arm64 gate, so refuse it loudly instead of reporting green.
+      - name: Assert the runner is arm64 (ADR-0014)
+        run: |
+          uname -s
+          uname -m
+          if [ "$(uname -m)" != "arm64" ]; then
+            echo "::error::ADR-0014 makes macOS arm64 the v1 gate; this runner reports $(uname -m)"
+            exit 1
+          fi
+      - name: Rust toolchain (pinned by rust-toolchain.toml)
+        run: |
+          rustup show
+          rustc -vV
+          cargo --version
+      - name: cargo fmt --all -- --check
+        run: cargo fmt --all -- --check
+      - name: cargo check --workspace --all-targets
+        run: cargo check --workspace --all-targets
+      - name: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: cargo test --workspace
+        run: cargo test --workspace
 
   windows-build:
     name: windows build (release workspace artifacts)

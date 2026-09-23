@@ -1,8 +1,14 @@
 mod common;
 
+#[cfg(windows)]
 use std::sync::Arc;
 use std::time::Duration;
 
+// The F0 differential classifier below is exercised only by the ConPTY test, which is
+// Windows-only, so on unix it would be dead code and the imports unused. The group is
+// cfg-gated rather than silenced with an allow(): the helpers genuinely do not exist on
+// the unix path.
+#[cfg(windows)]
 use termai_pty::{bundled_rules, is_gate_failure, load_rules};
 
 /// The AR-25.2 probe payload: all 256 byte values, in order.
@@ -10,12 +16,14 @@ fn probe_payload() -> Vec<u8> {
     (0..=255u8).collect()
 }
 
+#[cfg(windows)]
 struct DiffReport {
     first_diff: Option<usize>,
     rules: Vec<&'static str>,
     detail: String,
 }
 
+#[cfg(windows)]
 fn is_subsequence(small: &[u8], large: &[u8]) -> bool {
     let mut index = 0;
     for byte in large {
@@ -26,16 +34,19 @@ fn is_subsequence(small: &[u8], large: &[u8]) -> bool {
     index == small.len()
 }
 
+#[cfg(windows)]
 fn count_byte(data: &[u8], needle: u8) -> usize {
     data.iter().filter(|byte| **byte == needle).count()
 }
 
+#[cfg(windows)]
 fn strip_cr(data: &[u8]) -> Vec<u8> {
     data.iter().copied().filter(|byte| *byte != b'\r').collect()
 }
 
 /// Per-byte differential (never sampling, AR-25.2). Each observed phenomenon is
 /// mapped to a registered conpty-rules.toml id.
+#[cfg(windows)]
 fn classify_f0(input: &[u8], output: &[u8]) -> DiffReport {
     let mut rules: Vec<&'static str> = Vec::new();
     if input == output {
