@@ -30,16 +30,23 @@ fn decstr_returns_the_region_to_full_screen_and_keeps_the_contents() {
         "DECSTR must not erase the screen"
     );
 }
-
 #[test]
-fn decstr_homes_the_cursor() {
+fn decstr_resets_the_saved_position_without_moving_the_cursor() {
+    // Corrected in round 86 against esctest's test_SaveRestoreCursor_Reset. The earlier version of
+    // this test asserted that DECSTR homes the cursor, which turned out to be wrong: a write after
+    // DECSTR must land where the cursor already was, while the SAVED position is reset to home.
     let mut t = Terminal::new(80, 24);
-    t.feed(b"\x1b[3;5H");
-    assert_eq!(t.grid().cursor(), (2, 4));
-    t.feed(b"\x1b[!p");
-    assert_eq!(t.grid().cursor(), (0, 0));
+    t.feed(b"\x1b[3;5H"); // cursor to (2, 4)
+    t.feed(b"\x1b7"); // DECSC
+    t.feed(b"\x1b[!p"); // DECSTR
+    assert_eq!(t.grid().cursor(), (2, 4), "DECSTR must not move the cursor");
+    t.feed(b"\x1b8"); // DECRC
+    assert_eq!(
+        t.grid().cursor(),
+        (0, 0),
+        "DECSTR must reset the saved position to home"
+    );
 }
-
 #[test]
 fn same_size_resize_does_not_disturb_the_scroll_region() {
     let mut t = Terminal::new(80, 24);
