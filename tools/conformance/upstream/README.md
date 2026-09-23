@@ -157,6 +157,10 @@ skip and never as a difference entry.
   cases (ChangeColorTests 13, ChangeDynamicColorTests 13, ChangeSpecialColorTests 14, ResetColorTests
   2, ResetSpecialColorTests 5) are excluded by that precondition. AR-20 forbids answering with a
   palette before colour rendering exists, so "not answered" is the honest capability state.
-- **Quote the level with the number** (ADR-0030 D-1): level 1 is 99 passed / 378 known-bug /
-  **90 failed** of 189 eligible; level 5 is 267 / 41 / **259** of 526. Known bugs that are really
-  "not run because the level is too low" must be reported separately as `excluded_by_vt_level`.
+- **Quote the level with the number** (ADR-0030 D-1): level 1 is **103 passed / 378 known-bug /
+  86 failed** of 189 raw eligible after the device-attribute work (**99 / 378 / 90** before it), and
+  level 5 is 267 / 41 / **259** of 526. Applying the `color-query` exclusion moves 47 cases out of
+  the judging set, so **gate-eligible = 189 - 47 = 142 and failed_real = 39**; do that with
+  `node tools/conformance/esctest-report.mjs --log <log>`, never by hand. Known bugs that are
+  really "not run because the level is too low" are reported as `excluded_by_vt_level: unknown`,
+  because the log carries no per-case level attribution and inventing a split would be a lie.

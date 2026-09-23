@@ -47,11 +47,20 @@ python tools/conformance/upstream/esctest_adapter.py --esctest <esctest2 检出>
 
 | level | passed | known-bug | failed | eligible = passed+failed |
 | --- | --- | --- | --- | --- |
-| **1（当前声明）** | 99 | 378 | **90** | 189 |
+| **1（当前声明）** | ~~99~~ **103**（第 261 轮，D-3 之后） | 378 | ~~**90**~~ **86** | 189（raw = passed+failed） |
 | 2 | 105 | 369 | 93 | 198 |
 | 3 | 111 | 334 | 122 | 233 |
 | 4 | 266 | 43 | 258 | 524 |
 | 5（旧口径/默认） | 267 | 41 | **259** | 526 |
+
+**raw 与 gate-eligible 不是一回事**（第 261 轮）：D-2 声明的 `color-query` 静态缺失会把 47 条 color 族失败移出判定集，因此 **gate-eligible = 189 − 47 = 142，failed_real = 86 − 47 = 39**。这个换算**必须由工具做，不许手算**：
+
+```powershell
+node tools/conformance/esctest-report.mjs --log target/conformance/lvl1-new/esctest.log
+node tools/conformance/esctest-report.mjs --selftest   # 7/7 注入被捕获
+```
+
+它输出 `claimed_vt_level`、`passed`、`known_bug_raw`、`failed_raw`、`excluded_by_capability`（按能力与前缀分列）、`failed_real`、`eligible = passed + failed_real`；`excluded_by_vt_level` **报为 `unknown`**——esctest 把「级别不足未运行」混进 `known_bug_raw`，log 里没有逐用例的级别归属，**编一个拆分就是伪造**。
 
 低级别下的 known-bug 含大量**「因级别不足未运行」**的用例——报告必须单列为 `excluded_by_vt_level`，**不得**叙述成已知缺陷。**E-P0-1 的当前口径 = level 1：90 失败 / 189 eligible，另有 378 条按级别排除；两个数字必须并列**（这是换尺子，不是改善）。
 

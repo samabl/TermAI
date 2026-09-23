@@ -47,6 +47,7 @@ ADR-0029 D-3 决定「`DA` / `DA2` / `DECID` 必须实现，且与钉定 oracle 
 3. esctest 的调用**必须显式传 `--max-vt-level <claimed>`**（禁用默认 5 的隐式口径），且 **G1 报告必须同时给出「级别」与「eligible 分母」**：**只有失败数、没有级别的数字不得被引用**（对齐 plan §6.3 规则 8：证据必须含产生它的确切命令）。
 4. 低级别下 known-bug 中混有大量**「因级别不足未运行」**的用例——报告必须把这一类**单列**为 `excluded_by_vt_level`，不得叙述成「已知缺陷」。
 5. E-P0-1 的口径由此**改写为**：「level 1 eligible 189 条，其中失败 90 条；另有 378 条因级别不足未运行」。**两个数字必须同时出现。**
+   > **勘误（第 261 轮，D-3 落地后实测；只改数字，不改语义）**：level 1 = **103 passed / 378 known-bug / 86 failed**（raw eligible 仍 **189** = passed+failed）；应用 D-2 的 `color-query` 静态排除后，**gate-eligible = 189 − 47 = 142，failed_real = 39**。该换算由 `tools/conformance/esctest-report.mjs` 机械化（7/7 注入 + 对照），**不得手算**；`excluded_by_vt_level` 报为 `unknown`（log 无逐用例级别归属）。上表为 D-3 之前的快照，保留以记录尺子的变化。
 
 ### D-2｜级别 1 的可执行应答
 

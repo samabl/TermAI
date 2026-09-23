@@ -14,7 +14,7 @@
 >
 > **全部门禁（~~第 144 轮实跑复核：六个 check 与四个 selftest 全绿~~ **第 243 轮更正：~~七对~~ 九对 check/selftest（第 258 轮加入 `conformance verify`、第 259 轮加入 `conformance suites`）**——**tokens／design／kernel／bench／conformance／conformance-verify／conformance-suites／ci-cost／audit-claims**，与 `GATE_PAIRS` 一致；第 232 轮加入 `audit-claims` 后未同步本行）**：`kernel-gates` **8 PASS / 0 FAIL**；`conformance` **gating 64/64（R=1.0）**、ctlseqs 208/208、**G1: NOT_JUDGED**；`bench:check` ~~**7 PASS / 0 FAIL**~~ → **8 PASS / 0 FAIL（第 257 轮 ADR-0029 D-4 加 B9）** 但 **gating INCONCLUSIVE / REFERENCE_MACHINE_UNAVAILABLE**（`gatingNumbersProduced: 0`）。
 >
-> **E-P0-1 当前口径（已过 AR-27 自检；**第 145 轮在当前树上第三次确认——失败集合与第 97 轮逐字节相同**，说明第 98–144 轮的全部改动（CI 接线、`A10` 三部件、四个 selftest、K8 配对强制）**没有引入任何回归**）**：**267 passed / 41 known-bug / 259 failed / substitutions 0**，调用必须带 `-- --expected-terminal xterm --xterm-checksum 336`（缺它会得到 110/117 一类**伪失败**，见计划 §6.3 规则 8）。
+> **E-P0-1 当前口径（已过 AR-27 自检；**第 145 轮在当前树上第三次确认——失败集合与第 97 轮逐字节相同**，说明第 98–144 轮的全部改动（CI 接线、`A10` 三部件、四个 selftest、K8 配对强制）**没有引入任何回归**）**：~~**267 passed / 41 known-bug / 259 failed / substitutions 0**~~ **⚠ 第 261 轮起口径改为 level 1（ADR-0030）：103 passed / 378 known-bug / 86 failed（raw eligible 189），经 D-2 的 `color-query` 静态排除后 gate-eligible 142 / failed_real 39；换算由 `node tools/conformance/esctest-report.mjs` 完成。上表 level 5 的 267/41/259 是旧口径，仅作对照。** 调用必须带 `-- --expected-terminal xterm --xterm-checksum 336`（level 1 还须带 `--max-vt-level 1`）（缺它会得到 110/117 一类**伪失败**，见计划 §6.3 规则 8）。
 >
 > **现在还剩什么、以及为什么**：
 >
