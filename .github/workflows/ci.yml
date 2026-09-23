@@ -304,6 +304,12 @@ jobs:
         run: node tools/ci-cost/check.mjs
       - name: ci-cost selftest (inject a bad total and a cap breach; prove both are caught)
         run: node tools/ci-cost/check.mjs --selftest
+      # A gate with no judgement in its answer: the rule count and every stated copy of it either agree or
+      # they do not. It carries a selftest, so K8's pairing rule is satisfied by construction.
+      - name: audit-claims check (stated rule counts match section 6.3)
+        run: node tools/audit/check-claims.mjs
+      - name: audit-claims selftest (a differing count must be reported)
+        run: node tools/audit/check-claims.mjs --selftest
 
   # ADR-0014 decision 2: Linux x64 is a first-class gate platform, so it gets a native
   # runner instead of a cross-check issued from Windows. See the platform-matrix block at the
@@ -364,6 +370,12 @@ jobs:
         run: node tools/ci-cost/check.mjs
       - name: ci-cost selftest (inject a bad total and a cap breach; prove both are caught)
         run: node tools/ci-cost/check.mjs --selftest
+      # A gate with no judgement in its answer: the rule count and every stated copy of it either agree or
+      # they do not. It carries a selftest, so K8's pairing rule is satisfied by construction.
+      - name: audit-claims check (stated rule counts match section 6.3)
+        run: node tools/audit/check-claims.mjs
+      - name: audit-claims selftest (a differing count must be reported)
+        run: node tools/audit/check-claims.mjs --selftest
       - name: Regenerate tokens and fail on artifact drift
         run: |
           node tools/tokens/build.mjs

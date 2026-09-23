@@ -474,6 +474,7 @@ function gateK8(ctx) {
     ['bench', 'bench:check', 'bench:selftest'],
     ['conformance', 'conformance L0', 'conformance selftest'],
     ['ci-cost', 'ci-cost check', 'ci-cost selftest'],
+    ['audit-claims', 'audit-claims check', 'audit-claims selftest'],
   ];
   const stepNames = [];
   for (let i = 0; i < lines.length; i++) {
