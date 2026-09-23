@@ -664,6 +664,8 @@
 | CR-12 | M0 交付期发现五处规格表述不可按其字面实现（repr(C) 线格式与 24 字节契约冲突、Hello 缺 required 承载字段、SessionId 宽度不一致、trait 签名非法） | 立 **ADR-0020** 作实现期 errata：D1 线格式以显式小端为唯一权威（禁止 repr(C) 直转）；D2 Hello 增 required 并回传 unknown_optional；D3 SessionId 统一 u128 ULID；D4 叶子契约用 &mut dyn 且不加 Send；D5 分册正文另行修订，本 ADR 不改设计结论。证据见 docs/plan/m0-spec-defects.md（SD-01…SD-05） | ADR-0020、kernel/07 §3.1/§3.3、kernel/04 §3.2.2/§4、kernel/05 §3.1、HARNESS §11.2 |
 | CR-13 | CI 门禁编号口径不一致：HARNESS §8.1 与 AGENTS §4 称「六件套」（不编号），spec 07 §3.4.1 编为 G1–G6 后又把 G7（设计静态）/G8（设计浏览器）列为合并阻断（实为 8 项）；ci.yml 头注释与步骤名写「S1-S9 / B1-B9」，而 tools/design-gates 实际执行 S1–S10（kernel/00-index §4 亦写 S1–S10 / B1–B10） | **不改任何门禁语义**，只统一表述：设计静态门禁一律写 **S1–S10**、浏览器门禁写 **B1–B10**；G1–G8 是 spec 07 的编号空间，HARNESS/AGENTS 的「六件套」指 §8.1 的 6 条主题（不等于 6 个 G 编号），spec 07 §3.4.1 的 A2 行需补注；ci.yml 注释已就地更正。登记为 SD-06 | HARNESS §8.1、AGENTS §4、spec 07 §3.4.1/§3.4.2、.github/workflows/ci.yml |
 | CR-08 | P0 工程/合规议题（OQ-26/27/28）委托资深角色裁定 | **ADR-0014** 定平台矩阵与参考机（12 组合全 v1 必修、arm64 Windows 非 v1、GPU 四级降级、nightly 双口径、CI 月上限 $3,000）；**ADR-0015** 定链接边界（LB-01…LB-18 判定表、SPDX 白/黑名单、弱 copyleft、签名门限、SLSA L2→L3、审计与崩溃保留） | ADR-0014、ADR-0015、05-spec、07-spec |
+| CR-15 | 组件标签与物理 crate 命名未映射：HARNESS §4.3 与 spec 03 §3.3 的依赖图使用层级角色标签（term-render / ui-native / shell-bridge / web-shell / plugin-ui-sdk / core-dto / tokens / core / session / agent / plugin-host），而 spec 07 §3.1.1/§3.1.2 与 ADR-0019 使用物理 crate 名（termai-*）；且 spec 03 §3.3 把 core-dto 与 termai-core 并列为两个叶子，仓库只实现了一个 | **不改任何依赖方向结论**，只消除命名歧义：① 物理 crate 名以 termai-* 为唯一真源（ADR-0019 D1 已按此登记，K4 允许边表按此校验）；② HARNESS §4.3 与 spec 03 §3.3 依赖图中的标签是**层级角色名**，不是 crate 名；③ **core-dto 当前由 termai-core 承载**（IDL/DTO 与叶子契约同体，ADR-0019 D1 + ADR-0023 D3），拆出独立生成 crate 需新 ADR，并同时满足 spec 03 §3.3 第 3 条的双端 Rust/TS 生成义务；④ 未建组件（ui-native / shell-bridge / web-shell / plugin-ui-sdk 等）在创建时必须按 spec 07 §3.1.2 登记 owner 并同步 K4 允许边与 K7 覆盖率 | HARNESS §4.3、spec 03 §3.3、spec 07 §3.1.1/§3.1.2、ADR-0019、ADR-0023 |
+| CR-14 | P0 立项契约盘点发现三处「数值即契约」缺口：attach 族无 msg_type；字符串态上限两个数字并存；GridSnapshot 丢组合字符且字段集仅临时冻结 | 立 **ADR-0023** 作 P0 契约 errata：D1 新增 0x05xx 会话接入段并分配 AttachRequest/AttachAck/TailReplay/DetachNotice（0x0504–0x05FF 保留）；D2 冻结字符串态上限为 AR-31 已采纳值（OSC/SOS/PM 1 MiB、DCS/APC 16 MiB）；D3 依 kernel/03 §3.3 正式冻结 GridSnapshot/GridDelta 字段集（含 clusters: ClusterTable，golden/digest 必须覆盖）。证据见 docs/plan/m0-spec-defects.md（SD-07/SD-08.1/SD-08.2） | ADR-0023、kernel/07 §3.2、kernel/01 §8、kernel/03 §3.3、HARNESS §11.2 |
 
 > **规则**：本节只登记「不涉及架构取舍、仅为消除文档冲突」的修正。任何改变 AR/DC 结论的事项，必须走 RFC → 新 ADR，并在对应 AR 条目上标注「被 ADR-xxxx 取代」（见 AGENTS.md §5）。
 
@@ -680,8 +682,8 @@
 | docs/spec/00-glossary.md | 术语基线（**效力：HARNESS > 术语表 > 角色原文**） | v1.1 |
 | docs/spec/01–07-*.md | 领域规格：01 产品与指标 / 02 UX 与设计系统 / 03 系统架构 / 04 AI Agent 平台 / 05 安全隐私合规 / 06 插件生态与 DevEx / 07 工程质量与发布 | v1 |
 | docs/spec/kernel/ | **P0 内核设计分册（评审产物）**：00 索引 / 01 VT 兼容性 / 02 PTY 与平台层 / 03 渲染管线 / 04 会话生命周期 / 05 输入·IME·剪贴板 / 06 性能测量方法学 / 07 内核 API·ABI | v1 |
-| docs/adr/ | 架构决策记录：README（流程 + 索引）+ ADR-0001…ADR-0020 | 已建 |
-| docs/plan/ | **交付计划与实现期登记**：mvp-delivery-plan（M0 范围与可追溯矩阵）、m0-spec-defects（SD-01…SD-07 实现期规格缺陷）、m0-delivery-report（交付报告） | M0 |
+| docs/adr/ | 架构决策记录：README（流程 + 索引）+ ADR-0001…ADR-0023 | 已建 |
+| docs/plan/ | **交付计划与实现期登记**：mvp-delivery-plan（M0 范围与可追溯矩阵）、p0-delivery-plan（P0 出口拆解、团队组织、WBS、波次与可追溯矩阵）、m0-spec-defects（SD-01…SD-08 实现期规格缺陷）、m0-delivery-report（交付报告） | M0 / P0 |
 
 **维护约定**：
 1. 本文只增不改语义：新决议以 AR-21… 追加；修改已有 AR 必须新开 ADR 并在 AR 条目上标注「被 ADR-xxxx 取代」。

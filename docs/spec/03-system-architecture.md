@@ -134,6 +134,8 @@
 5. 新增 crate/package 必须在 ADR 中说明其依赖位置。
 6. 校验：cargo-deny + crate 图检查 + ESLint 依赖规则 + 依赖图报告；链接边界 GPL/AGPL = 0。
 
+**命名口径（HARNESS §11.2 CR-15）**：本节依赖图中的 term-render / ui-native / shell-bridge / web-shell / plugin-ui-sdk 是**层级角色名**，不是 crate 名；物理 crate 名以 termai-* 为唯一真源（spec 07 §3.1.1/§3.1.2、ADR-0019 D1）。第 116 行同时列出的 core-dto 与 termai-core 当前是**同一个物理叶子**（IDL/DTO 与叶子契约同体，ADR-0019 D1 + ADR-0023 D3）；拆分为独立生成 crate 需新 ADR，并须满足第 3 条的双端 Rust/TS 生成义务。
+
 ### 3.4 通信层 A：termai-ipc（DC-22、AR-04）
 
 - **帧格式**：[len:u32][ver:u16][msg_type:u16][flags:u16][corr_id:u64][payload][crc32c 可选]；payload 由 core-dto IDL 生成（Cap'n Proto / MessagePack 由 ADR 定）；**热路径禁用 JSON 与 gRPC**。

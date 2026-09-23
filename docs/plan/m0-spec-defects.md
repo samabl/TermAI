@@ -105,8 +105,8 @@
 | SD-04 | kernel/05 §3.1 | 签名笔误 | &mut dyn InputSink；不加 Send | errata |
 | SD-05 | kernel/04 §4 与 kernel/07 §3.3 | 类型宽度不一致 | SessionId = u128 ULID | kernel/07 补注类型来源 |
 | SD-06 | HARNESS §8.1 / AGENTS §4 / spec 07 §3.4.1 / ci.yml | 门禁编号口径 | 统一为 S1–S10 / B1–B10；ci.yml 已更正 | CR-13 已登记；spec 07 A2 补注 |
-| SD-07 | kernel/04 §3.4 与 kernel/07 §3.2 | 数值契约缺登记 | M0 只用已登记数值表达 attach 子集；不发明数值 | 新 ADR 为 attach 族分配 msg_type |
-| SD-08.1 | kernel/01 OQ-VT-01 | 上限口径 | 保留更保守值并经 caps 暴露 | errata/ADR 二选一冻结 |
-| SD-08.2 | termai-core grid DTO | 对外契约缺口 | 记录为已知限制 | 建议 ADR：GridSnapshot 增 clusters 侧表 |
+| SD-07 | kernel/04 §3.4 与 kernel/07 §3.2 | 数值契约缺登记 | M0 只用已登记数值表达 attach 子集；不发明数值 | **已处置：ADR-0023 D1**（新增 0x05xx 段并分配四类消息；0x0504–0x05FF 保留） |
+| SD-08.1 | kernel/01 OQ-VT-01 | 上限口径 | 保留更保守值并经 caps 暴露 | **已处置：ADR-0023 D2**（冻结为 AR-31 已采纳值 OSC·SOS·PM 1 MiB / DCS·APC 16 MiB；M0 保守值须撤回） |
+| SD-08.2 | termai-core grid DTO | 对外契约缺口 | 记录为已知限制 | **已处置：ADR-0023 D3**（依 kernel/03 §3.3 正式冻结字段集，含 clusters: ClusterTable；golden/digest 必须覆盖） |
 | SD-08.3 | kernel/01 §3.3 与 vte 0.15 | 上游差异 | 预扫描器 + 单独计数 | 已在本文登记（§3.10 要求） |
 | SD-08.4 | AR-29 第 5 条 | 语义过保守 | 派单 WS-B 改为 guarded | 完成后回归测试 |

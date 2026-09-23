@@ -1,0 +1,222 @@
+# TermAI P0 交付计划（P0 · 信任基座）
+
+> **效力**：本文是**交付计划**，不是设计权威。与 [HARNESS.md](../../HARNESS.md) 冲突之处一律以 HARNESS 为准（AGENTS §1）。
+> **依据**：HARNESS §7（P0 出口标准）、§8（质量门禁与验收）、§5（预算）、§2（AR-24…AR-31）、§11.2（CR-08…CR-13）；`docs/spec/kernel/00-index.md` §2（P0 阻塞项 B-1…B-11）；ADR-0014（平台矩阵与参考机）、ADR-0018/0019/0020（内核契约与准入）、ADR-0021/0022（CI 产物与视觉基线）。
+> **前置**：M0「信任基座纵向切片」已交付（headless：PTY → VT → Grid → Session Log → IPC → capability），证据见 [m0-delivery-report.md](m0-delivery-report.md)。
+> **纪律**（HARNESS §0.2 / AGENTS §1）：本文每条工作流必须能指出「落在哪个 Phase / 满足哪条 DC / 受哪条预算与门禁约束」；未运行的门禁一律写**未判定**，不得用「应该没问题」代替。
+
+## 1. P0 出口定义（唯一判定口径）
+
+HARNESS §7 对 P0 的出口标准是四条，本文只做拆解，**不得改写**：
+
+| # | P0 出口（HARNESS §7 原文） | 判定载体 | 当前状态 |
+| --- | --- | --- | --- |
+| **E-P0-1** | vttest + esctest 全通过 | §8.1-1 **G1**（vttest/esctest/kitty 100%；xterm ≥99%，差异登记在案） | **未判定**（M0 未接入上游套件） |
+| **E-P0-2** | 三平台 IME/CJK 矩阵全绿 | §8.2 可访问性 + `kernel/05` IN-AC-04（截图矩阵 + 人工会签，AR-31 第 4 条：不进 §5） | **未实现**（无原生窗口宿主） |
+| **E-P0-3** | 性能门禁进 CI | §8.1-4 **G4**（§5 全部门禁；AR-27 的 G4-PR / G4-REL 双口径）+ ADR-0014（RM-A/B/C，云 runner NON-GATING） | **未判定**（B-10 未实现，无参考机） |
+| **E-P0-4** | screen 可恢复 | §8.2 可靠性（UI 崩溃 <2s 重连且屏幕一致；sessiond 重建 P95 ≤2s / P99 ≤5s，AR-26 第 4 条） | **部分**（`recover_session` 已交付；attach 全族未实现） |
+
+**附带不得回退的门禁**（P0 期间任一 PR 都不得使其变红）：§8.1-2 G2 行为回放 ≥99.5%、§8.1-3 G3 视觉回归 ≤0.1%、§8.1-5 G5 依赖与许可、§8.1-6 G6 安全与 fuzz 24h；以及 G7（S1–S10）/ G8（B1–B10）设计门禁。
+
+## 2. 现状基线（本次开工实测，不是回忆）
+
+| 项 | 实测结果 | 证据/命令 |
+| --- | --- | --- |
+| 内核门禁 K1–K8 | **8 PASS / 0 FAIL** | `node tools/kernel-gates/check.mjs` |
+| 设计 token 门禁 | PASS | `npm run tokens:check`（M0 收口记录，本计划不重复声称） |
+| 设计静态门禁 S1–S10 | PASS | `npm run design:check:static` |
+| M0 垂直链路 | 已交付且端到端 6/6 通过（含原生 ConPTY 修复轮） | `docs/plan/m0-delivery-report.md` §3.1 / §6.2 |
+| CI 平台矩阵 | **偏差**：全部作业仍只跑 `windows-latest` | `.github/workflows/ci.yml` 头注释「DEVIATION TO TRACK」 |
+
+> **读法**：K1–K8 全绿只证明「M0 切片没有撒谎」，**不构成 P0 出口**。E-P0-1…E-P0-4 四条中三条为未判定/未实现（见 §1），这是本计划存在的原因。
+
+## 3. 差距分析：从 M0 到 P0
+
+### 3.1 内核阻塞项 B-1…B-11（`kernel/00-index.md` §2）
+
+| 阻塞项 | M0 状态 | P0 需补 |
+| --- | --- | --- |
+| B-1 字节直喂 L0 的接口 | 已具备 | — |
+| B-2 三车道分离 | 已实现（机制） | **判定数字**（依赖 WS-01 语料） |
+| B-3 每 hop F0/F1/F2 + conpty-rules | 已实现 | 规则 **owner + expires**（OQ-PTY-01 / AR-31 第 3 条） |
+| B-4 trait + golden/replay/repro | 部分（repro 未落盘） | repro 自动落盘（`kernel/01 §3.8`） |
+| B-5 九元 PtyBackend | 已实现 | — |
+| B-6 GridSnapshot 字段集 | 冻结 v1（临时） | OQ-RND-07 裁决 + **组合字符 side table**（SD-08.2） |
+| B-7 Session Log + lease 帧位 | 已实现 | **attach 族 msg_type 分配**（SD-07） |
+| B-8 24B 帧 + 握手 + CAP-1…CAP-7 | 已实现 | — |
+| B-9 InputEncoder 单收口 | 已实现 | IME commit 真机验证（WS-04） |
+| B-10 §5 指标 → kernel/06 测量定义 | **未实现** | WS-08（方法学落地 + 参考机） |
+| B-11 `xtask conformance` verb | **未实现** | 已由 AR-31 D3/D4 **降为 P1**，P0 用等价测试入口（不得新增未走 ADR 的 verb） |
+
+### 3.2 四类真实缺口（本计划的靶子）
+
+1. **没有窗口宿主**：无 `apps/termai-desktop`、无 wgpu 网格、无 IME 宿主 → E-P0-2 无法开始，E-P0-3 的帧时/网格对齐/key-to-photon 无法测，G3 无从判定。**这是关键路径的头部。**
+2. **没有上游一致性套件**：G1 全部未判定，且 AR-31 第 1 条要求 xterm ≥2000 用例 + ctlseqs 每条目 ≥1 用例 + 真实语料 ≥20%（4–6 人周）→ **这是最长的杆**。
+3. **没有测量方法学与参考机**：B-10 未实现、RM-A/B/C 未起 → 任何性能数字都不可比、不可作为门禁（ADR-0014）。
+4. **CI 平台矩阵未恢复**：ADR-0014 要求 Win x64 + Linux x64 + macOS arm64，现为 Windows-only → 即使三条都做完，§8.1 也无法在 v1 架构上判定。
+
+## 4. 团队组织（Conway ↔ CODEOWNERS，spec 07 §3.1.2）
+
+P0 只启用三条现有团队线，其余（T3 Agent / T4 生态）在 P2/P3 才入场：
+
+| 团队 | P0 使命 | 拥有路径 | CODEOWNERS | 双签触发 | 本计划负责工作流 |
+| --- | --- | --- | --- | --- | --- |
+| **T1 Core Kernel** | VT 语义、PTY/Transport、渲染管线、会话真源、性能方法学 | `crates/termai-{vt,pty,render,gpu,session,core,store,ipc}` | `@termai/core-kernel` | IPC 布局 / Log 格式 / L0 渲染契约 | WS-01/02/03/05/08 |
+| **T2 Shell & UX** | 桌面壳、原生窗口、IME/候选窗、外壳 chrome、token | `apps/termai-desktop`、`packages/{tokens,webview-shell}` | `@termai/shell-ux` | token schema / L2 桥接接口 | WS-04 |
+| **T5 DevEx & Release** | CI 拓扑、门禁工程、发布与供应链 | `crates/termai-xtask`、`.github/`、`tools/` | `@termai/devex` | 门禁阈值 / 签名流程 / CI 拓扑 | WS-06/07 |
+| **总负责人（Orchestrator）** | 契约裁决、ADR、跨团队排序、诚实会签 | `docs/`、`HARNESS.md`、`AGENTS.md` | `@samabl` | — | WS-09 |
+
+**RACI 口径**：每条工作流有且只有一个 **A**（Accountable，该团队）；跨边界接口变更必须按 E4 由两侧各一名 reviewer 批准。
+
+**治理缺口（必须在 P0 出口前闭合，否则 E4 是空操作）**：
+1. **TSC 未成立**（OQ-19）→ §5/§8 的任何放宽无合法批准人。
+2. **CODEOWNERS 双签无法强制执行**：仓库只有一个所有者，同一人不能构成双签；且 GitHub 对未解析的 `@termai/*` 会**静默忽略**该条目，使规则退化为空操作。
+3. **分支保护未启用**。
+
+> 处置：WS-09 把上述三项作为 P0 的**出口前置**（与 E-P0-1…E-P0-4 并列），不接受「先做完再补治理」——因为 G1 的差异登记、§5 的余量记账都需要一个能批准的人。
+
+## 5. 工作分解（WBS）
+
+    WS-09 契约与治理（总负责人）──────────────────────────────┐（贯穿）
+                                                              │
+    WS-06/07 CI · 门禁 · fuzz · 供应链（T5）───────┐          │
+                                                  │          │
+    WS-08 性能测量方法学 + RM（T1）──┐             │          │
+                                     ▼             ▼          ▼
+    WS-02 PTY/Transport（T1）──┐   [G4 判定]   [§8.1 全绿]  [契约冻结]
+                               │
+    WS-01 G1 一致性套件（T1）──┤
+                               ▼
+    WS-03 渲染管线 wgpu（T1）──▶ WS-04 窗口宿主 + IME/CJK（T2）
+                               │
+    WS-05 会话可恢复 / attach（T1）
+
+| WS | 主题 | A | 出口（可判定） | 依赖 | 依据 |
+| --- | --- | --- | --- | --- | --- |
+| **WS-01** | G1 一致性套件与语料 | T1 | vttest/esctest/kitty 100%、xterm ≥99%、差异登记；≥2000 用例 + 真实语料 ≥20%；L0 车道判定 | — | §8.1-1、AR-25、AR-31 第 1 条、`kernel/01` §3.1/§3.9 |
+| **WS-02** | PTY/Transport 保真与进程树 | T1 | PTY-AC-01…12；孤儿清理 100% 且 ≤2s；PTY-LAT-1 P99 ≤2ms | WS-08（测量） | DC-16、AR-25/28.3/30、`kernel/02` §5 |
+| **WS-03** | 原生网格渲染管线 | T1 | RP-01…RP-16；G3 视觉回归；T0–T3 降级矩阵；DPI 切换 ≤1 帧 | WS-02 | AR-01、DC-17、`kernel/03` §5、ADR-0014 |
+| **WS-04** | 窗口宿主 + IME/候选窗 + 外壳 | T2 | IN-AC-04 12 组合截图矩阵全绿 + 人工会签；候选窗漂移 ≤2px；preedit 期 PTY 字节 = 0 | WS-03 | `kernel/05` §3.4、AR-29.4、AR-01/22 |
+| **WS-05** | 会话可恢复与 attach 全族 | T1 | AC-S1…AC-S6；重建 P95 ≤2s / P99 ≤5s；tail replay / detach notice 可用 | SD-07 裁决 | AR-13/26、`kernel/04` §3.4、SD-07 |
+| **WS-06** | CI 平台矩阵与门禁工程 | T5 | v1 架构三平台作业存在且可判定；G4-PR/REL 接入；SBOM/cargo-deny/cargo-audit | — | §8.1、ADR-0014/0021、spec 07 §3.4 |
+| **WS-07** | 安全与 fuzz | T5 | VT/PTY/IPC fuzz 24h（≥10⁸ 次）无 crash；崩溃全回归 | WS-01/02 | §8.1-6、DC-37、`kernel/02` PTY-AC-08 |
+| **WS-08** | 性能测量方法学 + 参考机 | T1 | §5 19 行（H1…H19）可测；D0/D1 自检；INVALID 语义；RM-A/B/C 起机 | — | B-10、AR-24/27、`kernel/06` §3.9、ADR-0014 |
+| **WS-09** | 契约与治理 | 总负责人 | ADR-0023 errata 生效；TSC/分支保护/双签可执行；OQ-19 关闭 | — | §11、AGENTS §3/§5、spec 07 §3.1.2 |
+
+### 5.1 关键路径（决定 P0 最早完成时间）
+
+    WS-09（契约冻结）──▶ WS-03（wgpu 渲染）──▶ WS-04（窗口+IME）──▶ E-P0-2（CJK 矩阵）
+                                        └──▶ G3 / RP-* ──▶ E-P0-3（性能门禁）
+
+    WS-01（G1 语料，4–6 人周）────────────────────────────────▶ E-P0-1
+    WS-08（方法学 + RM-A）──▶ G4 判定有效 ──▶ E-P0-3
+
+**结论**：P0 的最早出口时间由**两条并行长杆**决定——`WS-01`（语料规模）与 `WS-03→WS-04`（渲染+窗口+IME）。`WS-06/07/08` 是使能件，必须与长杆同时推进，因为它们一旦缺失，长杆的成果无法判定。
+
+## 6. 波次计划与准入
+
+### Wave 1（本次已派单，目标是「让 P0 可判定」）
+
+| 编号 | 工作流 | 团队 | 交付物 | 验收（必须真实运行） |
+| --- | --- | --- | --- | --- |
+| W1-A | WS-06 平台矩阵 | T5 | Linux x64 作业 + macOS arm64 作业；cfg(unix) clippy 清理；ci.yml 头注释如实更新 | K1–K8 仍 8 PASS；Linux 目标 clippy（若目标可装；否则如实标未验证） |
+| W1-B | WS-01 G1 harness | T1 | `tools/conformance/` runner + 确定性 `conformance-report.json` + ctlseqs 派生生成器骨架 + L0 车道收口 | 实测用例数与 L0 通过率；**不得声称 G1 通过** |
+| W1-C | WS-08 B-10 | T1 | `tools/bench/`：schema 校验 + fingerprint + §3.1 四态判定 + AR-27 双口径 + OQ-PM-07 分级 + H1…H19 登记 + `--selftest` | `bench:check` / `bench:selftest` 输出；本机数值一律 NON-GATING/INCONCLUSIVE |
+| W1-D | WS-09 契约 | 总负责人 | **ADR-0023**（attach 族 msg_type / OSC-DCS 上限 / GridSnapshot clusters side table） | ADR 索引登记；errata 与实现同步（HARNESS §12：ADR 生效 24h 内同步 spec） |
+
+
+#### Wave 1 回报（截至本轮）
+
+| 编号 | 状态 | 已验证证据 | 未验证边界（诚实） |
+| --- | --- | --- | --- |
+| W1-A | **完成**（T5） | `.github/workflows/ci.yml` 新增 `linux-x64` + `macos-arm64` 作业（jobs 共 8 个，经 YAML 解析）；`crates/termai-pty` 清 Linux clippy 3 处并用 `ptr::addr_of_mut!` 修掉一个真实 macOS 编译错误（E0308）。实跑：`cargo fmt --check` OK；`clippy --workspace -D warnings` OK；**`clippy --target x86_64-unknown-linux-gnu -D warnings` EXIT 0**（修复前 exit 101）；`clippy --target aarch64-apple-darwin` EXIT 0（check-only）；`kernel-gates` **8 PASS / 0 FAIL**；`--selftest` **18/18 捕获** | Linux runner 上的 K3 与 Node 门禁从未运行；Linux 的 B1–B10 未验证（B4 无 linux-x64 基线会显式 SKIP）；**macOS 从未真正编译/运行**，作业已标 `[first introduction, UNVERIFIED]` |
+| W1-B | 进行中（T1） | ctlseqs 生成器：**208 条唯一 ctlseqs 条目全部解析成功 → 208 个覆盖用例**；harness 可编译并验证三车道（L0 2/3→fail、L1 3/3→not_applicable、L2 2/3→registered） | 未接入上游 vttest/esctest；用例数距 AR-31 第 1 条的 ≥2000 仍很远；**不得声称 G1 通过** |
+| W1-C | 进行中（T1） | `tools/bench/` 目录已建立 | 未收口；本机无 RM-A/RM-C，任何数值只能 NON-GATING |
+| W1-D | **完成**（总负责人） | ADR-0023 生效；HARNESS **CR-14 / CR-15** 登记；`kernel/07` §3.2（0x05xx）、`kernel/01` §8（上限冻结）、`kernel/03` §8（OQ-RND-07 关闭）、`docs/spec/03` §3.3（命名口径）同步。**D1 落码**：`termai-ipc` 0x0500–0x0503 + `sessiond` 线上用例（`cargo test -p sessiond --test wire` **8/8**；`-p termai-ipc` **34/34**）。**D2 落码**：`termai-vt` 三个上限常量 + 按类型分派（`cargo test -p termai-vt` 全绿，含新增 SOS 上限行为用例） | D3（clusters 侧表）未落码；D1 的 attach 状态机（tail replay / detach notice）仍待 WS-05 |
+
+**总负责人对 W1-A 上报事项的裁决**：
+
+1. **两个新作业保持 blocking**（不设 `continue-on-error`）：ADR-0014 要求 v1 门禁架构**可判定**，非阻断作业等于「有作业没牙」，与 A2「兼容性是入场券」冲突。首次 Linux/macOS 运行若红，按真缺陷修复，不靠豁免。
+2. **kernel 作业显示名 `K1-K7 → K1-K8` 接受**：`kernel-gates` 早已执行 K8（构建产物门禁，ADR-0021）。分支保护未启用，无 required-check 名称冲突；若将来启用分支保护，需把新名一并登记。
+3. **`ci-cost.json` 与 $3,000/月上限（ADR-0014 决策 6）仍未实现**，登记为 WS-06 的 T5 待办。新增 macOS runner 会显著抬高成本，**在该看板落地前不得声称「CI 成本受控」**。
+4. **`rust-toolchain.toml` 不新增跨平台 target**：两个新作业在原生平台运行，不应强迫所有开发机下载他平台 std。W1-A 为验证临时安装了 `aarch64-apple-darwin` target，属本机环境变化，不入库。
+
+### Wave 2（W1 收口后开，目标是「让 P0 可看见」）
+
+1. **WS-03 起桩**：`crates/termai-render` + `crates/termai-gpu`（新 crate 走 ADR-0019 追认 + K4 依赖白名单 + CODEOWNERS），先做 damage→shaping→atlas→present 的最小闭环与 T0 后端探测。
+2. **WS-05 SD-07 落地**：按 ADR-0023 实现 TAIL_REPLAY / DETACH_NOTICE / LEASE_TRANSFER。
+3. **WS-01 语料规模化**：ctlseqs 条目 100% 覆盖 + 真实语料接入（≥20%）+ repro 自动落盘（B-4）。
+
+### Wave 3（目标是「让 P0 可判定为达标」）
+
+1. **WS-04**：`apps/termai-desktop` + 原生 IME 宿主 + 12 组合 CJK 矩阵。
+2. **WS-08**：RM-A/RM-B/RM-C 起机，D0/D1 自检通过后接入 G4-PR / G4-REL。
+3. **WS-07**：24h fuzz 与崩溃回归。
+
+### 波次准入条件（Gate-to-start）
+
+- 任何新 crate 进入工作区前，必须有 ADR 说明依赖位置，并同步 K4 白名单 + K7 CODEOWNERS 覆盖（否则门禁直接红）。
+- **命名对齐（Wave 2 前置，已裁决：HARNESS §11.2 CR-15）**：物理 crate 名以 `termai-*` 为唯一真源；HARNESS §4.3 与 spec 03 §3.3 的 `term-render` / `ui-native` / `shell-bridge` / `web-shell` / `plugin-ui-sdk` 是**层级角色名**；`core-dto` 当前由 `termai-core` 承载（ADR-0019 D1 + ADR-0023 D3），拆分需新 ADR。WS-03 的新 crate 立项 ADR 仍须按 AGENTS §3 说明依赖位置并同步 K4 允许边 + K7 CODEOWNERS；命名本身已不再是阻塞项。
+- 任何对外契约变更（msg_type / Log 格式 / Grid DTO / capability）必须先有 ADR，且 ADR 落地前只落 tag 表、不落编码（AR-28 第 1 条的操作含义）。
+- 任何 §5 / §8 数值的放宽，必须附基准数据 + TSC 批准（AGENTS §5）。**当前 TSC 不存在，故该项在 WS-09 闭合前一律禁止。**
+
+## 7. 门禁与度量计划
+
+| 门禁 | P0 目标 | 当前 | 负责 | 接入方式 |
+| --- | --- | --- | --- | --- |
+| G1 VT 兼容 | vttest/esctest/kitty 100%；xterm ≥99% + 差异登记 | 未判定 | T1 (WS-01) | PR-S3 子集 + nightly 全量（spec 07 §3.4.2） |
+| G2 行为回放 | ≥99.5% | 部分 | T1 (WS-01) | `.trec` 语料回放 |
+| G3 视觉回归 | ≤0.1% | 不适用（无渲染） | T2 (WS-03/04) | B4 + ADR-0022 的 runner 基线 |
+| G4 性能 | §5 19 行；>5% 回归阻断 | 未判定 | T1 (WS-08) + T5 | G4-PR（每 PR）/ G4-REL（连续 2 夜或发版前），前置 D0/D1 |
+| G5 依赖与许可 | GPL/AGPL/SSPL = 0；SBOM | 部分 | T5 (WS-06) | cargo-deny + cargo-audit + npm audit + CycloneDX |
+| G6 安全与 fuzz | 24h / ≥10⁸ 次无 crash | 部分（smoke） | T5+T1 (WS-07) | nightly fuzz 靶：VT/PTY/IPC |
+| G7/G8 设计门禁 | S1–S10 / B1–B10 | PASS | T2 (WS-04) | `design:check` |
+
+**度量诚实条款**：
+1. 非 T0 GPU 后端上的性能数值一律 **NON-GATING**（ADR-0014 / spec 07 §3.8.1）。
+2. 云 runner 上的性能数值一律 NON-GATING，参考机不可用时该门禁项标 **INCONCLUSIVE**，不得用云 runner 顶替。
+3. 测量本身未通过 D0/D1 可复现性自检前，判 **INVALID** 且不得与基线比对（AR-27）。
+4. 达标余量记入技术债登记，不得因为「高于门禁」而放弃记账（AR-19）。
+
+## 8. 可追溯矩阵（P0 出口 → 工作流 → 证据）
+
+| P0 出口 / 验收 | 依据（AR/DC/§） | 工作流 | 证据形态 | 状态 |
+| --- | --- | --- | --- | --- |
+| vttest + esctest 全通过 | §7 E-P0-1、§8.1-1、AR-25、AR-31.1 | WS-01 | G1 报告 + 差异登记 + repro 目录 | 未判定（W1-B 起桩） |
+| xterm ≥99% | 同上 | WS-01 | ≥2000 用例报告（含真实语料占比） | 未判定 |
+| 三平台 IME/CJK 矩阵全绿 | §7 E-P0-2、`kernel/05` IN-AC-04、AR-29.4/AR-31.4 | WS-04 | 12 组合截图矩阵 + 人工会签记录 | 未实现 |
+| 性能门禁进 CI | §7 E-P0-3、§8.1-4、AR-27、ADR-0014 | WS-06/08/03 | G4-PR/REL 报告 + 机器指纹 | 未判定（W1-C 起桩） |
+| screen 可恢复 | §7 E-P0-4、§8.2、AR-13/AR-26 | WS-05 | 重建 P95/P99 报告 + AC-S1…S6 | 部分（恢复器已交付；attach 全族未实现） |
+| 行为回放 ≥99.5% | §8.1-2 | WS-01 | `.trec` 回放报告 | 部分 |
+| 视觉回归 ≤0.1% | §8.1-3 | WS-03/04 | B4 diff | 不适用（无渲染） |
+| 依赖与许可 | §8.1-5 | WS-06 | cargo-deny/audit/SBOM | 部分（K4/K5 声明清单） |
+| 安全与 fuzz 24h | §8.1-6 | WS-07 | fuzz 报告 | 部分（smoke） |
+| 三平台 CI 可判定 | ADR-0014 | WS-06 | ci.yml 作业 + runner 证据 | 偏差（Windows-only，**W1-A 修复**） |
+| §5 每条指标有测量定义 | B-10、AR-24.3 | WS-08 | H1…H19 登记 + 判定实现 | 未实现（**W1-C 起桩**） |
+| attach 族数值契约 | SD-07 | WS-05/09 | ADR-0023 + 线上协议测试 | **D1 数值已落地**（`termai-ipc` 0x0500–0x0503 + `sessiond` 线上用例 8/8）；attach 状态机（tail replay / detach notice）仍待 WS-05 |
+| 字符串态上限唯一数值 | SD-08.1 / ADR-0023 D2 | WS-01 + WS-09 | `kernel/01` §8 + `termai-vt` 常量 + `BackendCaps` | **已落地**（OSC 1 MiB / DCS·APC 16 MiB / SOS·PM 1 MiB）：新增第三个 `SOS_PM_LEN_LIMIT_DEFAULT`，上限选择按字符串类型分派（M0 的 bug 是 SOS/PM 复用了 DCS 上限）；`terminal_api.rs` 常量断言与 `strings.rs` 的 SOS 行为用例已更新。SOS/PM 溢出仍计入既有 `DcsOverflow` 键——14 个计数键由 `kernel/01` §3.4 冻结，不新增键 |
+| 组合字符复制保真 | SD-08.2 / `kernel/01` K-08、V-10 | WS-03/09 | GridSnapshot clusters 侧表 + golden | 未裁决（**W1-D**） |
+
+## 9. 风险登记（P0 执行专属，补充 HARNESS §9）
+
+| # | 风险 | 触发条件 | 缓解 | 责任 |
+| --- | --- | --- | --- | --- |
+| P0-R1 | 渲染+窗口+IME 三件套是「从零到一」，时长不可压缩 | WS-03/04 连续两波无可见产物 | 先定死 damage/GridDelta 契约与 T0 探测，再做外观；不追求 v1 视觉一次到位 | T1/T2 |
+| P0-R2 | G1 语料建设变成无底洞 | 用例数增长但差异表不收敛 | ctlseqs 条目映射覆盖率作为中间指标；差异登记设豁免上限 | T1 |
+| P0-R3 | 性能门禁在无 RM 期间被「临时放宽」 | 有人提议用云 runner 数值替代 | 纪律：非参考机数值 = NON-GATING，INCONCLUSIVE 不等价于通过（ADR-0014） | T1/T5 |
+| P0-R4 | 契约变更绕过 ADR 直接改码 | 出现「先实现再补 ADR」 | 波次准入条件：ADR 先于编码；CI 侧由 K6/K7/K8 兜底 | 总负责人 |
+| P0-R5 | 治理缺口使 E4 长期空转 | TSC/分支保护未建 | 列为 P0 出口前置（§4） | 总负责人 |
+| P0-R6 | 平台矩阵恢复引入 Linux/macOS 特有缺陷 | Linux 作业首次全量 K3 | 先在本地跨目标 clippy/check 收敛，再上 runner | T5 |
+
+## 10. 诚实边界（本计划不主张什么）
+
+1. 本计划**不主张任何 P0 出口已达成**：E-P0-1/E-P0-3 为未判定，E-P0-2 为未实现，E-P0-4 为部分。
+2. 本计划**不产出任何可用于门禁的性能数字**：本机不是 RM-A/RM-C，且 kernel/06 的测量自检尚未实现。
+3. 本计划**不主张 G1 通过**：Wave 1 只建立 harness 与可复现报告；AR-31 第 1 条的 ≥2000 用例 + 真实语料 ≥20% 是后续波次的工作量，需要 4–6 人周。
+4. 本计划**不修改任何历史文档**：M0 报告与 `docs/roles/*` 保持冻结；新增结论一律以 AR/ADR/CR 追加。
+
+## 11. 变更记录
+
+| 日期 | 变更 | 依据 |
+| --- | --- | --- |
+| P0 立项 | 建立 P0 出口拆解、差距分析、团队组织、WBS、波次、门禁与可追溯矩阵；Wave 1 派单（W1-A/B/C/D） | HARNESS §7/§8/§5/§2、kernel/00-index §2、m0-delivery-report |
