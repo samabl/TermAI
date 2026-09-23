@@ -1,8 +1,8 @@
-# ADR-0027｜渲染/字体的第三方依赖准入（**Proposed**：许可证已采证，**cargo-deny 公告检查失败**）
+# ADR-0027｜渲染/字体的第三方依赖准入（**Accepted**：许可证通过；公告按 ADR-0031 的**时间盒例外**处置）
 
 | 项 | 内容 |
 | --- | --- |
-| **状态** | **Proposed**（按 ADR README §3：**不可实施**）——**第 262 轮：许可证与来源检查通过，但 `advisories` 失败**（`rustybuzz` RUSTSEC-2026-0206、`ttf-parser` RUSTSEC-2026-0192，均 unmaintained 且无安全升级）；处置见 **ADR-0031** |
+| **状态** | **Accepted**（第 264 轮）——第 262 轮采证：许可证 / 来源 / bans 全部通过，**`advisories` 失败**（`rustybuzz` RUSTSEC-2026-0206、`ttf-parser` RUSTSEC-2026-0192）；所有者按 **ADR-0031** 采纳**时间盒例外**（登记于 `docs/audit/waivers.json` W-01，到期 2027-03-23 或 2 个 minor，先到者为准，且**到期即红**）。**准入解除**，但该例外在 SBOM / 发布说明中保持可见 |
 | **日期** | P0 Wave 2 |
 | **决策者** | 总负责人（Orchestrator） |
 | **关联 AR** | AR-01、AR-03、AR-14、AR-21、AR-24 |
@@ -53,7 +53,7 @@ E-P0-2 与 E-P0-3 都依赖渲染管线，而 **DC-17 指定的 wgpu / rustybuzz
 1. 在可联网环境执行 `cargo deny check licenses advisories bans sources`，把输出与 `deny.toml` 作为证据；**✅ 第 262 轮已执行**（cargo-deny 0.20.2，配置 = 仓库根 `deny.toml`）：`licenses ok / bans ok / sources ok`，**`advisories FAILED`**（两条 unmaintained）。完整输出见 [ADR-0027-spdx-evidence.md](ADR-0027-spdx-evidence.md) 的 cargo-deny 段。
 2. 用 `cargo tree -e normal --no-dev` 枚举**发布闭包内**的全部第三方单元，逐项填 SPDX 与 A/R/D；
 3. 任何一项为 R/D → 该候选**不得准入**，回到方案选型；
-4. 表填满后把本 ADR 状态改为 **Accepted**，并在 24h 内同步 `kernel/03` / spec 07 与 K4 允许边（HARNESS §12）；
+4. **✅ 第 264 轮已完成**：表已填满、cargo-deny 已跑，本 ADR 转 **Accepted**；公告一侧的例外按 ADR-0031 登记（`docs/audit/waivers.json` W-01）。**待同步**：`kernel/03` / spec 07 的依赖准入位置与 K4 允许边（随 WS-03 的首个 crate `crates/termai-gpu` 一同落，见 D2）；
 5. **在此之前**：workspace 依赖不得出现上述任何 crate（K5 不覆盖此点，靠本 ADR + CODEOWNERS 复核）。
 
 ## 4. 理由

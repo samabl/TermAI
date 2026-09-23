@@ -1,8 +1,8 @@
-# ADR-0031｜渲染字体栈的 unmaintained 阻塞：`rustybuzz` / `ttf-parser`（**Proposed**）
+# ADR-0031｜渲染字体栈的 unmaintained 阻塞：`rustybuzz` / `ttf-parser`（**Accepted**：时间盒例外）
 
 | 项 | 内容 |
 | --- | --- |
-| **状态** | **Proposed**——「接受 unmaintained 依赖」是**安全默认值的放宽**，按 AGENTS §7.4 与 §5 需 owner/TSC 追认，编排者不单方定案 |
+| **状态** | **Accepted**（第 264 轮：项目所有者指示「**时间盒例外**」，采纳方案 A）——安全默认值的放宽由 owner 明确批准，并以下述四条为生效条件 |
 | **日期** | P0 Wave 3（第 262 轮，ADR-0027 采证时发现） |
 | **决策者** | 总负责人（Orchestrator）提出；**决定权在 owner/TSC** |
 | **关联 AR** | AR-18（VT 引擎与依赖策略）、AR-21（供应链 / GPL 禁入）、AR-01/AR-03 |
@@ -40,12 +40,12 @@
 | **C** | 自维护 fork / vendor `rustybuzz` | 长期维护成本与安全响应责任落到本仓库；对 P0 是净负担 |
 | **D** | **阻塞 E-P0-2** 直到 B 完成 | **最保守**；代价是 P0 关键路径整体停摆，且 E-P0-3 的帧时门禁也无从判定 |
 
-## 3. 决策（Proposed：需 owner/TSC 追认）
+## 3. 决策（owner 已采纳 A：时间盒例外）
 
-**本 ADR 不自行采纳任何方案。** 编排者给出建议与「若采纳必须同时满足的条件」：
+**采纳方案 A。** 所有者于第 264 轮指示「时间盒例外」：允许 `rustybuzz@0.20.1` 与 `ttf-parser@0.25.1`（均 unmaintained、无已知漏洞）进入链接边界，**以四条为生效条件**。方案 B（替换 shaping 栈）**保持为目标态**，其触发见下。
 
 - **建议路径：A（时间盒例外）解锁 P0，B 作为目标态**，理由是：unmaintained ≠ 已知漏洞；P0 的渲染/IME 关键路径无法承受 D 的长期停摆；而 B 需要一次 DC-17/K-05 的架构修订，工期与风险都远超本轮。
-- **若 owner 采纳 A，必须同时满足以下四条（缺一不可）**：
+- **这四条是例外生效的条件（缺一不可）**：
   1. 登记条目含 **RUSTSEC ID + cargo-deny 命令 + 探针证据**，并写入 `docs/audit/debt-p0.md`；
   2. **到期条件**（≤2 minor 且 ≤6 个月，先到者为准）与**替换触发条件**（`rustybuzz`/ttf-parser 出现任何 RUSTSEC 漏洞公告，或 `skrifa`/替代 shaper 达到可用即触发）；
   3. **不解除 ADR-0027**：许可证一侧已 ok，但 `advisories` 这条必须在 ADR-0027 里**保持可见**，并在 SBOM/发布说明中标注；

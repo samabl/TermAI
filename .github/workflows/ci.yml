@@ -325,6 +325,12 @@ jobs:
         run: node tools/audit/check-claims.mjs
       - name: audit-claims selftest (a differing count must be reported)
         run: node tools/audit/check-claims.mjs --selftest
+      # ADR-0031 condition 4: an expired waiver is a failure, not a warning, so the register is
+      # gated here and paired with its selftest below (registered in K8's GATE_PAIRS).
+      - name: waivers check
+        run: node tools/audit/check-waivers.mjs
+      - name: waivers selftest
+        run: node tools/audit/check-waivers.mjs --selftest
 
   # ADR-0014 decision 2: Linux x64 is a first-class gate platform, so it gets a native
   # runner instead of a cross-check issued from Windows. See the platform-matrix block at the
@@ -406,6 +412,12 @@ jobs:
         run: node tools/audit/check-claims.mjs
       - name: audit-claims selftest (a differing count must be reported)
         run: node tools/audit/check-claims.mjs --selftest
+      # ADR-0031 condition 4: an expired waiver is a failure, not a warning, so the register is
+      # gated here and paired with its selftest below (registered in K8's GATE_PAIRS).
+      - name: waivers check
+        run: node tools/audit/check-waivers.mjs
+      - name: waivers selftest
+        run: node tools/audit/check-waivers.mjs --selftest
       - name: Regenerate tokens and fail on artifact drift
         run: |
           node tools/tokens/build.mjs

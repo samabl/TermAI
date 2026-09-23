@@ -478,6 +478,7 @@ function gateK8(ctx) {
     ['conformance-suites', 'conformance suites', 'conformance suites selftest'],
     ['ci-cost', 'ci-cost check', 'ci-cost selftest'],
     ['audit-claims', 'audit-claims check', 'audit-claims selftest'],
+    ['waivers', 'waivers check', 'waivers selftest'],
   ];
   const stepNames = [];
   for (let i = 0; i < lines.length; i++) {
@@ -914,6 +915,37 @@ function runSelftest() {
       );
       const g = gateK8({ root: root });
       st.check('K8: the completed conformance-suites pair still passes (pairing control)', g.status === STATUS.PASS, g.detail);
+    }
+
+    // injection: the waivers gate present without its selftest must be caught (ADR-0031 condition 4:
+    // an expired waiver turns CI red). Registered in GATE_PAIRS; this exercises that row's failure path.
+    {
+      const root = tmpDir('kg-k8-waivers-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  b:\n    runs-on: windows-latest\n    steps:\n      - uses: actions/checkout@v4\n' +
+          '      - name: waivers check\n        run: node tools/audit/check-waivers.mjs\n'
+      );
+      const g = gateK8({ root: root });
+      st.check('K8: waivers check without its selftest is caught (new pairing row)', g.status === STATUS.FAIL, g.detail);
+    }
+
+    // control: the completed waivers pair plus the artifact upload K8 also requires must pass.
+    {
+      const root = tmpDir('kg-k8-waivers-ok-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  b:\n    runs-on: windows-latest\n    steps:\n      - uses: actions/checkout@v4\n' +
+          '      - name: waivers check\n        run: node tools/audit/check-waivers.mjs\n' +
+          '      - name: waivers selftest\n        run: node tools/audit/check-waivers.mjs --selftest\n' +
+          '      - uses: actions/upload-artifact@v4\n        with:\n          retention-days: 14\n          if-no-files-found: error\n'
+      );
+      const g = gateK8({ root: root });
+      st.check('K8: the completed waivers pair still passes (pairing control)', g.status === STATUS.PASS, g.detail);
     }
 
     // injection 12: an upload that publishes build intermediates or runtime session logs.

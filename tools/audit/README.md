@@ -7,6 +7,8 @@ node tools/audit/lint-notes.mjs              # 删除线约定：列出「宣布
 node tools/audit/lint-notes.mjs --selftest   # 自证：植入的违规被找到、两个对照干净
 node tools/audit/check-claims.mjs            # 计数声明：§6.3 的条数、以及 CI 门禁道数
 node tools/audit/check-claims.mjs --selftest # 自证：一致的计数干净、不一致的被报出
+node tools/audit/check-waivers.mjs           # 供应链「时间盒例外」的到期门禁：过期即 exit 1（ADR-0031 条件 4）
+node tools/audit/check-waivers.mjs --selftest # 自证：过期 / 日期倒置 / id 重复被捕获，两个对照干净
 ```
 
 ## 两个工具的**形状不同，而这是有意的**（计划 §6.3 规则 19）
@@ -15,6 +17,7 @@ node tools/audit/check-claims.mjs --selftest # 自证：一致的计数干净、
 | --- | --- | --- | --- |
 | **`lint-notes.mjs`** | **有**（第 220 轮实测：36 行得 5 条候选，其中 **2 条是判断问题**） | **候选清单，**无论有无候选都 exit 0**** | **不在**——**这正是规则 19 要求的形状** |
 | **`check-claims.mjs`** | **没有**（条数、道数都是可数的） | **门禁，不一致即 exit 1** | **在**（两个 job，并在 `GATE_PAIRS` 中注册） |
+| **`check-waivers.mjs`** | **没有**（到期日与今天比大小） | **门禁，过期 / 当天到期即 exit 1**，30 天内仅告警 | **在**（两个 job，`GATE_PAIRS` 第 10 行） |
 
 **一条机械模式若分不清「断言」与「引用」，它就会在**记录过自己错误的仓库**里频繁误报**——**而总在喊的检查会教人忽略它**（第 140 轮的 13 条假警报即为此）。
 
@@ -24,6 +27,9 @@ node tools/audit/check-claims.mjs --selftest # 自证：一致的计数干净、
 | --- | --- | --- |
 | `lint-notes.mjs` | **计划 §6.3 规则 12 的删除线约定**：一行的结论变了时，被取代的原句必须划掉，而不是只在后面追加 | **第 147／148 轮**（旧断言留在行首）、**第 218 轮**（我自己只追加）、**第 220 轮**（扫出 A15／A16） |
 | `check-claims.mjs` | **「§6.3 有 N 条纪律」与 CI 门禁道数**这类计数声明 | **第 171／212 轮**（清单已到 17/19 条，入口段仍写旧数——**两次都是人读出来的，直到第 235 轮才由工具当场抓住**） |
+| `check-waivers.mjs` | **供应链例外的到期**：`docs/audit/waivers.json` 里每条 RUSTSEC 例外必须有 granted/expires/触发条件，**过期即红** | **第 262–265 轮**：ADR-0027 采证发现 `rustybuzz`/`ttf-parser` unmaintained，所有者批准**时间盒例外**；ADR-0031 条件 4 要求「到期即红」，否则例外就是橡皮章 |
+
+> **注意：`check-waivers.mjs` 与本目录另两个工具**不同类**。**本目录的定位是「文档自身的约定检查，不是产品门禁」；而 `check-waivers.mjs` **是一条真正的产品门禁**（G5 供应链的一部分），放进 `tools/audit` 是因为它与 ADR/登记表同源。**它的存在理由**：**任何「例外」都必须有到期日与机器校验，否则就是第 61 轮 K-04 批评过的橡皮章**。
 
 ## 有意**不做**的（第 234 轮）
 
