@@ -19,6 +19,9 @@ node tools/kernel-gates/check.mjs --selftest # 注入故障后仍能报红，证
 npm run conformance                          # 期望 gating 64/64  R_strict=1  R_gate=1；G1: NOT_JUDGED
 npm run bench:check                          # 期望 7 PASS；gating INCONCLUSIVE / REFERENCE_MACHINE_UNAVAILABLE
 node tools/ci-cost/check.mjs                 # 期望 state=UNDER_WARN，exit 0
+node tools/ci-cost/check.mjs --selftest      # 期望 3 分支如文档所述（2 注入 + 1 对照）
+node tools/conformance/selftest.mjs          # 期望 PASS（注入 1 条坏期望被捕获 + 对照成立）
+npm run bench:selftest                       # 期望 PASS - every injection was caught
 ```
 
 坑：bench:check 的 gatingNumbersProduced: 0 不是失败——本机不是 RM-A/RM-C，§5 数字按 ADR-0014 一律 NON_GATING。不要在云 runner 上声称性能达标。
