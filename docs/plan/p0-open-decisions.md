@@ -127,6 +127,17 @@
 
 
 **⚠ 第 181 轮对本节的更正（自我更正第 18 次）**：**「已有实现」三行必须按门禁强度区别对待，不能一律说成「已实现」**——**读 `tools/tokens/check.mjs` 第 3 行的自述**：「`// Gates: (1) schema (2) AR-22 rulers (3) WCAG contrast (4) codegen drift (5) hex debt (**warn only**).`」**因此**：
+**⚠ 第 185 轮：本任务必须自带「注入 + 对照」，否则它会成为下一个假绿（§6.3 规则 10）**。**理由是第 160 轮那次亲身经历**：**我给 `K4` 加的 AR-03 检查，其违规分支因为 TDZ 而**永远不可能执行**，却一直报 PASS**——**因为「没有命中」时那行代码根本不被求值**。**而本任务要加的是一条**新的呈现路径**：它完全可能「什么都不报」而仍然通过所有既有门禁**（`B1–B8` 检查的是结构与口径，**不会检查「NON_GATING 值是否真的被列出来了」**）。
+
+**因此规格追加一条验收要求**：
+
+| 要求 | 内容 |
+| --- | --- |
+| **注入** | **人为使五个 machine-free 行中的一行的值不可得**（例如让 `tokens` 的输出缺失），**报告必须显式反映该行的缺失**，**而不是静默省略** |
+| **对照** | **同一输入补齐后，该行的 NON_GATING 值必须出现**——**以排除「它只是什么都不报」** |
+| **不得越过 `B7`** | 上述两种情形下 `gatingNumbersProduced` **都必须保持 0** |
+
+**这三条与 `kernel-gates --selftest`（23/23）、`bench:selftest`、`conformance selftest`、`ci-cost --selftest` 是同一形态**：**新增呈现路径必须被证明「能报出它该报的东西」，而不只是「跑得通」**。
 **✅ 第 184 轮：E-P0-3 在本机的可执行任务，现在是完全指定的（D-6 的收束）**。**已核实**：`node tools/bench/check.mjs --json` 目前**只报状态与计数**——`"state": "INCONCLUSIVE"`、`"gatingNumbersProduced": 0`、`"detail": "no reference machine on this host: every discovered value is NON_GATING / INCONCLUSIVE and 0 gating…"`——**没有任何逐行的 NON_GATING 值**（JSON 里不存在 `values` / `nonGating` 数组）。
 
 **因此任务定义为**：
