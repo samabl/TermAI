@@ -781,8 +781,9 @@ impl Grid {
     fn soft_reset(&mut self) {
         self.scroll_top = 0;
         self.scroll_bottom = self.rows.saturating_sub(1);
-        self.cursor_row = 0;
-        self.cursor_col = 0;
+        // DECSTR resets the SAVED position to home but does not move the cursor itself (esctest's
+        // test_SaveRestoreCursor_Reset writes after DECSTR and expects that write to land where the
+        // cursor already was).
         self.wrap_pending = false;
         // State that xterm's DECSTR also returns to defaults and that would otherwise leak from one
         // esctest case into the next: character attributes, the saved cursor, the character set,
