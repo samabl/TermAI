@@ -246,3 +246,45 @@ fn the_frame_header_is_24_bytes_on_the_wire() {
         msg::PING
     );
 }
+
+/// ADR-0023 D1 allocated the 0x05xx attach family. Until the attach state machine
+/// lands (WS-05) the broker must answer UnsupportedMsg and keep the link - it must
+/// NOT be treated as a reserved section, because the section is now known.
+#[test]
+fn the_attach_family_is_a_known_section_not_a_reserved_one() {
+    let mut h = Harness::new("attach");
+    h.hello();
+
+    let out = h.send(msg::ATTACH_REQUEST, 0, 11, &[]).unwrap();
+    assert_eq!(out[0].msg_type, msg::ERROR);
+    assert_eq!(h.broker.state(), ConnState::Negotiated, "link survives");
+    let body = codec::from_bytes(&out[0].payload).unwrap();
+    assert_eq!(
+        body.get("code").and_then(|v| v.as_text()),
+        Some(termai_core::error::ipc::UNSUPPORTED_MSG)
+    );
+
+    // Values inside the allocated section but not yet assigned behave the same way.
+    let out = h.send(0x05FF, 0, 12, &[]).unwrap();
+    let body = codec::from_bytes(&out[0].payload).unwrap();
+    assert_eq!(
+        body.get("code").and_then(|v| v.as_text()),
+        Some(termai_core::error::ipc::UNSUPPORTED_MSG)
+    );
+}
+
+/// The next unallocated section still answers ReservedMsgType, so D1 did not turn
+/// every unknown type into a known one.
+#[test]
+fn a_still_unallocated_section_still_answers_reserved_msg_type() {
+    let mut h = Harness::new("reserved");
+    h.hello();
+    let out = h.send(0x0600, 0, 13, &[]).unwrap();
+    assert_eq!(out[0].msg_type, msg::ERROR);
+    assert_eq!(h.broker.state(), ConnState::Negotiated, "link survives");
+    let body = codec::from_bytes(&out[0].payload).unwrap();
+    assert_eq!(
+        body.get("code").and_then(|v| v.as_text()),
+        Some(termai_core::error::ipc::RESERVED_MSG_TYPE)
+    );
+}

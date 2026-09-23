@@ -40,6 +40,13 @@ pub const LEASE_TRANSFER: u16 = 0x0307;
 pub const AUDIT_RECORD: u16 = 0x0400;
 pub const AUDIT_BACKPRESSURE: u16 = 0x0401;
 
+/// Session attach family (0x05xx). Allocated and frozen by ADR-0023 D1;
+/// 0x0504..=0x05FF stays reserved, and assigning anything there needs a new ADR.
+pub const ATTACH_REQUEST: u16 = 0x0500;
+pub const ATTACH_ACK: u16 = 0x0501;
+pub const TAIL_REPLAY: u16 = 0x0502;
+pub const DETACH_NOTICE: u16 = 0x0503;
+
 pub const EXPERIMENTAL_BASE: u16 = 0xF000;
 
 /// How an unknown msg_type on a known section is handled (section 3.2).
@@ -86,6 +93,10 @@ const KNOWN: &[u16] = &[
     LEASE_TRANSFER,
     AUDIT_RECORD,
     AUDIT_BACKPRESSURE,
+    ATTACH_REQUEST,
+    ATTACH_ACK,
+    TAIL_REPLAY,
+    DETACH_NOTICE,
 ];
 
 #[must_use]
@@ -95,7 +106,7 @@ pub fn classify(msg_type: u16) -> MsgClass {
     }
     let section = msg_type & 0xFF00;
     match section {
-        0x0000 | 0x0100 | 0x0200 | 0x0300 | 0x0400 => MsgClass::KnownSection,
+        0x0000 | 0x0100 | 0x0200 | 0x0300 | 0x0400 | 0x0500 => MsgClass::KnownSection,
         0xF000 => MsgClass::Experimental,
         _ => MsgClass::ReservedSection,
     }
@@ -122,6 +133,10 @@ mod tests {
         assert_eq!(GRID_SNAPSHOT, 0x0180);
         assert_eq!(LEASE_ACQUIRE, 0x0304);
         assert_eq!(AUDIT_RECORD, 0x0400);
+        assert_eq!(ATTACH_REQUEST, 0x0500);
+        assert_eq!(ATTACH_ACK, 0x0501);
+        assert_eq!(TAIL_REPLAY, 0x0502);
+        assert_eq!(DETACH_NOTICE, 0x0503);
     }
 
     #[test]
@@ -129,7 +144,12 @@ mod tests {
         assert_eq!(classify(PING), MsgClass::Known);
         assert_eq!(classify(0x00FF), MsgClass::KnownSection);
         assert_eq!(classify(0x01FF), MsgClass::KnownSection);
-        assert_eq!(classify(0x0500), MsgClass::ReservedSection);
+        assert_eq!(classify(ATTACH_REQUEST), MsgClass::Known);
+        // The 0x05xx section is known (ADR-0023 D1); unassigned values inside it must
+        // yield UnsupportedMsg rather than ReservedMsgType.
+        assert_eq!(classify(0x0504), MsgClass::KnownSection);
+        assert_eq!(classify(0x05FF), MsgClass::KnownSection);
+        assert_eq!(classify(0x0600), MsgClass::ReservedSection);
         assert_eq!(classify(0xF001), MsgClass::Experimental);
     }
 }
