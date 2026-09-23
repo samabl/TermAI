@@ -53,7 +53,7 @@ E-P0-2 与 E-P0-3 都依赖渲染管线，而 **DC-17 指定的 wgpu / rustybuzz
 1. 在可联网环境执行 `cargo deny check licenses advisories bans sources`，把输出与 `deny.toml` 作为证据；**✅ 第 262 轮已执行**（cargo-deny 0.20.2，配置 = 仓库根 `deny.toml`）：`licenses ok / bans ok / sources ok`，**`advisories FAILED`**（两条 unmaintained）。完整输出见 [ADR-0027-spdx-evidence.md](ADR-0027-spdx-evidence.md) 的 cargo-deny 段。
 2. 用 `cargo tree -e normal --no-dev` 枚举**发布闭包内**的全部第三方单元，逐项填 SPDX 与 A/R/D；
 3. 任何一项为 R/D → 该候选**不得准入**，回到方案选型；
-4. **✅ 第 264 轮已完成**：表已填满、cargo-deny 已跑，本 ADR 转 **Accepted**；公告一侧的例外按 ADR-0031 登记（`docs/audit/waivers.json` W-01）。**待同步**：`kernel/03` / spec 07 的依赖准入位置与 K4 允许边（随 WS-03 的首个 crate `crates/termai-gpu` 一同落，见 D2）；
+4. **✅ 第 264 轮已完成**：表已填满、cargo-deny 已跑，本 ADR 转 **Accepted**；公告一侧的例外按 ADR-0031 登记（`docs/audit/waivers.json` W-01）。**✅ 第 267 轮：`crates/termai-gpu` 已落地**（WS-03 第一刀：T0–T3 阶梯 + headless wgpu 探测，**只准入 wgpu**；rustybuzz/swash/fontdb/winit 属后续切片，其中三者受 W-01 覆盖）；K4 允许边（`termai-gpu -> [termai-core]`）与 CODEOWNERS 已同步；`kernel/03` 的 K-14 / S8 / S9 本就以 `termai-gpu` 为 T0–T3 单一决策点。`termai-render -> termai-gpu/vt` 两条边在该 crate 真正声明依赖时再加（**不留假依赖**）；
 5. **在此之前**：workspace 依赖不得出现上述任何 crate（K5 不覆盖此点，靠本 ADR + CODEOWNERS 复核）。
 
 ## 4. 理由

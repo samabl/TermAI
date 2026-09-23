@@ -64,6 +64,10 @@ const ALLOWED_LIB_EDGES = {
   // section 4.3 edges to termai-vt / termai-gpu are registered with the shaping and GPU
   // slices, each with its own dependency-admission ADR.
   'termai-render': ['termai-core'],
+  // ADR-0027 D2 registers the GPU crate as the T0-T3 decision point. Its only admitted
+  // termai edge in this slice is downward to termai-core; the termai-render -> termai-gpu
+  // edge is added when termai-render actually declares it (no fake dependency).
+  'termai-gpu': ['termai-core'],
 };
 
 // AR-21 / ADR-0015 D4: strong copyleft + field-of-use licenses are forbidden in the link
@@ -72,7 +76,10 @@ const ALLOWED_LIB_EDGES = {
 // matched by the name denylist.
 const GPL_DENY_TOKENS = ['agpl', 'gpl', 'sspl'];
 
-// The crates AR-03 binds: kernel only. See the comment in gateK4 for why termai-render is not here.
+// The crates AR-03 binds: kernel only. termai-render and termai-gpu are deliberately absent:
+// they are the UI-side render/GPU pair, and admitting wgpu / winit / rustybuzz / swash into
+// them is a separate dependency-admission decision (ADR-0024 D3, ADR-0027 D2), not a kernel
+// violation. See the comment in gateK4.
 const KERNEL_CRATES = ['termai-tokens', 'termai-core', 'termai-ipc', 'termai-vt', 'termai-pty', 'termai-session'];
 const NETWORK_AI_UI_TOKENS = ['reqwest', 'hyper', 'tokio', 'ureq', 'curl', 'isahc', 'openai', 'anthropic', 'winit', 'wgpu', 'tao', 'egui', 'gtk', 'webkit', 'webview', 'fontdb', 'rustybuzz', 'swash'];
 
@@ -258,9 +265,10 @@ function gateK4(ctx) {
   const failures = [];
 
   // AR-03 / AGENTS section 2 item 1: the kernel must not depend on AI, network or UI libraries. The
-  // crate list is explicit rather than inferred, and termai-render is deliberately absent from it - it
-  // is the UI-side pipeline, and admitting wgpu, winit, rustybuzz or swash there is a separate decision
-  // under ADR-0024 and ADR-0027, not a violation of this rule.
+  // crate list is explicit rather than inferred, and termai-render and termai-gpu are deliberately
+  // absent from it - they are the UI-side pipeline and its GPU decision point (ADR-0024 D3, ADR-0027
+  // D2), and admitting wgpu, winit, rustybuzz or swash there is a separate decision under those ADRs,
+  // not a violation of this rule.
   for (const m of manifests) {
     if (KERNEL_CRATES.indexOf(m.name) < 0) continue;
     for (const d of m.deps) {

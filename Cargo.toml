@@ -8,6 +8,7 @@ members = [
   "crates/termai-pty",
   "crates/termai-session",
   "crates/termai-render",
+  "crates/termai-gpu",
   "apps/sessiond",
   "apps/termai",
 ]

@@ -38,6 +38,11 @@ pub const MODE_INSERT: u64 = 1 << 6;
 pub const MODE_APP_KEYPAD: u64 = 1 << 7;
 /// ANSI mode 20: linefeed/newline mode (LNM). When set, LF, VT and FF also do a CR.
 pub const MODE_LINEFEED: u64 = 1 << 8;
+/// DEC private mode 45: reverse wraparound. xterm's `CursorBack` also requires DECAWM.
+pub const MODE_REVERSE_WRAP: u64 = 1 << 9;
+/// DEC private mode 1045: extended reverse wraparound (xterm since patch 383). Also
+/// requires DECAWM; at this level both modes move the cursor the same way.
+pub const MODE_REVERSE_WRAP2: u64 = 1 << 10;
 
 const FLAG_NAMES: [(u16, &str); 10] = [
     (ATTR_BOLD, "bold"),
@@ -616,6 +621,12 @@ impl Grid {
         self.modes & MODE_AUTOWRAP != 0
     }
 
+    /// Whether reverse wraparound is active: DECSET 45 (or the extended 1045) together
+    /// with DECAWM, matching xterm's `CursorBack` test for REVERSEWRAP|WRAPAROUND.
+    fn reverse_wrap(&self) -> bool {
+        self.autowrap() && self.modes & (MODE_REVERSE_WRAP | MODE_REVERSE_WRAP2) != 0
+    }
+
     fn linefeed_newline(&self) -> bool {
         self.modes & MODE_LINEFEED != 0
     }
@@ -1011,11 +1022,7 @@ impl Grid {
         match byte {
             0x07 => {}
             0x08 => {
-                if self.cursor_col > 0 {
-                    self.cursor_col -= 1;
-                }
-                self.wrap_pending = false;
-                self.mark_cursor();
+                self.cursor_left(1);
             }
             0x09 => {
                 self.tab();
@@ -1541,8 +1548,55 @@ impl Grid {
         self.mark_cursor();
     }
 
+    /// CUB / BS: move left `n` columns, reverse-wrapping when DECSET 45 (or 1045)
+    /// and DECAWM are both set.
+    ///
+    /// This is xterm's pre-380 `CursorBack`, which the conformance harness selects with
+    /// its default `--xterm-reverse-wrap 0`: a pending wrap (the cursor parked past the
+    /// last column) absorbs one step, and a wrap past the left margin leaves the cursor
+    /// at the right margin of the previous row. Starting on the top margin, it lands at
+    /// the right margin of the bottom margin instead (xterm's "wrap to the end of the
+    /// screen" case). Larger `n` moves a whole row at a time by computing the linear
+    /// cell offset, as xterm does.
     fn cursor_left(&mut self, n: u16) {
-        self.cursor_col = self.cursor_col.saturating_sub(n);
+        const LEFT: i32 = 0;
+        let right = i32::from(self.cols.saturating_sub(1));
+        let before = i32::from(self.cursor_col);
+        let top = self.scroll_top;
+        let bottom = self.scroll_bottom;
+        let rev = self.reverse_wrap();
+
+        // A pending wrap means the cursor is already past the last column, so the
+        // first leftward step only clears it (xterm: "if (rev && do_wrap) n--").
+        let mut count = i32::from(n);
+        if rev && self.wrap_pending {
+            count = count.saturating_sub(1);
+        }
+        let col = before - count;
+
+        if col < LEFT {
+            if rev {
+                let in_row = right - LEFT + 1;
+                let mut offset = in_row * i32::from(self.cursor_row) + col - LEFT;
+                if before == LEFT && self.cursor_row == top {
+                    // From the top margin, wrap to the right edge of the bottom margin.
+                    offset = (i32::from(bottom) + 1) * in_row - 1;
+                } else if offset < 0 {
+                    let length = in_row * i32::from(self.rows);
+                    if length > 0 {
+                        offset += ((-offset) / length + 1) * length;
+                    }
+                }
+                let row = offset.div_euclid(in_row);
+                let wrapped_col = offset.rem_euclid(in_row) + LEFT;
+                self.cursor_row = row.clamp(0, i32::from(self.rows.saturating_sub(1))) as u16;
+                self.cursor_col = wrapped_col.clamp(LEFT, right) as u16;
+            } else {
+                self.cursor_col = 0;
+            }
+        } else {
+            self.cursor_col = col as u16;
+        }
         self.wrap_pending = false;
         self.mark_cursor();
     }
@@ -1665,6 +1719,8 @@ impl Grid {
                 self.cup(0, 0);
             }
             7 => self.set_bit(MODE_AUTOWRAP, enable),
+            45 => self.set_bit(MODE_REVERSE_WRAP, enable),
+            1045 => self.set_bit(MODE_REVERSE_WRAP2, enable),
             // 1048: save (h) / restore (l) the cursor, like DECSC/DECRC.
             1048 => {
                 if enable {
@@ -1711,6 +1767,8 @@ impl Grid {
                 1 => pm(self.modes & MODE_APP_CURSOR != 0),
                 6 => pm(self.modes & MODE_ORIGIN != 0),
                 7 => pm(self.modes & MODE_AUTOWRAP != 0),
+                45 => pm(self.modes & MODE_REVERSE_WRAP != 0),
+                1045 => pm(self.modes & MODE_REVERSE_WRAP2 != 0),
                 25 => pm(self.cursor_visible),
                 47 | 1047 | 1049 => pm(self.alt),
                 2004 => pm(self.modes & MODE_BRACKETED_PASTE != 0),

@@ -1,0 +1,21 @@
+[package]
+name = "termai-gpu"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "TermAI GPU backend: headless capability probe and the ADR-0014 T0-T3 backend ladder (ADR-0027 D2)."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+termai-core = { workspace = true }
+# ADR-0027 D1 (Accepted): wgpu 30.0.1 is admitted with SPDX "MIT OR Apache-2.0" and R=D=0.
+# No other third-party dependency belongs to this slice; winit, rustybuzz, swash and fontdb are
+# later slices (three of them under the ADR-0031 W-01 time-boxed exception).
+wgpu = "30"
+
+[lints.rust]
+unsafe_code = "forbid"
