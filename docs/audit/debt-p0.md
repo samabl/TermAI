@@ -336,6 +336,22 @@ CHECKSUM 1 1 1 1
 
 **两者都是标准 ECMA-48（`ESC 7`/`ESC 8`）的核心序列**，**不在 §3.5 表内是因为它们属核心**，与 CHT/CBT 同源——**属真缺陷，不是子集外**。
 
+### A4 附：第 88 轮——`alt_decsc` 独立字段**也没能修好 `AltVsMain`**（已回滚）；下一步是**打印 `self.alt`**
+
+按第 87 轮写明的正确修法实施了：新增独立字段 `alt_decsc`，`save_cursor`/`restore_cursor` 按 `self.alt` 选择，`soft_reset` 一并重置；**编译通过、单元测试全绿**。
+
+**但 `test_SaveRestoreCursor_AltVsMain` 仍失败，且值与修前完全相同**（`expected Point(2,3) but got Point(6,7)`）。**已回滚。**
+
+**已排除的解释**（都查过，不是猜）：`esccmd.ALTBUF = 47`（**已核实**）；`set_private_mode` 的 `47 => set_alt(enable, false, false)`、`1047/1049` 同理（**已核实**）；`set_alt` 在两个分支都正确设置 `self.alt`（**已核实**）；构建确实是新的（`Finished`，无待编译项）。
+
+**剩下的最强嫌疑**：**`restore_cursor` 执行时 `self.alt` 仍为 `true`**（于是它读了备用屏的槽，正是观测到的「返回备用屏位置」）。**但 `DECRESET(47)` 理应把它置回 false**——**所以必须直接取状态，而不是继续推理**。
+
+**下一步（精确、可执行，且用的是本会话已验证有效的方法）**：写一个**临时探针测试**，逐步复现该用例并打印 `grid().alt_buf_state()`（若无访问器则临时加一个只读 `pub fn is_alt(&self) -> bool`）：
+```
+CUP(2,3); DECSC; DECSET(47); print is_alt; CUP(6,7); DECSC; DECRESET(47); print is_alt; DECRC; print cursor
+```
+**该用例的两半都要测**（切回主屏得主屏位置；再切回备用屏得备用位置）。**这能一举定位是 `set_alt` 没清标志、还是 `DECRESET` 没走到 `set_alt`。**
+
 ### A4 附：第 87 轮——`AltVsMain` 所需的修法已定位，但**不能复用 `alt_saved`**（改动已回滚）
 
 **用例要求**（`save_restore_cursor.py:120-142`）：**主屏与备用屏各自维护 `DECSC` 保存位置**——主屏 `CUP(2,3)` 后 `DECSC`；切到备用屏 `CUP(6,7)` 后 `DECSC`；切回主屏后 `DECRC` **应得 `Point(2,3)`**（实得 `Point(6,7)`）。xterm 特有行为（DEC 终端无备用屏），`grid.rs` 的注释也写明了这一动机。
