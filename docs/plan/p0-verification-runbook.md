@@ -89,6 +89,8 @@ node tools/conformance/triage-single.mjs <log> <ClassPrefix 或 ALL> <outRoot>
 ```powershell
 node tools/audit/lint-notes.mjs            # 列出「宣布了更正、却没有删除线」的候选行（默认扫 docs/audit/debt-p0.md）
 node tools/audit/lint-notes.mjs --selftest # 自证：植入的违规必须被找到，两个对照必须干净
+node tools/audit/check-claims.mjs         # 核对「§6.3 有 N 条纪律」这类**计数声明**与实际的条数是否一致（不一致则 exit 1）
+node tools/audit/check-claims.mjs --selftest # 自证：一致的计数必须干净、不一致的必须被报出
 ```
 
 **它查的是什么**：**计划 §6.3 规则 12 的删除线约定**——**一行的结论变了时，被取代的原句必须划掉，而不是只在后面追加**。**本会话四次实例**（第 147/148 轮的旧断言留在行首、第 218 轮我自己的追加、第 220 轮扫出 A15／A16）。
