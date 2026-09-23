@@ -2,7 +2,7 @@
 // tools/kernel-gates/check.mjs
 // TermAI kernel gates (merge-blocking). Zero external dependencies, Node >= 18.
 //
-//   node tools/kernel-gates/check.mjs              # run K1-K6
+//   node tools/kernel-gates/check.mjs              # run K1-K7
 //   node tools/kernel-gates/check.mjs --selftest   # prove the gates are not always-green
 //   node tools/kernel-gates/check.mjs --json       # machine-readable JSON only
 //
@@ -17,6 +17,9 @@
 //   K5 license      every package.license == "Apache-2.0 OR MIT" (or license.workspace = true),
 //                   and [workspace.package].license == that SPDX expression (AR-21)
 //   K6 spec-defects docs/plan/m0-spec-defects.md exists and registers SD-01..SD-05
+//   K7 codeowners   .github/CODEOWNERS names every tracked top-level directory and every
+//                   rule names an owner; spec 07 section 3.1.2 requires 100% coverage and
+//                   "no directory without an owner may merge"
 //
 // A missing tool makes a gate SKIP with an explicit reason; it never silently passes.
 import fs from 'node:fs';
@@ -327,6 +330,62 @@ function gateK6(ctx) {
   return gate('K6', TITLE, STATUS.PASS, rel + ' registers ' + SPEC_DEFECTS[0] + '..' + SPEC_DEFECTS[SPEC_DEFECTS.length - 1]);
 }
 
+// Top-level directories excluded from the ownership check: build output, VCS metadata
+// and local runtime state. All of them are covered by .gitignore and are never tracked.
+const NON_REPO_DIRS = ['.git', 'target', 'node_modules', 'dist', '.termai'];
+const CODEOWNERS_REL = '.github/CODEOWNERS';
+
+function codeownersRules(text) {
+  return text
+    .split(/\r?\n/)
+    .map(function (l) { return l.trim(); })
+    .filter(function (l) { return l.length > 0 && l.charAt(0) !== '#'; });
+}
+
+function topLevelDirs(root) {
+  return fs.readdirSync(root, { withFileTypes: true })
+    .filter(function (e) { return e.isDirectory() && NON_REPO_DIRS.indexOf(e.name) < 0; })
+    .map(function (e) { return e.name; })
+    .sort();
+}
+
+// spec 07 section 3.1.2: coverage must be 100% and no directory may merge without an
+// owner. The blanket "*" rule prevents a directory from being *unowned*, but it gives it
+// no team, so this gate additionally requires every tracked top-level directory to be
+// named by a rule of its own.
+function gateK7(ctx) {
+  const TITLE = 'CODEOWNERS coverage: every tracked top-level directory is named by a rule (spec 07 section 3.1.2)';
+  const abs = path.join(ctx.root, CODEOWNERS_REL);
+  if (!fs.existsSync(abs)) {
+    return gate('K7', TITLE, STATUS.FAIL, CODEOWNERS_REL + ' is missing');
+  }
+  const rules = codeownersRules(fs.readFileSync(abs, 'utf8'));
+  if (!rules.length) {
+    return gate('K7', TITLE, STATUS.FAIL, CODEOWNERS_REL + ' defines no rules');
+  }
+  const noOwner = rules.filter(function (l) { return l.split(/\s+/).length < 2; });
+  if (noOwner.length) {
+    return gate('K7', TITLE, STATUS.FAIL, noOwner.length + ' rule(s) name no owner', noOwner);
+  }
+  const dirs = topLevelDirs(ctx.root);
+  const unowned = dirs.filter(function (d) {
+    return !rules.some(function (l) {
+      const pattern = l.split(/\s+/)[0];
+      return pattern.indexOf('/' + d + '/') === 0 || pattern === '/' + d;
+    });
+  });
+  if (unowned.length) {
+    return gate(
+      'K7',
+      TITLE,
+      STATUS.FAIL,
+      unowned.length + ' top-level director(y/ies) have no explicit rule: ' + unowned.join(', '),
+      unowned
+    );
+  }
+  return gate('K7', TITLE, STATUS.PASS, dirs.length + ' top-level director(y/ies) named by explicit rules');
+}
+
 // --------------------------------------------------- reporting
 
 function summarize(gates) {
@@ -512,14 +571,42 @@ function runSelftest() {
       st.check('K6: dropped SD-05 registration is caught', g.status === STATUS.FAIL, g.detail);
     }
 
+    // injection 8: CODEOWNERS that leaves a top-level directory without its own rule.
+    {
+      const root = tmpDir('kg-k7-unowned-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github'), { recursive: true });
+      fs.mkdirSync(path.join(root, 'crates'), { recursive: true });
+      fs.mkdirSync(path.join(root, 'docs'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'CODEOWNERS'),
+        '*  @samabl\ncrates/termai-core/  @termai/core-kernel\n'
+      );
+      const g = gateK7({ root: root });
+      st.check('K7: a top-level directory with only the blanket rule is caught', g.status === STATUS.FAIL, g.detail);
+    }
+
+    // injection 9: CODEOWNERS rule that names no owner.
+    {
+      const root = tmpDir('kg-k7-noowner-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github'), { recursive: true });
+      fs.mkdirSync(path.join(root, 'crates'), { recursive: true });
+      fs.writeFileSync(path.join(root, '.github', 'CODEOWNERS'), '/crates/\n');
+      const g = gateK7({ root: root });
+      st.check('K7: a rule that names no owner is caught', g.status === STATUS.FAIL, g.detail);
+    }
+
     // baseline: the file-based gates must be green on the real tree.
     {
       const g4 = gateK4({ root: DEFAULT_ROOT });
       const g5 = gateK5({ root: DEFAULT_ROOT });
       const g6 = gateK6({ root: DEFAULT_ROOT });
+      const g7 = gateK7({ root: DEFAULT_ROOT });
       st.check('baseline K4 on the real tree passes', g4.status === STATUS.PASS, g4.detail);
       st.check('baseline K5 on the real tree passes', g5.status === STATUS.PASS, g5.detail);
       st.check('baseline K6 on the real tree passes', g6.status === STATUS.PASS, g6.detail);
+      st.check('baseline K7 on the real tree passes', g7.status === STATUS.PASS, g7.detail);
     }
   } finally {
     for (const t of temps) {
@@ -555,6 +642,7 @@ async function main(argv) {
     gateK4(ctx),
     gateK5(ctx),
     gateK6(ctx),
+    gateK7(ctx),
   ];
   const report = buildReport(ctx, gates);
   if (args.json) {

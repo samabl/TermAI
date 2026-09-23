@@ -35,6 +35,7 @@ M0 **不主张** P0 出口达成：vttest/esctest/kitty 上游套件、三平台
 | K4 依赖形状（单向无环 / apps 不被依赖 / GPL 拒绝名单 / portable-pty 拒绝） | PASS | K4 输出 |
 | K5 许可（SPDX 表达式 = Apache-2.0 OR MIT） | PASS | K5 输出 |
 | K6 规格缺陷登记（SD-01…SD-05） | PASS | K6 输出 |
+| K7 CODEOWNERS 覆盖率（每个受版本控制的顶层目录都有具名 owner） | PASS | K7 输出；spec 07 §3.1.2 的「无 owner 目录一律拒绝合并」由机器校验 |
 | `tokens:check`（DC-09 codegen 幂等 + 标尺 + WCAG 对比度） | PASS | 6 个生成物字节一致；117 tokens；dark 5.89:1 / light 5.17:1 最小值 |
 | `design:check:static`（S1–S10，G7） | PASS | 10 PASS / 0 FAIL / 10 SKIP（浏览器层由 --static 跳过） |
 | G1 VT 兼容（vttest/esctest/kitty 100%、xterm ≥99%） | **未判定** | 未接入上游套件（OQ-VT-03 的 ≥2000 用例是 4–6 人周投入） |
@@ -107,7 +108,8 @@ M0 **不主张** P0 出口达成：vttest/esctest/kitty 上游套件、三平台
 | `cargo test -p termai` | **12 passed / 0 failed**（单元）+ `tests/e2e.rs` **4 passed / 2 FAILED** |
 | `cargo clippy --workspace --all-targets -- -D warnings` | **clean**（全工作区） |
 | `cargo fmt --all -- --check` | **clean**（全工作区） |
-| `node tools/kernel-gates/check.mjs` | **5 PASS / 1 FAIL / 0 SKIP**：K1 fmt PASS、K2 clippy PASS、**K3 test FAIL**、K4 依赖形状 PASS、K5 许可 PASS、K6 缺陷登记 PASS |
+| `node tools/kernel-gates/check.mjs` | **6 PASS / 1 FAIL / 0 SKIP**（共 7 道）：K1 fmt PASS、K2 clippy PASS、**K3 test FAIL**、K4 依赖形状 PASS、K5 许可 PASS、K6 缺陷登记 PASS、K7 CODEOWNERS 覆盖率 PASS |
+| `node tools/kernel-gates/check.mjs --selftest` | **14/14 注入故障全部被捕获**（证明门禁不是 always-green） |
 | `npm run tokens:check` | **PASS**（6 生成物字节一致；117 tokens；对比度最小值 dark 5.89:1 / light 5.17:1） |
 | `npm run design:check:static` | **PASS**（10 PASS / 0 FAIL / 10 SKIP） |
 
@@ -143,6 +145,7 @@ M0 实现期间本工作区**不是 git 仓库**，因此当时的交付**无法
 - 已加入 **`.gitattributes`**：全仓 `eol=lf`。这不是美化——本仓库有**两个按字节比对**的合并阻断门禁（DC-09 的 token codegen 漂移检查、以及设计门禁对原型内联 token 块的哈希）；Windows 上 `core.autocrlf` 的 CRLF 转换会让「没人改过的文件」把门禁判红。
 - 已补齐忽略规则：设计门禁的比对产物（`*.current.png`）与本地排障捕获文件（`*.out.txt`、`zz_probe*`）不入库；`prototype/reference/`（第三方 GPL 截图）与 `target/` 保持排除。
 - **CI tokens 作业的漂移步骤如今可实际执行**：`node tools/tokens/build.mjs` 后 `git diff --exit-code` 通过（此前无 VCS，该步骤无法验证）。
+- **运行期会话日志隔离**：CLI 默认把 Session Log 写到 `.termai/logs/`，其中含**原始 PTY 输出**；该目录此前未被忽略，一旦在仓库内运行就会把终端内容变成待提交文件。已加入 `.gitignore`（AR-11 / §6.3：命令输出属 L2 敏感数据，默认不出设备，更不得入库）。
 - **许可文件补齐**：AR-21 与 ADR-0013 §27 要求仓库根提供 `LICENSE-APACHE` 与 `LICENSE-MIT`（全栈 **Apache-2.0 OR MIT**），M0 期间缺失，现已补入（Apache-2.0 含 APPENDIX 的完整文本 + 标准 MIT 文本及本项目版权行）。
 - **CODEOWNERS 与 PR 模板已建立**：`.github/CODEOWNERS` 逐条对齐 docs/spec/07 §3.1.2 的团队映射（T1 core-kernel / T2 shell-ux / T5 devex），并覆盖全部受版本控制的顶层目录；`.github/pull_request_template.md` 编码 AGENTS §6 的编号追溯、§2 的八条不可协商自检、HARNESS §8.1 六件套门禁与 AR-20 诚实声明。
 - **仍未完成（治理项）**：**分支保护未启用**，且 **E4 的「两侧各一名 reviewer」目前无法强制执行**——仓库只有一个所有者，同一人无法构成双签（HARNESS §11 OQ-19 的 TSC 尚未成立）。另需注意：GitHub 对 **未知的 CODEOWNERS 条目会静默忽略**，因此 `@termai/*` 团队与 `@samabl` 必须先确认可解析，否则规则会退化为空操作。这是 M1 开工前必须补上的治理项。

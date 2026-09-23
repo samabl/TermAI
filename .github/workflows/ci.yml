@@ -10,7 +10,8 @@
 #            browser layer B1-B10 on the runner's preinstalled Chrome
 #            (install instructions: tools/design-gates/README.md section 6)
 #   kernel - tools/kernel-gates: K1 fmt / K2 clippy / K3 test / K4 dep shape / K5 license /
-#            K6 spec-defects, plus the injection selftest (proves the gates are not always-green)
+#            K6 spec-defects / K7 CODEOWNERS coverage, plus the injection selftest
+#            (proves the gates are not always-green)
 name: CI
 
 on:

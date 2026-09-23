@@ -20,6 +20,11 @@ dist/
 .DS_Store
 Thumbs.db
 
+# ---- 终端会话运行期状态（绝不能入库）----
+# termai CLI 默认把 Session Log 写到 .termai/logs/，其中含**原始 PTY 输出**。
+# 依 AR-11 与 §6.3：PTY 流/命令输出属 L2 敏感数据，默认不出设备，更不得进入版本库。
+.termai/
+
 # ---- 本地排障的临时输出 ----
 # 例如把 cargo/clippy 输出重定向到文件；这类捕获文件不得入库。
 *.out.txt
