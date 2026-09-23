@@ -3,7 +3,7 @@
 > 目的：把本会话的可运行操作知识集中到一页。每条命令给出：做什么 / 期望输出 / 它防的坑。
 > 口径基线（第 112 轮）：kernel-gates 8 PASS ｜ conformance gating 64/64 ｜ bench:check 7 PASS（gating INCONCLUSIVE）｜ esctest 267 passed / 41 known-bug / 259 failed / 0 substitutions，且污染 0。
 
-## 0. 三条铁律（各由一次事故换来）
+## 0. 三条铁律（各由一次事故换来） **第 114 轮已逐条实跑验证**：5 条门禁命令全部产出文档所述结果——① kernel-gates `8 PASS / 0 FAIL`；② selftest `result: PASS - every executed injection was caught; the gates are not always-green`；③ conformance `gating 64/64`、`G1: NOT_JUDGED`；④ bench:check `7 PASS / 0 FAIL`；⑤ ci-cost `state=UNDER_WARN`、`exit=0`。**手册本身是被验证过的，不是写下来就算的**（一份命令写错的手册比没有手册更糟）。
 
 1. 改动有效性先在协议层确认，再跑套件——套件用于计数，不用于定性。
 2. 验证与提交分开执行；看到绿色的输出再 commit。合并两者等于把门禁降级成日志。
