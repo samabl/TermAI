@@ -92,6 +92,7 @@ proposed ──accept──▶ accepted ──supersede──▶ superseded
 | ADR-0021 | CI 构建产物输出与 GitHub Action 准入 | Accepted | AGENTS 第 4/5 节、HARNESS 第 8.1/6.3 节、AR-11、AR-12、AR-21、ADR-0014、ADR-0015 | 准入 actions/upload-artifact 作为唯一新增 action；产物内容白名单（仅二进制 + SHA256SUMS）；保留 14 天；由 K8 机器校验「凡构建必出产物」 |
 | ADR-0022 | 视觉回归基线的权威来源与生成机制 | Accepted | AR-11、AR-12、DC-14 | 像素基线是环境指纹，必须由与验证同一 runner 镜像/浏览器生成；新增仅 workflow_dispatch 的 design-baseline 作业，产物范围 = prototype/baseline 的 PNG + 溯源清单；机器人不写 main，基线经人工 PR 入库 |
 | ADR-0023 | P0 契约 errata 与字段集冻结 | Accepted | AR-04、AR-13、AR-25、AR-26、AR-28 第 1 条、AR-29、AR-31 | attach 族新增 0x05xx 段（AttachRequest/AttachAck/TailReplay/DetachNotice）；字符串态上限冻结为 OSC·SOS·PM 1 MiB / DCS·APC 16 MiB；GridSnapshot/GridDelta 字段集正式冻结并含 clusters: ClusterTable（golden/digest 必须覆盖） |
+| ADR-0024 | 渲染管线第一刀：termai-render 的依赖位置与零新增依赖切片 | Accepted | AR-01、AR-03、AR-19、AR-23 §6、AR-24、DC-17、DC-21 | 新增 crates/termai-render，本切片仅依赖 termai-core（镜像 + rev 自愈 + damage 帧输入，零像素）；软换行/裁剪归本 crate 且必须零 GridDelta；第三方依赖本次**零准入**（wgpu/winit/rustybuzz/swash 待后续 ADR 附 cargo-deny） |
 
 ## 7. 命名与文件约定
 

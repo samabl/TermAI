@@ -45,6 +45,8 @@
 /crates/termai-vt/                  @termai/core-kernel @samabl
 /crates/termai-pty/                 @termai/core-kernel @samabl
 /crates/termai-session/             @termai/core-kernel @samabl
+# ADR-0024: render pipeline first slice (T1 owns termai-{render,gpu} per spec 07 section 3.1.2).
+/crates/termai-render/               @termai/core-kernel @samabl
 # 生成物（DC-09）：由 tools/tokens/build.mjs 产出，禁止手改，改动以生成器为准。
 /crates/termai-tokens/              @termai/core-kernel @samabl
 

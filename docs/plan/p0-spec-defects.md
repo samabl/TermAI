@@ -28,6 +28,20 @@
 - **本 P0 处置**：标 `origin:'extension'` 并在 `tools/bench/README.md` 给出推导链。
 - **需要的动作**：若 kernel/06 owner 认可，并入 §6 / §3.4 的枚举登记；否则应改为 spec 已有的码。
 
+## SD-13｜GridSnapshot / RowPayload 缺逐行 LineFlags（WRAPPED），逻辑行无法重建
+
+- **证据**：${T}kernel/03${T} §3.8 定义「逻辑行 = 由 ${T}LineFlags::WRAPPED${T} 串起来的网格行链」，§3.3 的 ${T}LineRecord${T} 亦带 ${T}LineFlags${T}；而 core DTO v1（${T}crates/termai-core/src/grid.rs${T}）的 ${T}GridSnapshot${T} 只有全局 ${T}wrap_pending${T}，${T}RowPayload${T} 只有 ${T}row${T} + ${T}cells${T}，**没有任何逐行标志**。
+- **影响**：软换行/裁剪（VisualRowMap，AR-23 §6 / kernel/03 K-10 / **RP-08**）无法实现——无法把网格行链成逻辑行；UX-G17「软换行开关下复制逐字节相同」因此不可判定。这是**对外契约级**缺口。
+- **本 P0 处置**：不实现近似替代（不许按列宽猜折行，那会破坏复制保真）；${T}termai-render${T} 先落地镜像切片，VRM 等字段补充后落地。归属见 **ADR-0024 D2**。
+- **需要的动作**：按 **ADR-0023 D3**（字段集以 ${T}kernel/03${T} §3.3 为准）为 ${T}GridSnapshot${T} / ${T}RowPayload${T} 增加逐行 ${T}flags${T}（至少 WRAPPED 位），并同步 ${T}canonical_bytes${T} / golden / digest 的版本处理与 ${T}kernel/01${T} 的 golden 规则。属**实现对齐已冻结设计**（minor 字段新增），须与 golden 哈希兼容性一并验证。
+
+## SD-14｜GridDelta 的 scroll 字段重复承载
+
+- **证据**：${T}crates/termai-core/src/grid.rs${T} 的 ${T}GridDelta${T} 同时有 ${T}scroll: Option<ScrollOp>${T} 与 ${T}damage: Damage${T}（后者也带 ${T}scroll${T}）；${T}kernel/03${T} §3.3 的伪代码同样两处并存。
+- **影响**：应用顺序与「哪个是真源」无定义，两个实现者会做出不同选择，且可能双应用或漏应用滚动。
+- **本 P0 处置**：${T}termai-render${T} 取 ${T}delta.scroll.or(delta.damage.scroll)${T} 的**单一优先级**并加测试锁定，代码注释引用本条。
+- **需要的动作**：kernel/03 owner 二选一并删除另一处，或显式写明「两处必须一致，否则以 ${T}GridDelta.scroll${T} 为准」。
+
 ## 处置总表
 
 | 编号 | 落点 | 类型 | 本 P0 处置 | 需要动作 |

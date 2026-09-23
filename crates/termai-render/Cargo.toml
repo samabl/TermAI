@@ -1,0 +1,17 @@
+[package]
+name = "termai-render"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "TermAI render pipeline (kernel/03). First slice is the UI-side grid mirror (ADR-0024 D1)."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+termai-core = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"

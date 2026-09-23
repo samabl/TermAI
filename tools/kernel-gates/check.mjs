@@ -48,6 +48,10 @@ const ALLOWED_LIB_EDGES = {
   'termai-vt': ['termai-core'],
   'termai-pty': ['termai-core'],
   'termai-session': ['termai-core', 'termai-ipc'],
+  // ADR-0024 D1: the first render slice is pure logic on the core DTO; the HARNESS
+  // section 4.3 edges to termai-vt / termai-gpu are registered with the shaping and GPU
+  // slices, each with its own dependency-admission ADR.
+  'termai-render': ['termai-core'],
 };
 
 // AR-21 / ADR-0015 D4: strong copyleft + field-of-use licenses are forbidden in the link

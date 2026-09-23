@@ -179,6 +179,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "termai-render"
+version = "0.1.0"
+dependencies = [
+ "termai-core",
+]
+
+[[package]]
 name = "termai-session"
 version = "0.1.0"
 dependencies = [

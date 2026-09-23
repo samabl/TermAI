@@ -189,6 +189,7 @@ P0 只启用三条现有团队线，其余（T3 Agent / T4 生态）在 P2/P3 �
 | 三平台 IME/CJK 矩阵全绿 | §7 E-P0-2、`kernel/05` IN-AC-04、AR-29.4/AR-31.4 | WS-04 | 12 组合截图矩阵 + 人工会签记录 | 未实现 |
 | 性能门禁进 CI | §7 E-P0-3、§8.1-4、AR-27、ADR-0014 | WS-06/08/03 | G4-PR/REL 报告 + 机器指纹 | 未判定（W1-C 起桩） |
 | screen 可恢复 | §7 E-P0-4、§8.2、AR-13/AR-26 | WS-05 | 重建 P95/P99 报告 + AC-S1…S6 | 部分（恢复器已交付；attach 全族未实现） |
+| 孤儿进程清理 = 100% 且会话关闭 ≤2s 回收 | AR-30 第 2 条、§8.2、`kernel/02` §3.3 | WS-02 + WS-05 | PTY-ORPHAN-1 用例（native + pipe） | **部分**：native ConPTY 路径已补覆盖（根 + **后代**，`kill(Force)` 后 2s 内清空，commit `89b491d`）；但 **M0 的 sessiond 不持有 PTY**（registry 只走 `TerminalEngine` trait，真实 PTY 生命周期在 `apps/termai` CLI），故「**会话关闭 → 回收**」在守护进程层**尚未实现**，当前仅靠 CLI 进程退出时关闭 Job 句柄兜底；且 `close()` 的契约是「**不隐式杀树**」，长期存活的 sessiond 必须在会话关闭时**显式 kill**，否则首次多会话就会泄漏 |
 | 行为回放 ≥99.5% | §8.1-2 | WS-01 | `.trec` 回放报告 | 部分 |
 | 视觉回归 ≤0.1% | §8.1-3 | WS-03/04 | B4 diff | 不适用（无渲染） |
 | 依赖与许可 | §8.1-5 | WS-06 | cargo-deny/audit/SBOM | 部分（K4/K5 声明清单） |

@@ -7,6 +7,7 @@ members = [
   "crates/termai-vt",
   "crates/termai-pty",
   "crates/termai-session",
+  "crates/termai-render",
   "apps/sessiond",
   "apps/termai",
 ]
@@ -27,6 +28,7 @@ termai-ipc = { path = "crates/termai-ipc" }
 termai-vt = { path = "crates/termai-vt" }
 termai-pty = { path = "crates/termai-pty" }
 termai-session = { path = "crates/termai-session" }
+termai-render = { path = "crates/termai-render" }
 # AR-18: vte is the P0-P2 base ESC state machine behind the termai-vt trait boundary.
 vte = "0.15"
 unicode-width = "0.2"
