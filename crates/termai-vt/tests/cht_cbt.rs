@@ -36,6 +36,15 @@ fn cht_zero_parameter_behaves_as_one_and_moves() {
 }
 
 #[test]
+fn cht_stops_at_right_edge() {
+    // Forward boundary guard (upstream's third CHT test is the margin case, not
+    // this): CHT must clamp at the last column, never wrap or exceed the grid.
+    let mut t = Terminal::new(80, 4);
+    t.feed(b"\x1b[1;73H\x1b[5I");
+    assert_eq!(t.grid().cursor(), (0, 79));
+}
+
+#[test]
 fn cbt_one_tab_stop_by_default() {
     // esctest: CUP(17,1); CBT() -> cursor.x == 9 (1-based), i.e. 0-based col 8.
     let mut t = Terminal::new(80, 4);
