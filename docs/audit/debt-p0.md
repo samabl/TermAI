@@ -26,6 +26,8 @@
 >
 > 4. **环境缺口（非排期缺口）**：vttest（无 C 编译器）、G1 真实语料 oracle（需 Xvfb + 钉定 xterm）、渲染依赖 SPDX 证据（网络受限）、RM-A/B/C 参考机（E-P0-3 判定）。
 >
+> 5. **现在就能开工的（本会话唯一一项）**：**§5 的 NON_GATING 呈现**——见 `docs/plan/p0-open-decisions.md` **D-6**：**为五个 `machine: none` 的行（H12/H13/H17/H18/H19）产出并标注 NON_GATING 的值**。**输入来源（H17←`tools/design-gates`；H18/H19←`tokens`；H12←`InputEncoder`；H13←无）、硬边界（`B7` 要求 `gatingNumbersProduced` 恒为 0）、验收证明要求（注入 + 对照）均已写明。** **它不需要参考机、不需要 TSC、不需要新环境**——**是四项待决之外唯一可立即开工的 P0 工作**。
+>
 > **本会话新增的机器产物**：`docs/audit/esctest-classification.md` + `docs/audit/esctest-failing-index.md`（268→259 条失败的全量定位与分类，由 `tools/conformance/{failing-index,classify-esctest}.mjs` 生成）。
 >
 > **可复用的两个探针**（定性用，比跑套件快且不看 harness 脸色）：`FEED <hex>` 直驱 `termai-vt-conformance --server`；**用 `DECRQM` 读终端自身状态**（无需新增访问器）。
