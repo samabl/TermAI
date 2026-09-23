@@ -11,3 +11,4 @@
 #![forbid(unsafe_code)]
 
 pub mod mirror;
+pub mod vrm;
