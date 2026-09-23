@@ -784,6 +784,16 @@ impl Grid {
         self.cursor_row = 0;
         self.cursor_col = 0;
         self.wrap_pending = false;
+        // State that xterm's DECSTR also returns to defaults and that would otherwise leak from one
+        // esctest case into the next: character attributes, the saved cursor, the character set,
+        // and the modes DECSTR resets (origin mode and insert mode off, autowrap on, cursor shown).
+        self.sgr = Sgr::default();
+        self.saved = SavedCursor::default();
+        self.alt_saved = SavedCursor::default();
+        self.charset_g1 = false;
+        self.last_graphic = ' ';
+        self.cursor_visible = true;
+        self.modes = MODE_AUTOWRAP | MODE_CURSOR_VISIBLE;
         self.mark_full();
     }
 
