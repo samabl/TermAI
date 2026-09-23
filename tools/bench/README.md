@@ -39,7 +39,7 @@ node tools/bench/check.mjs --machine <p># 显式声明本机为已登记的 RM-A
 | B4 | 阈值转写对照 | 解析 kernel/06 §3.6 的 `eps_self` 表与 §3.1 代码块，核对本工具中的每个常量 | kernel/06 §3.1/§3.6、AR-31 第 9 条 |
 | B5 | 指纹确定性 | 同输入同哈希；41 个叶子字段**逐个**改动都改变哈希；键序无关 | kernel/06 §3.4、§3.7 |
 | B6 | §3.1 状态机分支覆盖 | 6 条对照分支 + 21 条故障分支全部产出文档规定的裁决 | kernel/06 §3.1 |
-| B7 | 机器绑定诚实边界 | 无参考机时必须 NON_GATING / INCONCLUSIVE 且产出 0 个门禁数字 | ADR-0014 铁律 5、kernel/06 §6、AR-31 第 8 条 |
+| B7 | 机器绑定诚实边界 | 无参考机时必须 NON_GATING / INCONCLUSIVE 且产出 0 个门禁数字 | ADR-0014 铁律 5、kernel/06 §6、AR-31 第 8 条 | **⚠ 第 202 轮注**：**「产出 0 个门禁数字」这一条目前是**恒真**的——`gatingNumbersProduced` 是 `check.mjs:672` 的**字面常量 0**，没有任何代码从结果计算它（第 188/189 轮核实）。** `B7` 的另外两条判据是活的（机器分类、无指纹情形）。**因此本行描述的是**要求**，不是**当下被强制的事实**；把计数器做成计算值是 `docs/plan/p0-open-decisions.md` D-6 的第 ④ 步。**
 | B8 | 外部报告 schema 校验（`--report`） | 对指定 bench-report.json 做 §3.7 校验；文件不存在则 SKIP | kernel/06 §3.7、spec 07 §3.8.2 |
 
 ## bench-report 字段对照（kernel/06 §3.7 逐字）
