@@ -1,9 +1,12 @@
 # TermAI CI - merge-blocking gates.
 #
 # Contract: docs/spec/07-engineering-quality-and-release.md.
-# Only actions/checkout and actions/setup-node are used; no other third-party actions
-# (ADR-0015 supply chain). That is why build artifacts are reported rather than uploaded:
-# an upload action would need its own ADR.
+# Admitted actions (ADR-0021): actions/checkout, actions/setup-node and
+# actions/upload-artifact. The upload action is the only addition and exists solely to
+# publish build outputs; any further action needs its own ADR. Enforced by K8, which also
+# checks that artifact uploads pin a retention policy and stay inside the content
+# whitelist (binaries + checksums only - artifacts of a public repo are world-downloadable,
+# so no logs, no gate reports, no paths; AR-11 / section 6.3).
 #
 # Toolchain: Rust is pinned by rust-toolchain.toml and Node by package.json engines
 # (>=22, because the design-gates CDP client needs a global WebSocket, which Node 20
@@ -170,8 +173,8 @@ jobs:
           cargo --version
           rustc -vV
       - name: cargo build --workspace --release
-        run: cargo build --workspace --release
-      - name: Report produced artifacts (sizes + paths)
+        run: cargo build --workspace --release --locked
+      - name: Write SHA-256 checksums and export the short SHA
         run: |
           $exe = Get-ChildItem target/release -Filter *.exe -File -ErrorAction SilentlyContinue |
             Where-Object { $_.BaseName -in @('termai','sessiond','pty_echo') }
@@ -179,4 +182,25 @@ jobs:
           foreach ($e in $exe) {
             '{0,-14} {1,10:N0} bytes  {2}' -f $e.BaseName, $e.Length, $e.FullName
           }
-          Write-Host 'Artifacts are built but not uploaded: an upload action needs its own ADR (see header).'
+          $lines = foreach ($f in $exe) {
+            '{0}  {1}' -f (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLower(), $f.Name
+          }
+          $lines | Set-Content -Path target/release/SHA256SUMS.txt -Encoding ascii
+          '--- SHA256SUMS.txt ---'
+          Get-Content target/release/SHA256SUMS.txt
+          "SHORT_SHA=$($env:GITHUB_SHA.Substring(0,8))" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Upload build artifacts (ADR-0021 D2 whitelist only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: termai-0.1.0-win32-x64-${{ env.SHORT_SHA }}
+          # Whitelist: build outputs only. Never add logs, gate reports, session data or
+          # anything carrying absolute paths - artifacts of a public repository are
+          # downloadable by anyone (AR-11 / HARNESS section 6.3: paths and command output
+          # are L2 sensitive).
+          path: |
+            target/release/termai.exe
+            target/release/sessiond.exe
+            target/release/pty_echo.exe
+            target/release/SHA256SUMS.txt
+          retention-days: 14
+          if-no-files-found: error

@@ -89,6 +89,7 @@ proposed ──accept──▶ accepted ──supersede──▶ superseded
 | ADR-0018 | 内核对外契约变更追认（PtyBackend 九元面 / IPC CBOR+POD / crc32c 强制） | Accepted | AR-28 第 1 条、AR-25、DC-22、DC-40 | 九元 PtyBackend；POD 4KiB 热路径档 + CBOR 演进档；IPC 与共享内存同级 crc32c |
 | ADR-0019 | 内核 crate 布局与依赖准入 | Accepted | AGENTS 第三/五节、DC-21、AR-21、ADR-0015 | core/ipc/vt/pty/session 单向无环，apps 不被依赖；准入 vte/unicode-width/blake3/sha2/libc/windows-sys；portable-pty 拒绝、russh 未准入 |
 | ADR-0020 | 实现期线格式与契约 errata（SD-01 至 SD-05） | Accepted | AR-04、AR-25 第 2 条、AR-28 第 1 条、DC-22/DC-23/DC-40 | 线格式以显式小端为唯一权威（禁止 repr(C) 直转）；Hello 增 required；SessionId = u128 ULID；叶子契约用 &mut dyn 且不加 Send |
+| ADR-0021 | CI 构建产物输出与 GitHub Action 准入 | Accepted | AGENTS 第 4/5 节、HARNESS 第 8.1/6.3 节、AR-11、AR-12、AR-21、ADR-0014、ADR-0015 | 准入 actions/upload-artifact 作为唯一新增 action；产物内容白名单（仅二进制 + SHA256SUMS）；保留 14 天；由 K8 机器校验「凡构建必出产物」 |
 
 ## 7. 命名与文件约定
 

@@ -20,6 +20,10 @@
 //   K7 codeowners   .github/CODEOWNERS names every tracked top-level directory and every
 //                   rule names an owner; spec 07 section 3.1.2 requires 100% coverage and
 //                   "no directory without an owner may merge"
+//   K8 artifacts    .github/workflows/ci.yml publishes build artifacts (a build job must
+//                   output artifacts, ADR-0021 D5), every upload pins retention-days,
+//                   upload paths stay inside the D2 whitelist, and every "uses:" is on the
+//                   ADR-0021 admission list
 //
 // A missing tool makes a gate SKIP with an explicit reason; it never silently passes.
 import fs from 'node:fs';
@@ -386,6 +390,69 @@ function gateK7(ctx) {
   return gate('K7', TITLE, STATUS.PASS, dirs.length + ' top-level director(y/ies) named by explicit rules');
 }
 
+// ADR-0021 admits exactly these actions. Adding another is a supply-chain change and
+// requires its own ADR, so this list is deliberately short and explicit.
+const ADMITTED_ACTIONS = ['actions/checkout', 'actions/setup-node', 'actions/upload-artifact'];
+// Paths that must never be published: build intermediates, runtime session logs, log
+// files, and whole-repository globs. Artifacts of a public repository are downloadable by
+// anyone, so the content whitelist is enforced here (ADR-0021 D2, AR-11, section 6.3).
+const ARTIFACT_PATH_DENY = ['target/debug', '.termai', '*.log', 'target/**', 'path: .', '**/*'];
+
+function gateK8(ctx) {
+  const TITLE = 'build artifacts: a build job publishes artifacts with a retention policy (ADR-0021)';
+  const rel = '.github/workflows/ci.yml';
+  const abs = path.join(ctx.root, rel);
+  if (!fs.existsSync(abs)) {
+    return gate('K8', TITLE, STATUS.FAIL, rel + ' is missing');
+  }
+  const text = fs.readFileSync(abs, 'utf8');
+  const lines = text.split(/\r?\n/);
+
+  const used = [];
+  const re = /uses:\s*([^\s#]+)/g;
+  let m;
+  while ((m = re.exec(text)) !== null) used.push(m[1]);
+  // "uses:" values carry a version suffix (actions/checkout@v4); admission is by action
+  // name, and version pinning is a separate policy (ADR-0021 D1, SHA pinning is a P1 item).
+  const unadmitted = used.filter(function (u) { return ADMITTED_ACTIONS.indexOf(u.split('@')[0]) < 0; });
+  if (unadmitted.length) {
+    return gate('K8', TITLE, STATUS.FAIL, 'action(s) not admitted by ADR-0021: ' + unadmitted.join(', '), unadmitted);
+  }
+
+  const uploads = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].indexOf('uses: actions/upload-artifact') >= 0) uploads.push(i);
+  }
+  if (!uploads.length) {
+    return gate('K8', TITLE, STATUS.FAIL, 'no artifact upload step: a build job must publish its artifacts (ADR-0021 D5)');
+  }
+
+  const problems = [];
+  for (const i of uploads) {
+    const block = lines.slice(i, Math.min(i + 30, lines.length)).join('\n');
+    if (block.indexOf('retention-days:') < 0) {
+      problems.push('upload step at line ' + (i + 1) + ' does not set retention-days (ADR-0021 D3)');
+    }
+    if (block.indexOf('if-no-files-found: error') < 0) {
+      problems.push('upload step at line ' + (i + 1) + ' does not set if-no-files-found: error (ADR-0021 D3)');
+    }
+    for (const d of ARTIFACT_PATH_DENY) {
+      if (block.indexOf(d) >= 0) {
+        problems.push('upload step at line ' + (i + 1) + ' publishes a denylisted path: ' + d + ' (ADR-0021 D2)');
+      }
+    }
+  }
+  if (problems.length) {
+    return gate('K8', TITLE, STATUS.FAIL, problems.length + ' artifact policy violation(s)', problems);
+  }
+  return gate(
+    'K8',
+    TITLE,
+    STATUS.PASS,
+    uploads.length + ' upload step(s) with retention + whitelist, ' + used.length + ' action use(s) all admitted'
+  );
+}
+
 // --------------------------------------------------- reporting
 
 function summarize(gates) {
@@ -597,16 +664,63 @@ function runSelftest() {
       st.check('K7: a rule that names no owner is caught', g.status === STATUS.FAIL, g.detail);
     }
 
+    // injection 10: a workflow that never publishes artifacts.
+    {
+      const root = tmpDir('kg-k8-noupload-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  b:\n    runs-on: windows-latest\n    steps:\n      - uses: actions/checkout@v4\n'
+      );
+      const g = gateK8({ root: root });
+      st.check('K8: a build workflow that publishes nothing is caught', g.status === STATUS.FAIL, g.detail);
+    }
+
+    // injection 11: an action outside the ADR-0021 admission list.
+    {
+      const root = tmpDir('kg-k8-action-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  b:\n    steps:\n      - uses: actions/checkout@v4\n' +
+          '      - uses: actions/upload-artifact@v4\n        with:\n' +
+          '          retention-days: 14\n          if-no-files-found: error\n' +
+          '      - uses: some/third-party-action@v1\n'
+      );
+      const g = gateK8({ root: root });
+      st.check('K8: an action outside the ADR-0021 admission list is caught', g.status === STATUS.FAIL, g.detail);
+    }
+
+    // injection 12: an upload that publishes build intermediates or runtime session logs.
+    {
+      const root = tmpDir('kg-k8-path-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  b:\n    steps:\n      - uses: actions/checkout@v4\n' +
+          '      - uses: actions/upload-artifact@v4\n        with:\n' +
+          '          retention-days: 14\n          if-no-files-found: error\n' +
+          '          path: |\n            target/debug/**\n'
+      );
+      const g = gateK8({ root: root });
+      st.check('K8: publishing a denylisted path is caught', g.status === STATUS.FAIL, g.detail);
+    }
+
     // baseline: the file-based gates must be green on the real tree.
     {
       const g4 = gateK4({ root: DEFAULT_ROOT });
       const g5 = gateK5({ root: DEFAULT_ROOT });
       const g6 = gateK6({ root: DEFAULT_ROOT });
       const g7 = gateK7({ root: DEFAULT_ROOT });
+      const g8 = gateK8({ root: DEFAULT_ROOT });
       st.check('baseline K4 on the real tree passes', g4.status === STATUS.PASS, g4.detail);
       st.check('baseline K5 on the real tree passes', g5.status === STATUS.PASS, g5.detail);
       st.check('baseline K6 on the real tree passes', g6.status === STATUS.PASS, g6.detail);
       st.check('baseline K7 on the real tree passes', g7.status === STATUS.PASS, g7.detail);
+      st.check('baseline K8 on the real tree passes', g8.status === STATUS.PASS, g8.detail);
     }
   } finally {
     for (const t of temps) {
@@ -643,6 +757,7 @@ async function main(argv) {
     gateK5(ctx),
     gateK6(ctx),
     gateK7(ctx),
+    gateK8(ctx),
   ];
   const report = buildReport(ctx, gates);
   if (args.json) {

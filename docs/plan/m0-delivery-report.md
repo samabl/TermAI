@@ -173,6 +173,8 @@ push 即构建已生效：run #35808461735（首次）与 run #35809183560（修
 - **K3：ConPTY 在 GitHub 的 windows-latest 上以完全相同的方式失败**（子进程 `0xC0000142`、读到 0 字节、`live_children=0`），与本地一致。这**推翻**了「仅本机环境问题」的结论：两个相互独立的 Windows 主机（本机 + 干净 runner）同样复现，因此更可能是 **ConPTY 在 Windows Server / 非交互会话下的实现问题**，而不是参数接线。这是主平台（DC-16）的**真实产品缺陷**，不能用测试豁免掩盖。
 - **B4 视觉回归：7 个基线全部 MISMATCH**，diff 0.044%–1.245%（门禁要求 ≤0.1%，AA 容差为逐通道 ±2 且不允许有超差像素），`bbox` 覆盖整块卡片区域，属**基线来源环境不一致**（字体光栅化/Chrome 版本/DPI 差异）。B4 的比对必须由**与验证同一环境**生成基线才成立，而当前基线是开发机产物。修法明确：在 runner 上跑一次 `npm run design:baseline` 生成并入库，但这需要把产物从 runner 取回——现有 workflow 契约只允许 `actions/checkout` 与 `actions/setup-node`，加 `actions/upload-artifact` 需要一次 ADR 决策。
 
+**产物输出（ADR-0021，对应发起人「后续构建需输出产物」）**：windows-build 作业现在以 `--locked` 构建、生成 SHA-256 校验和，并通过 actions/upload-artifact 上传产物，命名 `termai-0.1.0-win32-x64-<short sha>`、保留 14 天、缺产物即失败。产物白名单**仅含三个二进制 + SHA256SUMS.txt**：公开仓库的 Actions 产物对全世界可下载，故日志、门禁报告、会话日志与任何含绝对路径的文件一律不上传（AR-11 / HARNESS §6.3 把路径与命令输出列为 L2）。该约束由新增的静态门禁 **K8** 机器校验（上传步骤存在 + 设置 retention-days + path 不含 denylist + 未使用未准入 action），使「构建必须输出产物」成为门禁而不是一句约定。
+
 > **结论**：**"push 后自动构建"已达成**（构建作业稳定绿、配置缺陷已修并在 CI 中验证）。但按 HARNESS §8.1，**当前 pipeline 仍是红的**：K3 是产品缺陷、B4 是基线环境问题，两者都不得标注为「已通过」。
 
 ## 7. 交付期发现的规格缺陷
