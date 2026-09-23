@@ -24,7 +24,7 @@ node tools/conformance/selftest.mjs          # 期望 PASS（注入 1 条坏期�
 npm run bench:selftest                       # 期望 PASS - every injection was caught
 ```
 
-坑：bench:check 的 gatingNumbersProduced: 0 不是失败——本机不是 RM-A/RM-C，§5 数字按 ADR-0014 一律 NON_GATING。不要在云 runner 上声称性能达标。
+坑：bench:check 的 **⚠ 第 201 轮更正**：**「0 不是失败」这一条在本机**目前**有两种原因，而手册此前只说了其中一种**——**手册的原话把 0 解释为「本机不是 RM-A/RM-C，§5 数字按 ADR-0014 一律 NON_GATING」（这是**设计意图**）；**但第 188/189 轮核实：`check.mjs:672` 的 `gatingNumbersProduced` 是**字面常量 0**，**没有任何代码从结果计算它**——**因此今天的 0 是**常量**，不是「算出来发现没有 gating 数字」。** **对读者的实际影响**：**不要因为这一行而以为工具「测量过并正确地拒绝给出门禁数字」**——**它目前没有测量**。**待 D-6 把那一步做出来（`docs/plan/p0-open-decisions.md`），这一行所述的含义才会真正成立。** gatingNumbersProduced: 0 不是失败——本机不是 RM-A/RM-C，§5 数字按 ADR-0014 一律 NON_GATING。不要在云 runner 上声称性能达标。
 
 ## 2. esctest（E-P0-1 的计数字段）
 
