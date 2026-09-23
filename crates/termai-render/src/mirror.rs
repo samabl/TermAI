@@ -15,7 +15,7 @@ use termai_core::grid::{Cell, GridDelta, GridSnapshot, ScrollOp};
 pub enum MirrorError {
     /// No snapshot has been applied yet, so there is nothing to patch.
     Uninitialised,
-    /// ${T}delta.rev${T} skipped at least one revision. The mirror is now invalid: the caller
+    /// `delta.rev` skipped at least one revision. The mirror is now invalid: the caller
     /// must obtain a full GridSnapshot before applying anything else.
     NeedsSnapshot {
         /// Revision the mirror expected next.
@@ -23,7 +23,7 @@ pub enum MirrorError {
         /// Revision the delta carried.
         got: u32,
     },
-    /// ${T}delta.rev${T} is not newer than the mirror, so the delta is a duplicate and is ignored.
+    /// `delta.rev` is not newer than the mirror, so the delta is a duplicate and is ignored.
     Stale {
         /// The duplicate revision.
         rev: u32,
