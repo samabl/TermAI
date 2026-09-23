@@ -7,11 +7,12 @@
 
 **第 114 轮已逐条实跑验证**：5 条门禁命令全部产出文档所述结果——① kernel-gates `8 PASS / 0 FAIL`；② selftest `result: PASS - every executed injection was caught; the gates are not always-green`；③ conformance `gating 64/64`、`G1: NOT_JUDGED`；④ bench:check ~~`7 PASS / 0 FAIL`~~ → `8 PASS / 0 FAIL`（第 257 轮加 B9）；⑤ ci-cost `state=UNDER_WARN`、`exit=0`。**手册本身是被验证过的，不是写下来就算的**（一份命令写错的手册比没有手册更糟）。
 
-## 0. 三条铁律（各由一次事故换来）
+## 0. 四条铁律（各由一次事故换来）
 
 1. 改动有效性先在协议层确认，再跑套件——套件用于计数，不用于定性。
 2. 验证与提交分开执行；看到绿色的输出再 commit。合并两者等于把门禁降级成日志。
 3. cargo build 必须看到 Compiling termai-… 才算重建；只看到 Finished 说明你测的是旧产物（本会话因此误判三次）。
+4. **绝不在仓库内建探针包，也绝不对仓库内的 manifest 跑 cargo**（第 260 轮事故）：在仓库根下 `cargo new target/<probe>` 会让 cargo 把它**自动加进根 `Cargo.toml` 的 `members`**，并把**整棵依赖树写进根 `Cargo.lock`**——本轮实测 **`Cargo.lock` +2574 行**。而 **ADR-0027 明文禁止这些 crate 在准入前进入 workspace 依赖图**，K3/K4 也会随之改变行为。**做法**：探针放到**仓库外**（如 `$env:TEMP\<probe>`），并在其 `Cargo.toml` 末尾加一个空的 `[workspace]` 使其自成 workspace；每次 cargo 调用后跑一次 `git diff --stat -- Cargo.toml Cargo.lock`，**必须为空**。**判据**：`git status` 里出现根 `Cargo.toml`/`Cargo.lock` 的改动，就是这条被违反了。
 
 ## 1. 门禁（随时可跑）
 
