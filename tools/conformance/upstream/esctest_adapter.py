@@ -19,10 +19,14 @@
 #
 # Honest substitutions
 # --------------------
-# termai-vt's L0 grid does not implement the xterm window-op reports (grid.rs: b't' => {})
-# and esctest's reset() needs one before any test can run. The adapter answers them from a
-# fixed 80x24 window model and records every one of them as ADAPTER_SUBSTITUTION in
-# substitutions.txt, so no reader can mistake them for termai-vt capabilities.
+# termai-vt's L0 grid now answers the character-cell XTWINOPS reports itself (grid.rs:
+# 11 t / 13 t / 18 t / 19 t) and esctest's reset() needs one before any test can run. The
+# adapter therefore does NOT re-answer those four: a second answer for one request would
+# put TWO responses on the wire and desynchronise every later read.
+# The pixel-class reports (14 t / 15 t / 16 t) stay synthesised from a fixed 80x24 window
+# model, because the VT layer holds no font metrics (AR-14 keeps pixels out of this
+# layer); each one is recorded as ADAPTER_SUBSTITUTION in substitutions.txt, so no reader
+# can mistake it for a termai-vt capability.
 # DECRQCRA is NOT synthesised: it is computed by the harness from the real grid
 # (CHECKSUM command), i.e. the terminal answers from its own screen state.
 #
@@ -181,29 +185,26 @@ def build_escio(link):
             synthesize_checksum(str_params)
 
     def synthesize_winop(code):
+        # Only the pixel-class reports (14/15/16 t) are missing from termai-vt. The
+        # character-cell reports (11/13/18/19 t) are answered by the terminal itself
+        # (grid.rs window_op), so the adapter must stay silent for them: answering too
+        # would put TWO responses on the wire for one request and desynchronise every
+        # later read.
         try:
             code = int(code)
         except ValueError:
             return
         h = link.rows
         w = link.cols
-        if code == 11:
-            response = '1'
-        elif code == 13:
-            response = '3;0;0'
-        elif code == 14:
+        if code == 14:
             response = '4;%d;%d' % (h * CELL_H, w * CELL_W)
         elif code == 15:
             response = '5;%d;%d' % (h * CELL_H, w * CELL_W)
         elif code == 16:
             response = '6;%d;%d' % (CELL_H, CELL_W)
-        elif code == 18:
-            response = '8;%d;%d' % (h, w)
-        elif code == 19:
-            response = '9;%d;%d' % (h, w)
         else:
             return
-        substitute('ADAPTER_SUBSTITUTION', 'CSI %d t -> CSI %s t (window model %dx%d; termai-vt grid.rs does not implement CSI t)' % (code, response, w, h))
+        substitute('ADAPTER_SUBSTITUTION', 'CSI %d t -> CSI %s t (pixel-class window model: %dx%d cells x %dx%d px; termai-vt VT layer has no font metrics)' % (code, response, w, h, CELL_W, CELL_H))
         link.queue.extend((ESC + '[' + response + 't').encode('latin-1'))
 
     def synthesize_checksum(str_params):

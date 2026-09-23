@@ -486,6 +486,37 @@ impl Grid {
         }
     }
 
+    /// XTWINOPS (`CSI Ps t`) window/text-area report subset (SD-19).
+    ///
+    /// Only the character-cell reports are answered. `14 t` / `15 t` / `16 t` are
+    /// deliberately left unanswered: they report **pixel** dimensions, and this layer
+    /// holds no font metrics — AR-14 keeps pixels out of the VT layer, so fabricating
+    /// an answer here would be a lie. The esctest adapter still synthesises those three
+    /// from its fixed window model and records each one as a substitution.
+    fn window_op(&mut self, params: &Params) {
+        match params.get(0) {
+            // 11 t: window state. 1 = normal (never iconified or minimised).
+            11 => self.responses.push(b"\x1b[1t".to_vec()),
+            // 13 t: window position in pixels. There is no window, so report 0;0.
+            13 => self.responses.push(b"\x1b[3;0;0t".to_vec()),
+            // 18 t: text-area size in characters -> CSI 8 ; rows ; cols t.
+            18 => {
+                let rows = self.rows;
+                let cols = self.cols;
+                self.responses
+                    .push(format!("\x1b[8;{rows};{cols}t").into_bytes());
+            }
+            // 19 t: screen size in characters -> CSI 9 ; rows ; cols t.
+            19 => {
+                let rows = self.rows;
+                let cols = self.cols;
+                self.responses
+                    .push(format!("\x1b[9;{rows};{cols}t").into_bytes());
+            }
+            _ => {}
+        }
+    }
+
     pub fn rejected_links(&self) -> u64 {
         self.rejected_links
     }
@@ -1752,7 +1783,7 @@ impl Grid {
             b'r' if intermediates.is_empty() => self.set_scroll_region(params),
             b's' if intermediates.is_empty() => self.save_cursor(),
             b'u' if intermediates.is_empty() => self.restore_cursor(),
-            b't' => {}
+            b't' if intermediates.is_empty() => self.window_op(params),
             _ => {}
         }
     }
