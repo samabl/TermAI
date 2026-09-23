@@ -200,7 +200,7 @@ pub enum StringTerm { Bel, St, Aborted, Overflow, Cancelled }
 | kitty keyboard | **必须** | 增强标志协商、`CSI > u` / `CSI = u` / `CSI ? u` 查询、`CSI < u` 弹出；**默认不开启，按应用探测启用**（OQ-06） | 不默认开启；不改变未协商应用的按键语义 | E60、ADR-0012 复议 3 |
 | iTerm2 内联图像 | **必须（受限子集）** | `OSC 1337;File=…[;inline=1]` 单块 base64、`width/height/name/preserveAspectRatio` | **不做** FilePart 分块文件落盘（v1）、`SetUserVar` 之外的 iTerm2 专有属性 | ADR-0014 T2 行、D-4 |
 | OSC 4 / 10 / 11 / 12 | **永不（v1）** | — | 颜色查询 / 设置**一律不应答**；**无颜色渲染前不得声明调色板**（AR-20）。能力缺失经 `suites.toml` 的**静态能力前置** `color-query` 排除（K-01 的 `S_cap`），**禁止运行时 / 人工 skip** | ADR-0029 D-2 |
-| DA / DA2 / DECID（`CSI c` / `CSI > c` / `CSI ? c`） | **必须** | 应答与**钉定 xterm oracle 逐字节一致**（esctest 以 `--expected-terminal xterm` 运行，V-02 要求 `X=0`）；`DECID` 为 `DA1` 的过时别名；`TERM_PROGRAM=TermAI` 继续如实自报（K-10） | **声称集必须 ⊆ 实现集**：`DA1` 声称的每一位都要有对应实现，未实现的位不得声称（AR-20） | ADR-0029 D-3、K-10 |
+| DA / DA2 / DECID（`CSI c` / `CSI > c` / 8-bit C1 `0x9A`） | **必须** | 应答**满足钉定套件在声明级别下的断言**（DA1 集合包含、DA2 范围；ADR-0030 更正了 ADR-0029 D-3 的「逐字节一致」——后者要求声称未实现的能力）；当前声明 **VT 级别 1**，DA1=`CSI ? 1 ; 2 c`、DA2=`CSI > 0 ; 314 ; 0 c`（Pv 为本产品自报版本）；`DECID`（8-bit C1 `0x9A`）依 OQ-VT-14 仅非 UTF-8 模式，**当前未实现**；`TERM_PROGRAM=TermAI` 继续如实自报（K-10） | **声称集必须 ⊆ 实现集**：`DA1` 声称的每一位都要有对应实现，未实现的位不得声称（AR-20） | ADR-0029 D-3、K-10 |
 | 未知 DCS / APC / PM / SOS 原文 | **永不** | — | 一律丢弃并计数（§3.4） | K-06 |
 
 降级：T2/T3 后端由 capability manifest 声明 `graphics.* = false`，L0 用例以静态能力前置排除（非人工 skip）；该车道结果标 NON-GATING（ADR-0014），UI 必须明示「无 Sixel」等具体缺项（AR-20 诚实原则）。

@@ -297,6 +297,21 @@ jobs:
       # restored corpus to run clean - so neither a broken runner nor a self-test that cannot fail.
       - name: conformance selftest (corrupt one expectation; prove the runner reports it)
         run: node tools/conformance/selftest.mjs
+      # The generator/corpus drift check caught a real divergence in round 256 (debt-p0 A18: the generator
+      # table said ESC #8 while the committed .trec said ESC #9) but no CI step ran it until now. It is
+      # registered in K8's GATE_PAIRS, so it must be paired with the selftest below.
+      - name: conformance verify
+        run: npm run conformance:verify
+      # Prove the drift check can fail: inject the historical ESC #9 -> ESC #8 drift into a regenerable
+      # case, assert the check names it, restore in a finally block, then require the control to pass.
+      - name: conformance verify selftest
+        run: npm run conformance:verify:selftest
+
+      - name: conformance suites (static capability declarations)
+        run: npm run conformance:suites
+
+      - name: conformance suites selftest (prove the declaration checks can fail)
+        run: npm run conformance:suites:selftest
       # ADR-0014 decision 6 / spec 06 A-PM-12: the cost manifest must be complete and the month under
       # the cap. The structural part of this check gates (schema, arithmetic), and it fails only when
       # the cap is actually reached - a reading under the cap must not turn the build red.
@@ -363,6 +378,21 @@ jobs:
       # restored corpus to run clean - so neither a broken runner nor a self-test that cannot fail.
       - name: conformance selftest (corrupt one expectation; prove the runner reports it)
         run: node tools/conformance/selftest.mjs
+      # The generator/corpus drift check caught a real divergence in round 256 (debt-p0 A18: the generator
+      # table said ESC #8 while the committed .trec said ESC #9) but no CI step ran it until now. It is
+      # registered in K8's GATE_PAIRS, so it must be paired with the selftest below.
+      - name: conformance verify
+        run: npm run conformance:verify
+      # Prove the drift check can fail: inject the historical ESC #9 -> ESC #8 drift into a regenerable
+      # case, assert the check names it, restore in a finally block, then require the control to pass.
+      - name: conformance verify selftest
+        run: npm run conformance:verify:selftest
+
+      - name: conformance suites (static capability declarations)
+        run: npm run conformance:suites
+
+      - name: conformance suites selftest (prove the declaration checks can fail)
+        run: npm run conformance:suites:selftest
       # ADR-0014 decision 6 / spec 06 A-PM-12: the cost manifest must be complete and the month under
       # the cap. The structural part of this check gates (schema, arithmetic), and it fails only when
       # the cap is actually reached - a reading under the cap must not turn the build red.

@@ -234,7 +234,7 @@
 | **对照** | **同一输入补齐后，该行的 NON_GATING 值必须出现**——**以排除「它只是什么都不报」** |
 | **不得越过 `B7`** | 上述两种情形下 `gatingNumbersProduced` **都必须保持 0** |
 
-**这三条与 `kernel-gates --selftest`（~~23/23~~ **24/24**）、`bench:selftest`（~~65/65~~ **74/74（第 257 轮）**）、`conformance selftest`、`ci-cost --selftest` 是同一形态**：**新增呈现路径必须被证明「能报出它该报的东西」，而不只是「跑得通」**。
+**这三条与 `kernel-gates --selftest`（~~23/23~~ **~~24/24~~ → ~~26/26（第 258 轮）~~ **28/28（第 259 轮）**）、`bench:selftest`（~~65/65~~ **74/74（第 257 轮）**）、`conformance selftest`、`ci-cost --selftest` 是同一形态**：**新增呈现路径必须被证明「能报出它该报的东西」，而不只是「跑得通」**。
 **✅ 第 184 轮：E-P0-3 在本机的可执行任务，现在是完全指定的（D-6 的收束）**。**已核实**：`node tools/bench/check.mjs --json` 目前**只报状态与计数**——`"state": "INCONCLUSIVE"`、`"gatingNumbersProduced": 0`、`"detail": "no reference machine on this host: every discovered value is NON_GATING / INCONCLUSIVE and 0 gating…"`——**没有任何逐行的 NON_GATING 值**（JSON 里不存在 `values` / `nonGating` 数组）。
 
 **因此任务定义为**：

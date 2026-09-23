@@ -106,3 +106,9 @@ ADR-0029 D-3 决定「`DA` / `DA2` / `DECID` 必须实现，且与钉定 oracle 
 | 决策简报 | `docs/plan/p0-open-decisions.md` D-3 追加本 ADR 的更正 |
 
 **同步义务**：① `docs/adr/README.md` 索引；② HARNESS §11.2 CR-18；③ `docs/plan/p0-open-decisions.md` D-3；④ `docs/plan/p0-verification-runbook.md` §2（esctest 命令的 `--max-vt-level` 与级别口径）；⑤ 实现轮完成后更新 `kernel/01` §3.5 的 DA 行（把「与 oracle 逐字节一致」改为「满足该级别断言」）。
+
+## 附录｜DECID 现状的实现证据（第 257 轮实现轮追加，不改本文语义）
+
+实现者核实的**事实**（不是推断）：预扫描器不在 `terminal.rs`，而是 `vte_adapter.rs` 的私有 `PreState`；`PreState::ground_step` 只识别 7-bit ESC 引导的序列（`[ ] P X ^ _` 与 ESC），**没有 0x80–0x9F 分支**。唯一的 8-bit C1 处理在 `VteAdapter::execute`：`eight_bit_c1 == true` 时把字节转发给 `sink.execute(byte)`，否则计 `c1_8bit_in_utf8` + `invalid_utf8` 并上屏 U+FFFD（OQ-VT-14）。而 `Grid::execute` 只匹配 0x07/0x08/0x09/0x0A–0x0C/0x0D/0x0E/0x0F，其余 `_ => {}`——**因此即使在非 UTF-8 路径上，0x9A 被转发也从不会被派发成 DECID**。`eight_bit_c1` 默认为 false。
+
+**结论**：DECID 目前在本仓库**任何模式下都未实现**；开启它需要新增一个控制处理器（`Grid::execute` 的 0x9A 分支 + 模式前置），**超出本轮切片，故未实现**。这与 §3 D-2 的处置一致：**应答值已冻结，实现留给独立切片**；届时按 §6 的复议条件恢复为必修。

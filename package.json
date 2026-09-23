@@ -19,7 +19,10 @@
     "conformance": "node tools/conformance/run.mjs",
     "conformance:check": "node tools/conformance/run.mjs --determinism-check",
     "conformance:gen": "node tools/conformance/gen-spec.mjs",
-    "conformance:verify": "node tools/conformance/gen-spec.mjs --check"
+    "conformance:verify": "node tools/conformance/gen-spec.mjs --check",
+    "conformance:verify:selftest": "node tools/conformance/verify-selftest.mjs",
+    "conformance:suites": "node tools/conformance/check-suites.mjs",
+    "conformance:suites:selftest": "node tools/conformance/check-suites.mjs --selftest"
   },
   "engines": {
     "node": ">=22"

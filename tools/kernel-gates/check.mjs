@@ -474,6 +474,8 @@ function gateK8(ctx) {
     ['kernel', 'kernel:check', 'kernel:selftest'],
     ['bench', 'bench:check', 'bench:selftest'],
     ['conformance', 'conformance L0', 'conformance selftest'],
+    ['conformance-verify', 'conformance verify', 'conformance verify selftest'],
+    ['conformance-suites', 'conformance suites', 'conformance suites selftest'],
     ['ci-cost', 'ci-cost check', 'ci-cost selftest'],
     ['audit-claims', 'audit-claims check', 'audit-claims selftest'],
   ];
@@ -848,6 +850,70 @@ function runSelftest() {
       );
       const g = gateK8({ root: root });
       st.check('K8: a correctly paired workflow still passes (pairing control)', g.status === STATUS.PASS, g.detail);
+    }
+
+    // injection: the conformance-verify gate present without its selftest must be caught, so the new
+    // GATE_PAIRS row is enforced rather than merely listed. Round 258 wired gen-spec --check into CI and
+    // registered it here; this exercises the failure path that registration is supposed to guard.
+    {
+      const root = tmpDir('kg-k8-conformance-verify-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  b:\n    runs-on: windows-latest\n    steps:\n      - uses: actions/checkout@v4\n' +
+          '      - name: conformance verify (injected)\n        run: npm run conformance:verify\n'
+      );
+      const g = gateK8({ root: root });
+      st.check('K8: conformance verify without its selftest is caught (new pairing row)', g.status === STATUS.FAIL, g.detail);
+    }
+
+    // control: the same pair completed, plus the artifact upload K8 also requires, must pass - so the new
+    // row refuses an unpaired gate rather than every workflow.
+    {
+      const root = tmpDir('kg-k8-conformance-verify-ok-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  b:\n    runs-on: windows-latest\n    steps:\n      - uses: actions/checkout@v4\n' +
+          '      - name: conformance verify (injected)\n        run: npm run conformance:verify\n' +
+          '      - name: conformance verify selftest (injected)\n        run: npm run conformance:verify:selftest\n' +
+          '      - uses: actions/upload-artifact@v4\n        with:\n          retention-days: 14\n          if-no-files-found: error\n'
+      );
+      const g = gateK8({ root: root });
+      st.check('K8: the completed conformance-verify pair still passes (pairing control)', g.status === STATUS.PASS, g.detail);
+    }
+
+    // injection: the conformance-suites gate present without its selftest must be caught, so the
+    // second new GATE_PAIRS row (ADR-0029 D-2: static capability declarations) is enforced too.
+    {
+      const root = tmpDir('kg-k8-conformance-suites-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  b:\n    runs-on: windows-latest\n    steps:\n      - uses: actions/checkout@v4\n' +
+          '      - name: conformance suites (injected)\n        run: npm run conformance:suites\n'
+      );
+      const g = gateK8({ root: root });
+      st.check('K8: conformance suites without its selftest is caught (new pairing row)', g.status === STATUS.FAIL, g.detail);
+    }
+
+    // control: the suites pair completed, plus the required artifact upload, must pass.
+    {
+      const root = tmpDir('kg-k8-conformance-suites-ok-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  b:\n    runs-on: windows-latest\n    steps:\n      - uses: actions/checkout@v4\n' +
+          '      - name: conformance suites (injected)\n        run: npm run conformance:suites\n' +
+          '      - name: conformance suites selftest (injected)\n        run: npm run conformance:suites:selftest\n' +
+          '      - uses: actions/upload-artifact@v4\n        with:\n          retention-days: 14\n          if-no-files-found: error\n'
+      );
+      const g = gateK8({ root: root });
+      st.check('K8: the completed conformance-suites pair still passes (pairing control)', g.status === STATUS.PASS, g.detail);
     }
 
     // injection 12: an upload that publishes build intermediates or runtime session logs.

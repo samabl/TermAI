@@ -24,6 +24,9 @@ carries `g1_status: "NOT_JUDGED"` plus the reason.
     tools/conformance/
       run.mjs                     the runner (Node >= 22, no npm dependencies)
       gen-spec.mjs                materialises the curated suites from data/spec-cases.mjs
+      verify-selftest.mjs         proves gen-spec.mjs --check reports a drift (the CI drift gate)
+      check-suites.mjs            validates suites.json: static capability declarations must cite an ADR and kernel/01
+      suites.json                 the declaration: pinned revisions, claimed VT level, static capability exclusions
       gen-ctlseqs.mjs             derives the xterm ctlseqs suite + entry registry
       lib/harness.mjs             wrapper around the Rust harness binary
       lib/ctlseqs.mjs             ctlseqs.txt parser + entry -> bytes resolver
@@ -77,6 +80,9 @@ Structural invariants applied to **every** case, by the runner:
     node tools/conformance/run.mjs --determinism-check     # run everything, write the report
     node tools/conformance/run.mjs --quiet                 # exit code only
     node tools/conformance/gen-spec.mjs [--check]          # regenerate / verify curated suites
+    node tools/conformance/verify-selftest.mjs             # inject a drift; prove the check reports it
+    node tools/conformance/check-suites.mjs [--selftest]   # validate the static suite declarations
+    node tools/conformance/check-suites.mjs --file <p>     # validate another declaration file
     node tools/conformance/gen-ctlseqs.mjs --source <ctlseqs.txt> [--check]
 
 `--source` is required for the ctlseqs generator: the document itself is **not** vendored

@@ -1,0 +1,32 @@
+{
+  "schema": "termai-conformance-suites/1",
+  "note": "Static declarations for the upstream VT suites. A suite's eligible set may only be reduced by a STATIC capability precondition declared here (kernel/01 K-01 S_cap); runtime or manual skips and difference entries are forbidden for a 100% suite (X=0). Every exclusion must cite an ADR and a kernel/01 clause.",
+  "suites": [
+    {
+      "name": "esctest2",
+      "pinned_revision": "2798f12149a19c3295e9b4853ab2da4b2eff1b2b",
+      "invocation": {
+        "expected_terminal": "xterm",
+        "xterm_checksum": 336,
+        "claimed_vt_level": 1
+      },
+      "claimed_vt_level_rule": "ADR-0030 D-1: claimed_vt_level is the highest N whose xterm DA1 expected set is entirely implemented. Level 1 = [1,2] (VT100 + Advanced Video Option), which this implementation can claim; level 2 would require 6/9/15/22/29 and is not claimable.",
+      "static_capability_exclusions": [
+        {
+          "capability": "color-query",
+          "test_prefixes": [
+            "ChangeColorTests.",
+            "ChangeDynamicColorTests.",
+            "ChangeSpecialColorTests.",
+            "ResetColorTests.",
+            "ResetSpecialColorTests."
+          ],
+          "citation": "ADR-0029 D-2; kernel/01 3.5 (OSC 4 / 10 / 11 / 12 = v1 never); AR-20",
+          "reason": "OSC 4 / 10 / 11 / 12 are not implemented in v1 and are never answered. There is no colour rendering yet, so answering with a palette would be an unprovable capability claim (AR-20). Declaring the capability absent is the static precondition; it is not a difference entry and it expires when colour rendering lands.",
+          "excluded_case_count_measured": 47,
+          "excluded_case_count_source": "docs/audit/esctest-failing-index.md: the five prefixes above account for 13+13+14+2+5 = 47 located failing cases"
+        }
+      ]
+    }
+  ]
+}

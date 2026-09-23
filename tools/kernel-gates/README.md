@@ -4,7 +4,7 @@
 
 ```powershell
 node tools/kernel-gates/check.mjs              # 期望 summary: 8 PASS / 0 FAIL / 0 SKIP
-node tools/kernel-gates/check.mjs --selftest   # 注入故障并证明门禁不是恒绿（当前 23 条注入全部被捕获）
+node tools/kernel-gates/check.mjs --selftest   # 注入故障并证明门禁不是恒绿（当前 28 条注入全部被捕获）
 node tools/kernel-gates/check.mjs --json       # 机器可读
 node tools/kernel-gates/check.mjs --root=<d>   # 对另一棵树跑（selftest 用它构造临时工作区）
 ```
@@ -25,7 +25,7 @@ node tools/kernel-gates/check.mjs --root=<d>   # 对另一棵树跑（selftest �
 ## 两处由本会话加入的判据（新增门禁请照此办理）
 
 - **K4 的 AR-03 判据**（第 162 轮）：`KERNEL_CRATES` 六个内核 crate 对 `NETWORK_AI_UI_TOKENS` 逐个比对。**`termai-render` 有意不在 `KERNEL_CRATES` 内**——**ADR-0024／ADR-0027 允许它引入 wgpu／winit／rustybuzz／swash**。
-- **K8 的配对判据**（第 141 轮）：六行显式清单（`GATE_PAIRS`）。**用显式清单而不是从步骤名推断**，因为步骤名不统一（`tokens:check`、`ci-cost check`、`conformance L0`）——**第 140 轮按名字推断曾误报 13 条**。
+- **K8 的配对判据**（第 141 轮）：~~六行~~ **八行（第 258 轮；第 141 轮时为六行）**显式清单（`GATE_PAIRS`）。**用显式清单而不是从步骤名推断**，因为步骤名不统一（`tokens:check`、`ci-cost check`、`conformance L0`）——**第 140 轮按名字推断曾误报 13 条**。
 
 ## 改门禁时的硬要求
 
@@ -33,4 +33,4 @@ node tools/kernel-gates/check.mjs --root=<d>   # 对另一棵树跑（selftest �
 
 **理由是本仓库三次实测**：`ci-cost` 的上限分支曾经**从未执行过**；`K4` 的 AR-03 分支曾因 **TDZ** 成为**假绿**（判据一旦命中就抛错、不命中就永远不报）；`B7` 的第三条判据由**字面常量**承担因而恒真。**三次都不是「有人忘了规则」，而是「检查写得比它守的东西晚」。**
 
-**`--selftest` 的 23 条注入覆盖 K1、K4、K5、K6、K7、K8**；**K2／K3 是薄包装**（跑一条 cargo 命令、看退出码），**其失败路径与 K1 的注入走的是同一条管道**——**因此未单独注入，这是有意保留的取舍，不是遗漏**（第 164 轮的判断）。
+**`--selftest` 的 28 条注入覆盖 K1、K4、K5、K6、K7、K8**；**K2／K3 是薄包装**（跑一条 cargo 命令、看退出码），**其失败路径与 K1 的注入走的是同一条管道**——**因此未单独注入，这是有意保留的取舍，不是遗漏**（第 164 轮的判断）。

@@ -139,3 +139,24 @@ produced by termai-vt.
    for most of the "RespectsOriginMode"/"StopsAt*Margin" failures.
 4. **Register what will not be fixed**: any difference that survives must go through the
    K-04 deviation process (double sign-off + expiry) before it stops being a failure.
+
+## Static capability declarations (ADR-0029 D-2 / ADR-0030)
+
+`tools/conformance/suites.json` is the machine-checked declaration of how each upstream suite is
+run and which capabilities are declared absent. `node tools/conformance/check-suites.mjs`
+validates it, and `--selftest` proves the checks can fail; a declaration may only reduce a suite's
+eligible set as a **static capability precondition** (kernel/01 K-01 `S_cap`), never as a runtime
+skip and never as a difference entry.
+
+- **esctest2**, pinned at `2798f12149a19c3295e9b4853ab2da4b2eff1b2b`, runs with
+  `--expected-terminal xterm --xterm-checksum 336` and **`--max-vt-level 1`** (ADR-0030 D-1: the
+  claimed level is the highest whose xterm DA1 expected set is entirely implemented; level 5 would
+  require claiming selective erase, locator, colour and rectangular editing, which this VT does not
+  implement).
+- **`color-query`** (OSC 4 / 10 / 11 / 12) is declared **statically absent**: 47 located failing
+  cases (ChangeColorTests 13, ChangeDynamicColorTests 13, ChangeSpecialColorTests 14, ResetColorTests
+  2, ResetSpecialColorTests 5) are excluded by that precondition. AR-20 forbids answering with a
+  palette before colour rendering exists, so "not answered" is the honest capability state.
+- **Quote the level with the number** (ADR-0030 D-1): level 1 is 99 passed / 378 known-bug /
+  **90 failed** of 189 eligible; level 5 is 267 / 41 / **259** of 526. Known bugs that are really
+  "not run because the level is too low" must be reported separately as `excluded_by_vt_level`.
