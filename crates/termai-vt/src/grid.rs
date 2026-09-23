@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use termai_core::grid::{
     Cell, CellPos, Color, CursorState, Damage, GridDelta, GridSnapshot, LinkSpan, RowPayload,
     ScrollOp, ATTR_BLINK, ATTR_BOLD, ATTR_DIM, ATTR_DOUBLE_UNDERLINE, ATTR_HIDDEN, ATTR_ITALIC,
-    ATTR_OVERLINE, ATTR_REVERSE, ATTR_STRIKETHROUGH, ATTR_UNDERLINE,
+    ATTR_OVERLINE, ATTR_REVERSE, ATTR_STRIKETHROUGH, ATTR_UNDERLINE, LINE_WRAPPED,
 };
 use unicode_width::UnicodeWidthChar;
 
@@ -173,6 +173,10 @@ pub struct Grid {
     rows: u16,
     cells: Vec<Cell>,
     saved_cells: Vec<Cell>,
+    /// Per-row `LineFlags` (ADR-0025 D1), in lockstep with `cells`.
+    row_flags: Vec<u16>,
+    /// Flags belonging to the inactive main/alt buffer, swapped with `saved_cells`.
+    saved_row_flags: Vec<u16>,
     alt: bool,
     cursor_row: u16,
     cursor_col: u16,
@@ -227,6 +231,8 @@ impl Grid {
             rows,
             cells: vec![Cell::BLANK; size],
             saved_cells: vec![Cell::BLANK; size],
+            row_flags: vec![0; usize::from(rows)],
+            saved_row_flags: vec![0; usize::from(rows)],
             alt: false,
             cursor_row: 0,
             cursor_col: 0,
@@ -504,6 +510,7 @@ impl Grid {
             cols: self.cols,
             rows: self.rows,
             cells: self.cells.clone(),
+            row_flags: self.row_flags.clone(),
             cursor: self.cursor_state(),
             alt: self.alt,
             wrap_pending: self.wrap_pending,
@@ -565,6 +572,60 @@ impl Grid {
         self.damage.full = true;
     }
 
+    /// Set `LINE_WRAPPED` on the row that DECAWM just left behind (ADR-0025 D1).
+    fn mark_line_wrapped(&mut self, row: u16) {
+        if let Some(flags) = self.row_flags.get_mut(usize::from(row)) {
+            *flags |= LINE_WRAPPED;
+        }
+    }
+
+    /// Clear a row's LineFlags: it is no longer a wrapped continuation.
+    fn clear_line_flags(&mut self, row: u16) {
+        if let Some(flags) = self.row_flags.get_mut(usize::from(row)) {
+            *flags = 0;
+        }
+    }
+
+    fn clear_all_line_flags(&mut self) {
+        for flags in &mut self.row_flags {
+            *flags = 0;
+        }
+    }
+
+    /// Move row flags in lockstep with the cell rows inside one row-shifting
+    /// primitive (scroll / insert_lines / delete_lines). `down` moves content
+    /// towards higher row numbers; the rows the move exposes are cleared.
+    ///
+    /// This lives next to the cell move on purpose: ADR-0025 section 5 negative
+    /// item 2 warns that any shifting path missing this call degrades silently to
+    /// "all-zero or misaligned flags".
+    fn rotate_row_flags(&mut self, top: u16, bottom: u16, n: u16, down: bool) {
+        let top = usize::from(top);
+        let bottom = usize::from(bottom);
+        let n = usize::from(n);
+        if n == 0 || top > bottom || bottom >= self.row_flags.len() {
+            return;
+        }
+        let region = bottom - top + 1;
+        if n >= region {
+            for flags in &mut self.row_flags[top..=bottom] {
+                *flags = 0;
+            }
+            return;
+        }
+        if down {
+            self.row_flags.copy_within(top..=bottom - n, top + n);
+            for flags in &mut self.row_flags[top..top + n] {
+                *flags = 0;
+            }
+        } else {
+            self.row_flags.copy_within(top + n..=bottom, top);
+            for flags in &mut self.row_flags[bottom - n + 1..=bottom] {
+                *flags = 0;
+            }
+        }
+    }
+
     fn set_bit(&mut self, bit: u64, on: bool) {
         if on {
             self.modes |= bit;
@@ -615,6 +676,7 @@ impl Grid {
                 .get(base..end)
                 .map(<[Cell]>::to_vec)
                 .unwrap_or_default(),
+            flags: self.row_flags.get(usize::from(row)).copied().unwrap_or(0),
         }
     }
 
@@ -633,8 +695,20 @@ impl Grid {
                 }
             }
         }
+        // Flags follow the rows that survive the resize; new rows start zeroed.
+        let mut next_flags = vec![0u16; usize::from(rows)];
+        for row in 0..old_rows.min(rows) {
+            if let (Some(flag), Some(slot)) = (
+                self.row_flags.get(usize::from(row)).copied(),
+                next_flags.get_mut(usize::from(row)),
+            ) {
+                *slot = flag;
+            }
+        }
         self.cells = next;
+        self.row_flags = next_flags;
         self.saved_cells = vec![Cell::BLANK; usize::from(cols) * usize::from(rows)];
+        self.saved_row_flags = vec![0; usize::from(rows)];
         self.cols = cols;
         self.rows = rows;
         self.cursor_row = self.cursor_row.min(rows.saturating_sub(1));
@@ -711,7 +785,7 @@ impl Grid {
         }
         self.last_graphic = ch;
         if self.wrap_pending && self.autowrap() {
-            self.line_feed();
+            self.line_feed_wrapped();
             self.cursor_col = 0;
         }
         self.wrap_pending = false;
@@ -745,7 +819,7 @@ impl Grid {
     fn print_wide(&mut self, ch: char) {
         if self.cursor_col + 2 > self.cols {
             if self.autowrap() {
-                self.line_feed();
+                self.line_feed_wrapped();
                 self.cursor_col = 0;
             } else {
                 self.cursor_col = self.cols.saturating_sub(2);
@@ -822,7 +896,7 @@ impl Grid {
                 self.tab();
             }
             0x0A..=0x0C => {
-                self.line_feed();
+                self.line_feed_explicit();
             }
             0x0D => {
                 self.cursor_col = 0;
@@ -865,10 +939,10 @@ impl Grid {
         match byte {
             b'7' => self.save_cursor(),
             b'8' => self.restore_cursor(),
-            b'D' => self.line_feed(),
+            b'D' => self.line_feed_explicit(),
             b'E' => {
                 self.cursor_col = 0;
-                self.line_feed();
+                self.line_feed_explicit();
             }
             b'M' => self.reverse_index(),
             b'c' => self.reset(),
@@ -908,6 +982,21 @@ impl Grid {
             self.cursor_row += 1;
         }
         self.mark_cursor();
+    }
+
+    /// LF / IND / NEL: an explicit hard line break. The row we leave is not a
+    /// continuation of the row below, so its WRAPPED bit (if any) is cleared
+    /// before the row slots move (ADR-0025 D1).
+    fn line_feed_explicit(&mut self) {
+        self.clear_line_flags(self.cursor_row);
+        self.line_feed();
+    }
+
+    /// DECAWM autowrap: the row we leave continues on the row below, so mark it
+    /// WRAPPED before the row slots move (ADR-0025 D1/D3).
+    fn line_feed_wrapped(&mut self) {
+        self.mark_line_wrapped(self.cursor_row);
+        self.line_feed();
     }
 
     fn reverse_index(&mut self) {
@@ -955,6 +1044,7 @@ impl Grid {
                 }
             }
         }
+        self.rotate_row_flags(top, bottom, n, false);
         if top == 0 {
             self.scrollback_len = self.scrollback_len.saturating_add(u32::from(n));
         }
@@ -1006,6 +1096,7 @@ impl Grid {
                 }
             }
         }
+        self.rotate_row_flags(top, bottom, n, true);
         self.damage.scroll = Some(ScrollOp {
             top,
             bottom,
@@ -1057,6 +1148,7 @@ impl Grid {
                 }
             }
         }
+        self.rotate_row_flags(top, bottom, n, true);
         let mut row = top;
         while row <= bottom {
             self.mark_row(row);
@@ -1103,6 +1195,7 @@ impl Grid {
                 }
             }
         }
+        self.rotate_row_flags(top, bottom, n, false);
         let mut row = top;
         while row <= bottom {
             self.mark_row(row);
@@ -1123,6 +1216,13 @@ impl Grid {
                 break;
             }
             col += 1;
+        }
+        // Erasing through the right edge removes the content that a wrap link
+        // would have continued on the next row, so the row stops being a wrapped
+        // continuation (ADR-0025 D1). Partial erases that keep the edge intact
+        // deliberately leave the flag alone.
+        if self.cols > 0 && to >= self.cols - 1 {
+            self.clear_line_flags(row);
         }
     }
 
@@ -1202,6 +1302,8 @@ impl Grid {
                 *slot = Cell::BLANK;
             }
         }
+        // ICH drops the cells pushed past the right edge, so the wrap link is stale.
+        self.clear_line_flags(row);
         self.mark_row(row);
     }
 
@@ -1231,6 +1333,8 @@ impl Grid {
                 *slot = Cell::BLANK;
             }
         }
+        // DCH blanks the right edge, so the wrap link is stale.
+        self.clear_line_flags(row);
         self.mark_row(row);
     }
 
@@ -1313,6 +1417,7 @@ impl Grid {
             }
         }
         self.combining.clear();
+        self.clear_all_line_flags();
         self.scroll_top = 0;
         self.scroll_bottom = self.rows.saturating_sub(1);
         self.cursor_row = 0;
@@ -1430,10 +1535,12 @@ impl Grid {
                     };
                 }
                 std::mem::swap(&mut self.cells, &mut self.saved_cells);
+                std::mem::swap(&mut self.row_flags, &mut self.saved_row_flags);
                 if clear {
                     for cell in &mut self.cells {
                         *cell = Cell::BLANK;
                     }
+                    self.clear_all_line_flags();
                 }
                 self.alt = true;
                 self.set_bit(MODE_ALT_SCREEN, true);
@@ -1442,10 +1549,12 @@ impl Grid {
                 for cell in &mut self.cells {
                     *cell = Cell::BLANK;
                 }
+                self.clear_all_line_flags();
                 self.mark_full();
             }
         } else if self.alt {
             std::mem::swap(&mut self.cells, &mut self.saved_cells);
+            std::mem::swap(&mut self.row_flags, &mut self.saved_row_flags);
             self.alt = false;
             self.set_bit(MODE_ALT_SCREEN, false);
             if save_cursor {

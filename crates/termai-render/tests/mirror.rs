@@ -1,5 +1,5 @@
 use termai_core::grid::{
-    Cell, CellPos, CursorState, Damage, GridDelta, GridSnapshot, RowPayload, ScrollOp,
+    Cell, CellPos, CursorState, Damage, GridDelta, GridSnapshot, RowPayload, ScrollOp, LINE_WRAPPED,
 };
 use termai_render::mirror::{Mirror, MirrorError};
 
@@ -62,6 +62,7 @@ fn snapshot_then_delta_applies_rows_and_cursor() {
         vec![RowPayload {
             row: 1,
             cells: row_cells("abc", 3),
+            flags: 0,
         }],
     );
     d.cursor = CursorState {
@@ -152,6 +153,7 @@ fn row_payloads_fill_the_rows_the_scroll_exposed() {
         vec![RowPayload {
             row: 3,
             cells: row_cells("zzz", 3),
+            flags: 0,
         }],
     );
     d.scroll = Some(ScrollOp {
@@ -162,6 +164,52 @@ fn row_payloads_fill_the_rows_the_scroll_exposed() {
     mirror.apply_delta(&d).unwrap();
     assert_eq!(text(&mirror, 2), "ddd");
     assert_eq!(text(&mirror, 3), "zzz", "the payload wins over the blank");
+}
+
+#[test]
+fn a_row_payload_carries_its_line_flags_into_the_mirror() {
+    let mut mirror = Mirror::new();
+    mirror.apply_snapshot(snapshot(3, 2));
+    let d = delta(
+        1,
+        vec![RowPayload {
+            row: 0,
+            cells: row_cells("abc", 3),
+            flags: LINE_WRAPPED,
+        }],
+    );
+    mirror.apply_delta(&d).unwrap();
+    let g = mirror.grid().unwrap();
+    assert_ne!(g.row_flags[0] & LINE_WRAPPED, 0);
+    assert_eq!(g.row_flags[1], 0);
+}
+
+#[test]
+fn scroll_rotates_line_flags_with_the_rows() {
+    let mut mirror = Mirror::new();
+    let mut snap = snapshot(3, 4);
+    for (i, line) in ["aaa", "bbb", "ccc", "ddd"].iter().enumerate() {
+        set_row(&mut snap, i as u16, line);
+    }
+    snap.row_flags[0] = LINE_WRAPPED;
+    snap.row_flags[2] = LINE_WRAPPED;
+    mirror.apply_snapshot(snap);
+    let mut d = delta(1, vec![]);
+    d.scroll = Some(ScrollOp {
+        top: 0,
+        bottom: 3,
+        delta: -1,
+    });
+    mirror.apply_delta(&d).unwrap();
+    let g = mirror.grid().unwrap();
+    assert_eq!(
+        g.row_flags[0] & LINE_WRAPPED,
+        0,
+        "the moved-off row is gone"
+    );
+    assert_ne!(g.row_flags[1] & LINE_WRAPPED, 0, "old row 2 moved to row 1");
+    assert_eq!(g.row_flags[2] & LINE_WRAPPED, 0);
+    assert_eq!(g.row_flags[3] & LINE_WRAPPED, 0);
 }
 
 #[test]
@@ -192,6 +240,7 @@ fn a_malformed_delta_is_rejected_without_partial_application() {
         vec![RowPayload {
             row: 0,
             cells: vec![Cell::BLANK; 2],
+            flags: 0,
         }],
     );
     assert_eq!(
@@ -209,6 +258,7 @@ fn a_malformed_delta_is_rejected_without_partial_application() {
         vec![RowPayload {
             row: 9,
             cells: row_cells("abc", 3),
+            flags: 0,
         }],
     );
     assert_eq!(

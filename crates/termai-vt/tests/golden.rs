@@ -1,5 +1,6 @@
 //! Test 7: golden write -> parse -> write is a fixed point and the hash is stable.
 
+use termai_core::grid::LINE_WRAPPED;
 use termai_vt::{golden_hash, parse_golden, write_golden, Terminal};
 
 #[test]
@@ -56,6 +57,44 @@ fn golden_round_trips_attributes() {
     );
     let doc = parse_golden(&text).expect("parse");
     assert_eq!(doc.snapshot, snap);
+}
+
+#[test]
+fn golden_round_trips_nonzero_line_flags() {
+    // ADR-0025 D2: golden always writes flags, so a wrap chain is recoverable.
+    let mut t = Terminal::new(5, 3);
+    t.feed(b"abcdef");
+    let snap = t.snapshot();
+    assert_ne!(snap.row_flags[0] & LINE_WRAPPED, 0);
+    let text = write_golden(&snap);
+    assert!(
+        text.contains("lflags "),
+        "flags must always be written: {text}"
+    );
+    let doc = parse_golden(&text).expect("parse");
+    assert_eq!(doc.snapshot, snap);
+    assert_ne!(doc.snapshot.row_flags[0] & LINE_WRAPPED, 0);
+}
+
+#[test]
+fn golden_without_lflags_still_parses_and_reads_as_zero() {
+    // Legacy minor-1 documents predate the field; they must stay parseable.
+    let mut t = Terminal::new(5, 3);
+    t.feed(b"abcdef");
+    let text = write_golden(&t.snapshot());
+    let mut body_lines: Vec<String> = text
+        .lines()
+        .filter(|line| !line.starts_with("lflags "))
+        .map(str::to_string)
+        .collect();
+    assert!(matches!(body_lines.last().map(String::as_str), Some(h) if h.starts_with("hash ")));
+    body_lines.pop();
+    let mut body = body_lines.join("\n");
+    body.push('\n');
+    let legacy = format!("{body}hash {}\n", golden_hash(&body));
+    let doc = parse_golden(&legacy).expect("a doc without lflags must parse");
+    assert_eq!(doc.snapshot.row_flags.len(), 3);
+    assert!(doc.snapshot.row_flags.iter().all(|flags| *flags == 0));
 }
 
 #[test]

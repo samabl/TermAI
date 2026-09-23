@@ -93,7 +93,13 @@ impl Mirror {
     /// A GridSnapshot carries no rev, so the mirror accepts the next delta regardless of
     /// its revision and adopts that revision as the new baseline. That rule is a reading
     /// of the frozen field set, not a spec sentence: it is registered as SD-15.
-    pub fn apply_snapshot(&mut self, snapshot: GridSnapshot) {
+    pub fn apply_snapshot(&mut self, mut snapshot: GridSnapshot) {
+        // ADR-0025 D1: row_flags length must equal rows. Normalise here so a snapshot
+        // from an older producer (missing rows) cannot desynchronise the mirror.
+        let rows = usize::from(snapshot.rows);
+        if snapshot.row_flags.len() != rows {
+            snapshot.row_flags.resize(rows, 0);
+        }
         self.grid = Some(snapshot);
         self.rev = None;
         self.valid = true;
@@ -149,6 +155,11 @@ impl Mirror {
         for payload in &delta.rows {
             let start = grid.idx(payload.row, 0).expect("validated above");
             grid.cells[start..start + payload.cells.len()].copy_from_slice(&payload.cells);
+            // ADR-0025 D3: the mirror carries the producer's LineFlags through to the
+            // mirror snapshot so the VRM can rebuild logical lines from it.
+            if let Some(flags) = grid.row_flags.get_mut(usize::from(payload.row)) {
+                *flags = payload.flags;
+            }
         }
         grid.cursor = delta.cursor;
         self.rev = Some(delta.rev);
@@ -180,6 +191,10 @@ fn apply_scroll(grid: &mut GridSnapshot, scroll: ScrollOp) {
     // Snapshot the region first: an overlapping move would otherwise read rows it has
     // already overwritten.
     let range: Vec<Cell> = grid.cells[range_start..range_start + height * cols].to_vec();
+    // Flags rotate with their rows (ADR-0025 D1); rows the scroll exposes clear.
+    let flags: Vec<u16> = (top..=bottom)
+        .map(|row| grid.row_flags.get(row).copied().unwrap_or(0))
+        .collect();
     let delta = isize::from(scroll.delta);
     for row in top..=bottom {
         let source = row as isize - delta;
@@ -187,8 +202,15 @@ fn apply_scroll(grid: &mut GridSnapshot, scroll: ScrollOp) {
         if source >= top as isize && source <= bottom as isize {
             let src_local = (source as usize - top) * cols;
             grid.cells[dst..dst + cols].copy_from_slice(&range[src_local..src_local + cols]);
+            let flag = flags[source as usize - top];
+            if let Some(slot) = grid.row_flags.get_mut(row) {
+                *slot = flag;
+            }
         } else {
             grid.cells[dst..dst + cols].fill(Cell::BLANK);
+            if let Some(slot) = grid.row_flags.get_mut(row) {
+                *slot = 0;
+            }
         }
     }
 }

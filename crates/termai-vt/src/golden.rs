@@ -103,6 +103,11 @@ pub fn write_golden(s: &GridSnapshot) -> String {
     for row in 0..s.rows {
         let cells = row_cells(s, row);
         body.push_str(&format!("row {row:04} {}\n", escape_row(&cells)));
+        // ADR-0025 D2: always write the per-row LineFlags. A reader that predates
+        // the field simply sees an extra line it can ignore; a reader that knows it
+        // sees the wrap chain. Missing lines parse as zero (legacy documents).
+        let flags = s.row_flags.get(usize::from(row)).copied().unwrap_or(0);
+        body.push_str(&format!("lflags {row:04} 0x{flags:04x}\n"));
         write_attr_lines(s, row, &mut body);
         for link in s.links.iter().filter(|link| link.row == row) {
             body.push_str(&format!(
@@ -137,6 +142,7 @@ pub fn parse_golden(text: &str) -> Result<GoldenDoc, GoldenError> {
     let mut row_map: BTreeMap<u16, Vec<Cell>> = BTreeMap::new();
     let mut attrs: Vec<(u16, u16, u16, Color, Color, u16)> = Vec::new();
     let mut links: Vec<LinkSpan> = Vec::new();
+    let mut line_flags: BTreeMap<u16, u16> = BTreeMap::new();
 
     let mut meta_seen = false;
     for (index, line) in lines.iter().enumerate().skip(1) {
@@ -146,6 +152,9 @@ pub fn parse_golden(text: &str) -> Result<GoldenDoc, GoldenError> {
         } else if let Some(rest) = line.strip_prefix("row ") {
             let (row, cells) = parse_row(rest, snapshot.cols)?;
             row_map.insert(row, cells);
+        } else if let Some(rest) = line.strip_prefix("lflags ") {
+            let (row, flags) = parse_lflags(rest)?;
+            line_flags.insert(row, flags);
         } else if let Some(rest) = line.strip_prefix("attr ") {
             attrs.push(parse_attr(rest)?);
         } else if let Some(rest) = line.strip_prefix("link ") {
@@ -190,6 +199,15 @@ pub fn parse_golden(text: &str) -> Result<GoldenDoc, GoldenError> {
             "cols/rows must be non-zero".to_string(),
         ));
     }
+    // ADR-0025 D1/D2: a document without `lflags` lines (minor 1) reads as all
+    // zero; unknown bits in a present line are carried through untouched.
+    let mut row_flags = vec![0u16; usize::from(rows)];
+    for (row, flags) in line_flags {
+        if let Some(slot) = row_flags.get_mut(usize::from(row)) {
+            *slot = flags;
+        }
+    }
+    snapshot.row_flags = row_flags;
     let mut cells = vec![Cell::BLANK; usize::from(cols) * usize::from(rows)];
     for row in 0..rows {
         let mut row_cells = row_map.remove(&row).unwrap_or_default();
@@ -426,6 +444,18 @@ fn parse_attr(rest: &str) -> Result<(u16, u16, u16, Color, Color, u16), GoldenEr
         .and_then(parse_flags)
         .ok_or_else(|| GoldenError::BadAttr(rest.to_string()))?;
     Ok((row, start, end, fg, bg, flags))
+}
+
+fn parse_lflags(rest: &str) -> Result<(u16, u16), GoldenError> {
+    let (row, value) = rest
+        .split_once(' ')
+        .ok_or_else(|| GoldenError::BadRow(rest.to_string()))?;
+    let row = row
+        .parse::<u16>()
+        .map_err(|_| GoldenError::BadRow(rest.to_string()))?;
+    let hex = value.strip_prefix("0x").unwrap_or(value);
+    let flags = u16::from_str_radix(hex, 16).map_err(|_| GoldenError::BadRow(rest.to_string()))?;
+    Ok((row, flags))
 }
 
 fn parse_link(rest: &str) -> Result<LinkSpan, GoldenError> {

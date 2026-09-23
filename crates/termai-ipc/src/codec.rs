@@ -541,6 +541,12 @@ pub fn grid_snapshot_to_value(s: &GridSnapshot) -> Value {
             })
             .collect(),
     );
+    // ADR-0025 D1: per-row LineFlags travel as rows * 2 bytes, u16 LE row-major.
+    let mut row_flags = Vec::with_capacity(usize::from(s.rows) * 2);
+    for row in 0..s.rows {
+        let flags = s.row_flags.get(usize::from(row)).copied().unwrap_or(0);
+        row_flags.extend_from_slice(&flags.to_le_bytes());
+    }
     let cursor = Value::map(vec![
         ("row", u(u64::from(s.cursor.pos.row))),
         ("col", u(u64::from(s.cursor.pos.col))),
@@ -551,6 +557,7 @@ pub fn grid_snapshot_to_value(s: &GridSnapshot) -> Value {
         ("cols", u(u64::from(s.cols))),
         ("rows", u(u64::from(s.rows))),
         ("cells", Value::Bytes(cells)),
+        ("row_flags", Value::Bytes(row_flags)),
         ("cursor", cursor),
         ("alt", Value::Bool(s.alt)),
         ("wrap", Value::Bool(s.wrap_pending)),
@@ -592,6 +599,19 @@ pub fn grid_snapshot_from_value(v: &Value) -> Result<GridSnapshot, CodecError> {
             link,
         });
     }
+    // ADR-0025 D1: a minor-1 document has no row_flags field; decode it as all
+    // zero rather than failing (DC-40 N-2 forward/backward compatibility).
+    let row_flags = match v.get("row_flags") {
+        Some(Value::Bytes(b)) => {
+            if b.len() != usize::from(rows) * 2 {
+                return Err(CodecError::Bad("row_flags length"));
+            }
+            b.chunks_exact(2)
+                .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+                .collect()
+        }
+        _ => vec![0u16; usize::from(rows)],
+    };
     let cv = v.get("cursor").ok_or(CodecError::Missing("cursor"))?;
     let modes_b = get_bytes(v, "modes")?;
     if modes_b.len() != 8 {
@@ -615,6 +635,7 @@ pub fn grid_snapshot_from_value(v: &Value) -> Result<GridSnapshot, CodecError> {
         cols,
         rows,
         cells,
+        row_flags,
         cursor: CursorState {
             pos: CellPos {
                 row: get_u64(cv, "row")? as u16,
@@ -1706,6 +1727,8 @@ mod tests {
         s.cells[0].bg = Color::Indexed(200);
         s.cells[0].attrs = termai_core::grid::ATTR_BOLD;
         s.cells[1] = Cell::WIDE_CONTINUATION;
+        // ADR-0025 D1: prove a non-zero flag survives the CBOR round trip.
+        s.row_flags[1] = termai_core::grid::LINE_WRAPPED;
         s.cursor = CursorState {
             pos: CellPos { row: 1, col: 2 },
             visible: true,
@@ -1724,6 +1747,21 @@ mod tests {
         let back = grid_snapshot_from_value(&from_bytes(&bytes).unwrap()).unwrap();
         assert_eq!(back, s);
         assert!(back.cells[1].is_wide_continuation());
+        assert_ne!(back.row_flags[1] & termai_core::grid::LINE_WRAPPED, 0);
+    }
+
+    #[test]
+    fn grid_snapshot_without_row_flags_decodes_as_zero() {
+        // A minor-1 producer on the wire omits the field; a minor-2 reader must
+        // still decode it (ADR-0025 D1 / DC-40).
+        let mut s = GridSnapshot::new(3, 2);
+        s.row_flags[0] = termai_core::grid::LINE_WRAPPED;
+        let mut v = grid_snapshot_to_value(&s);
+        if let Value::Map(entries) = &mut v {
+            entries.retain(|(k, _)| k.as_text() != Some("row_flags"));
+        }
+        let back = grid_snapshot_from_value(&v).unwrap();
+        assert_eq!(back.row_flags, vec![0, 0]);
     }
 
     #[test]
