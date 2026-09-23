@@ -1,5 +1,7 @@
 # P0 验证手册（可执行命令 + 每条命令防的坑）
 
+> **逐节复核（第 204 轮，对照当时的代码与 CI）**：**§1 门禁清单 ✓ 完整（八条命令，含四项 selftest）｜§2 esctest ✓ 准确（命令含必备的 `-- --expected-terminal xterm --xterm-checksum 336`；期望 267/41/259/0 与实测一致）｜§3 两个探针 ✓ 准确（含 `alt_decsc` 的期望输出）｜§4 分诊三件套 ✓ 准确（含三条坑注）｜§5 验收顺序 ◐ 已补（原缺「改动门禁本身」的情形，见该节第 3 步）｜§6 环境缺口 ✓ 准确**。**复核方式为逐节读取并与代码/CI 现状对照，不是重跑全部命令**——**§1 的命令在第 199 轮已整串实跑（全绿）。**
+
 > 目的：把本会话的可运行操作知识集中到一页。每条命令给出：做什么 / 期望输出 / 它防的坑。
 > 口径基线（第 112 轮）：kernel-gates 8 PASS ｜ conformance gating 64/64 ｜ bench:check 7 PASS（gating INCONCLUSIVE）｜ esctest 267 passed / 41 known-bug / 259 failed / 0 substitutions，且污染 0。
 
