@@ -6,6 +6,8 @@
 
 > **入口（第 100 轮状态，先读这段）**
 >
+> **自第 100 轮以来的变化（第 107 轮补记）**：① **E-P0-3 的「进 CI」一半已完成**——`bench:check`、`conformance L0`、`ci-cost` 三项检查已接入 Windows/Linux 两个 job（**结构性门禁阻断；§5 数字与成本读数在未触顶时不阻断**，依 ADR-0014）；② **C4 三件套齐全**（`ci-cost.json` 数据 + `tools/ci-cost/check.mjs` 读数检查 + CI 接线），**并做过负例对照**（改错总额 → exit 1）；③ **C1/C2/C3 仍需发起人**（TSC 未成立、CODEOWNERS 双签不可执行、分支保护未启用），**C5 需真实 CI 运行**（macOS/Linux 作业从未跑过），**C6 是周期性流程**。**四项治理前置里，唯一能在仓库内实现的 C4 已落地。**
+>
 > **四条出口**：E-P0-1 **未判定** ｜ E-P0-2 **未实现** ｜ E-P0-3 **未判定** ｜ E-P0-4 **部分**。
 >
 > **全部门禁（第 100 轮实跑）**：`kernel-gates` **8 PASS / 0 FAIL**；`conformance` **gating 64/64（R=1.0）**、ctlseqs 208/208、**G1: NOT_JUDGED**；`bench:check` **7 PASS / 0 FAIL** 但 **gating INCONCLUSIVE / REFERENCE_MACHINE_UNAVAILABLE**（`gatingNumbersProduced: 0`）。
