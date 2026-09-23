@@ -78,3 +78,45 @@
 
 **反绕实现是被 `git add -A` 卷进 `01b1ead`（`feat(gpu)`）的**，提交信息里**没有**它，而我当时以为该提交只含 GPU 切片。成因：我中断了仍在写文件的 subagent 后，**它仍在步进边界写入了 `grid.rs`**，随后我为 GPU 切片执行 `git add -A` 时把它一起扫走。**判据（已写入 runbook 第 5 条铁律）**：提交必须按**显式路径**；在 subagent 可能仍在写文件时**不得**用 `git add -A`；提交前后都要能逐条说出每个文件的来路。
 
+
+## 第 269 轮：最后 1 条缺口的权威依据（xterm 源码，已取到）
+
+把 xterm 源检出到 `target/xterm-src`（`ThomasDickey/xterm-snapshots`，gitignored），读 **`cursor.c:106–205` 的 `CursorBack`**——这是 `BS` 与 `CUB` 的实现，也是本条的**权威条款**（K-03 仲裁序里「实现」档）：
+
+```c
+#define WRAP_MASK  (REVERSEWRAP  | WRAPAROUND)   /* mode 45  + DECAWM */
+#define WRAP_MASK2 (REVERSEWRAP2 | WRAPAROUND)   /* mode 1045 + DECAWM */
+rev  = ((flags & WRAP_MASK)  == WRAP_MASK);
+rev2 = ((flags & WRAP_MASK2) == WRAP_MASK2);
+...
+if ((rev || rev2) && do_wrap) --count;   /* 待折行 absorbs one step */
+else                          --col;
+for (;;) {
+  if (col < left) {
+    if (rev2) { col = right; if (row == top) row = bottom + 1; }   /* 广义 */
+    else if (!rev) { col = left; break; }
+    --row;                                                          /* 试反绕 */
+  }
+  if (row != cur_row) {
+    if (!rev2 && !LineTstWrapped(ld)) { if (row < bottom) ++row; col = left; break; }  /* mode 45：上一行非软换行 → 反绕失败 */
+    col = right;
+  }
+  ...
+}
+```
+
+**结论（三条）**：
+
+1. **mode 45（`rev`）= 收窄语义**：跨行反绕**要求目标行 `LineTstWrapped`**；若上一行不是软换行，则**反绕失败**（`row` 还原、`col = left`）。
+2. **mode 1045（`rev2`）= 广义语义**：无条件 `col = right`，且在上边距时 `row = bottom + 1`（绕到屏幕底部）。
+3. **我们现在的实现把 45 与 1045 当同一条广义路径**，所以 8 条用 `ReverseWraparound()` 的用例过了，而**直接用 `XTREVWRAP`(45) 的 `test_BS_InitialReverseWraparound` 失败**——它要的正是第 1 条的「反绕失败」。
+
+### 最后 1 条的两条出路（需一次口径决定，属下一轮）
+
+| 出路 | 内容 | 代价 |
+| --- | --- | --- |
+| **A（正确表示现代终端）** | 实现 `rev`(45)=收窄、`rev2`(1045)=广义两条路径；并在 `suites.json` 的 esctest2 `invocation` 里声明 `xterm_reverse_wrap >= 383`（esctest 据此让 `ReverseWraparound()` 返回 **1045**） | **会改变 esctest 的整套期望值**（多条用例有 `>=383` 分支），即**重设一次口径**；须按 ADR-0030 的口径纪律记录「级别 + flag + 分母」 |
+| **B（保持 flag 0）** | 不改调用；承认 `test_BS_InitialReverseWraparound` 是**旧 xterm 语义下的 oracle 不一致**并保留失败 | 代价是**永久留 1 条失败**，且不能声称 esctest 100% |
+
+**我方判断（待 owner/评审确认）**：**A**。理由：我们要声称的是「与钉定 xterm 一致」，而钉定版本是现代的（≥383）；用 flag 0 等于**故意让 esctest 按 2023 年以前的 xterm 评判我们**，这正是 ADR-0030 D-1「数字必须连级别一起报」要防的那类口径漂移。**A 的代价是重跑并重记一整套数字**，不是放宽门禁。
+
