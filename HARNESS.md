@@ -683,7 +683,7 @@
 | docs/spec/00-glossary.md | 术语基线（**效力：HARNESS > 术语表 > 角色原文**） | v1.1 |
 | docs/spec/01–07-*.md | 领域规格：01 产品与指标 / 02 UX 与设计系统 / 03 系统架构 / 04 AI Agent 平台 / 05 安全隐私合规 / 06 插件生态与 DevEx / 07 工程质量与发布 | v1 |
 | docs/spec/kernel/ | **P0 内核设计分册（评审产物）**：00 索引 / 01 VT 兼容性 / 02 PTY 与平台层 / 03 渲染管线 / 04 会话生命周期 / 05 输入·IME·剪贴板 / 06 性能测量方法学 / 07 内核 API·ABI | v1 |
-| docs/adr/ | 架构决策记录：README（流程 + 索引）+ ADR-0001…ADR-0026 | 已建 |
+| docs/adr/ | 架构决策记录：README（流程 + 索引）+ ADR-0001…ADR-0027（**ADR-0027 为 Proposed**） | 已建 |
 | docs/plan/ | **交付计划与实现期登记**：mvp-delivery-plan（M0 范围与可追溯矩阵）、p0-delivery-plan（P0 出口拆解、团队组织、WBS、波次与可追溯矩阵）、m0-spec-defects（SD-01…SD-08 实现期规格缺陷）、**p0-spec-defects（SD-09…SD-21 实现期规格缺陷）**、m0-delivery-report（交付报告） | M0 / P0 |
 | docs/audit/ | **未闭合清单与技术债登记**：`debt-p0.md`（E-P0-1…E-P0-4 的未闭合项 + SD 系列 + 治理缺口，含 owner / 触发条件 / 依据编号；spec 07 §3.9 的 P0 阶段实现，发版后按版本另建 `debt-<ver>.md`） | P0 |
 
