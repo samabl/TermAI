@@ -84,6 +84,7 @@ node tools/conformance/triage-single.mjs <log> <ClassPrefix 或 ALL> <outRoot>
 | 网络（仅非公网可达） | 渲染依赖的 SPDX 证据 → E-P0-2 无法准入 |
 | RM-A/B/C 参考机 | E-P0-3 的判定（接线已完成） |
 | 仓库设置 / 发起人 | C1 TSC、C2 CODEOWNERS 双签、C3 分支保护、C5 真实 CI 运行 |
+| **Chrome / Edge（`CHROME_PATH`）** | **`design:check` 的浏览器层（B4 视觉回归）：本机无浏览器时该门禁**判 FAIL**（`maxDiffPct=0` 无法比对），**而 CI 的 design job 会安装浏览器**。**第 250 轮实跑：`design:check` 得 `19 PASS / 1 FAIL`，唯一阻断项是 B4**——**因此「全绿」指的是**本机能跑的那些门禁**，设计门禁与 vttest 同属**环境受限** |
 ## 7. 约定检查（文档自身的规则，可运行）
 
 ```powershell
