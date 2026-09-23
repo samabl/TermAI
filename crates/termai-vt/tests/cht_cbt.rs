@@ -81,3 +81,15 @@ fn cbt_zero_parameter_behaves_as_one_and_moves() {
     assert_ne!(explicit.grid().cursor(), (0, 16));
     assert_eq!(explicit.counters().get(ParseErrorKind::CsiUnknown), 0);
 }
+
+#[test]
+fn hts_sets_a_tab_stop_that_the_next_tab_honours() {
+    // ESC H (HTS) was ignored, so a custom stop had no effect and TAB fell through to the
+    // default every-eight column. Set a stop at column 5, return home, tab, and land on it.
+    let mut t = Terminal::new(80, 24);
+    t.feed(b"\x1b[1;6H"); // column 6 (zero-based 5)
+    t.feed(b"\x1bH"); // HTS
+    t.feed(b"\x1b[1;1H"); // back to column 1
+    t.feed(b"\t"); // TAB
+    assert_eq!(t.grid().cursor(), (0, 5), "TAB must stop at the HTS stop");
+}

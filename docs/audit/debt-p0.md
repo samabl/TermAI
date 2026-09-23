@@ -336,6 +336,26 @@ CHECKSUM 1 1 1 1
 
 **两者都是标准 ECMA-48（`ESC 7`/`ESC 8`）的核心序列**，**不在 §3.5 表内是因为它们属核心**，与 CHT/CBT 同源——**属真缺陷，不是子集外**。
 
+### A4 附：第 94 轮——**HTS 未实现（+9，达 267）**；残余核心候选里确有真缺陷
+
+按第 93 轮的下一步，对**残余的核心编辑语义候选**逐个核对。结果**不是空的**：
+
+| 候选 | 判定 |
+| --- | --- |
+| `ECHTests/EDTests/ELTests.*_respectsISOProtection` | **ISO 保护属性**（DECSCA / 选择性擦除）→ **扩展**，子集外 |
+| **`TBCTests`（4）+ `HTSTests`（1）** | **ECMA-48 核心**（制表位清除/设置）→ **真缺陷** |
+| `RISTests.test_RIS_ResetTitleMode` | RIS 是否重置**标题模式**（扩展）→ 待定 |
+
+**根因**：`csi_dispatch` 里 **`b'g'`（TBC）已实现且正确**（`clear_tab` 的 0/3 分支都对），但 **`esc_dispatch` 里根本没有 `b'H'`（HTS）** → **`ESC H` 被静默忽略**，设了自定义制表位的用例于是落到默认的每 8 列。
+
+**修法**：在 `esc_dispatch` 加 `b'H' => self.set_tab_stop()`，并新增 `set_tab_stop()`（在当前列置位 `tab_stops`）。
+
+**实测**：**258 → 267 passed**（268 → 259 failed），**+9**；`TBC|HTS` 单跑 **5 passed / 0 failed**（另 1 条是 known bug）。**+9 多于这两个类的 5 条**，说明还有其它用例依赖自定义制表位。
+
+**已提交**：`8c0b912`；回归测试 `hts_sets_a_tab_stop_that_the_next_tab_honours` 加入 `cht_cbt.rs`（**9/9**）。**验证与提交已分离执行**（先读数、后提交）。
+
+**意义**：**这证明第 92/93 轮的收敛没有把真缺陷一起收敛掉**——`TBC`/`HTS` 与 `CHT`/`CBT` 同族，都是**核心 ECMA-48 制表序列**，也都**由机器分类表定位**而非人工通读找到。**权威口径更新为 267 passed / 41 known-bug / 259 failed / substitutions 0。**
+
 ### A4 附：第 93 轮——`DECFI`/`DECBI`/`DECID` 已定性：**没有新的核心缺陷**
 
 按第 92 轮列出的优先项，读 `esccmd.py` 确认这三个究竟是什么（一条 grep，零成本）：
