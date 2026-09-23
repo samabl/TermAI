@@ -193,7 +193,11 @@ export const CASES = [
   { id: 'inv-esc-intermediate-has-no-side-effect', suite: 'termai-invariants',
     documented: 'kernel/01 section 3.4: an unrecognised sequence is consumed with zero grid/state change; '
       + 'kernel/01 section 3.2 exists to distinguish ESC # 8 (DECALN) from ESC 8 (DECRC)',
-    body: ['KEY "' + CSI + '5;5H"', 'KEY "' + E + '7"', 'KEY "' + CSI + '1;1H"', 'KEY "' + E + '#8"',
+    // The sequence must be one that is NOT defined, otherwise it cannot express "an unrecognised
+    // sequence has no side effect": ESC # 8 is DECALN (a defined sequence that fills the screen).
+    // ESC # 9 is undefined. ADR-0029 does not touch this; the committed .trec already said #9 while
+    // this generator still said #8, which is what tools/conformance/gen-spec.mjs --check caught.
+    body: ['KEY "' + CSI + '5;5H"', 'KEY "' + E + '7"', 'KEY "' + CSI + '1;1H"', 'KEY "' + E + '#9"',
       'ASSERT CURSOR 0 0', 'ASSERT COUNTER esc_unknown = 1'] },
 
   // ------------------------------------------------------------- lane fixtures
