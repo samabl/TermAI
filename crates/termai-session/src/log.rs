@@ -1081,6 +1081,45 @@ pub fn replay_window_check(read: &SegmentRead, from_seq: u64, head: u64) -> Resu
     }
 }
 
+/// The cross-segment form of [`replay_window_check`] (A10).
+///
+/// `reads` must be consecutive segments in ascending id order. `kernel/04` section 3.2.1 chains
+/// segments on rotation and `seq` stays monotonic across them, so their union is one contiguous range
+/// and the question is the same; only the coverage test is taken over the union instead of one
+/// segment. Without this a TAIL_REPLAY whose floor fell in an earlier segment was refused with
+/// `BelowWindow` even though every record it needed was on disk and `list_segments` could find it.
+///
+/// # Errors
+/// The same three conditions as [`replay_window_check`], judged over the union of `reads`.
+pub fn replay_window_check_across(
+    reads: &[SegmentRead],
+    from_seq: u64,
+    head: u64,
+) -> Result<(), ReplayGap> {
+    if from_seq > head {
+        return Err(ReplayGap::AheadOfHead { head });
+    }
+    let lo = from_seq.saturating_add(1);
+    if lo >= head {
+        return Ok(()); // nothing is being requested
+    }
+    let first = reads
+        .iter()
+        .find_map(|r| r.records.first().map(|r| r.id.seq));
+    let last = reads
+        .iter()
+        .rev()
+        .find_map(|r| r.records.last().map(|r| r.id.seq));
+    match (first, last) {
+        (Some(f), Some(l)) if f <= lo && l >= head - 1 => Ok(()),
+        (Some(f), _) if f > lo => Err(ReplayGap::BelowWindow { first_available: f }),
+        _ => Err(ReplayGap::TailUnreadable {
+            last_valid: last,
+            head,
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1463,6 +1502,48 @@ mod tests {
         }
         let expected: Vec<u64> = (0..20).collect();
         assert_eq!(seqs, expected, "seq must be monotonic across segments");
+    }
+
+    #[test]
+    fn replay_window_across_segments_covers_what_neither_covers_alone() {
+        // A holds 0..5 and B holds 5..10; the requested window (3, 10] spans the boundary, so
+        // neither segment covers it and their union does. This is the case A10 exists for.
+        let a = seg_read(0, 5);
+        let b = seg_read(5, 5);
+        assert!(
+            replay_window_check(&a, 3, 10).is_err(),
+            "A alone must not cover it"
+        );
+        assert!(
+            replay_window_check(&b, 3, 10).is_err(),
+            "B alone must not cover it"
+        );
+        assert_eq!(replay_window_check_across(&[a, b], 3, 10), Ok(()));
+    }
+
+    #[test]
+    fn replay_window_across_segments_still_refuses_what_is_missing() {
+        // Negative controls: taking the union must not turn refusals into acceptances.
+        let a = seg_read(5, 5);
+        let b = seg_read(10, 5);
+        assert_eq!(
+            replay_window_check_across(&[a, b], 0, 15),
+            Err(ReplayGap::BelowWindow { first_available: 5 })
+        );
+
+        let c = seg_read(0, 5);
+        assert_eq!(
+            replay_window_check_across(&[c], 20, 10),
+            Err(ReplayGap::AheadOfHead { head: 10 })
+        );
+
+        assert!(matches!(
+            replay_window_check_across(&[], 0, 5),
+            Err(ReplayGap::TailUnreadable {
+                last_valid: None,
+                ..
+            })
+        ));
     }
 
     #[test]
