@@ -30,3 +30,7 @@ Thumbs.db
 *.out.txt
 zz_probe*
 
+# Python bytecode from the esctest transport adapter (tools/conformance/upstream).
+__pycache__/
+*.pyc
+

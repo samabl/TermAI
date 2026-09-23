@@ -20,7 +20,7 @@
 | A10 | **跨段重放未实现**（TAIL_REPLAY 只读当前 segment；旋转后只会 BelowWindow） | T1 | 段滚动/归档后必须仍能重放或明确要求全量快照 | ADR-0026 §5 负面 1 |
 | A11 | **TailReplay 事件只投影 5 类** → **不能替代 GRID_SNAPSHOT** | T1 | 新增 tag 须先出 ADR | ADR-0026 D5 |
 | A12 | **新 IPC 面无 fuzz 语料**；8 MiB 上限未端到端实跑；broker 的 FRAME_TOO_LARGE 分支未单测 | T1 | AGENTS §6；G6 = 24h 无 crash | §8.1-6、DC-37 |
-| A13 | **VRM**：**第一切片已落地**（`1055f0f`：`WrapMode{Fold,Clip}`、`LogicalLine`、`logical_lines`、`display_row_count`、`clip_visible_offset`；4 条测试含「调映射前后 `canonical_bytes` 完全相同」）。**仍缺**：① `WrapMode` 还没有归属方去**持有并切换**它（切模式作为一个**操作**尚不存在，因此「切换产生 0 个 GridDelta」目前只在纯函数意义上被证明，未在 delta 流上断言）；② `ScrollAnchor`、命中测试、a11y 投影、显示行总数（均按切片边界明确未做） | T1 | 每一步都不得改变列数与复制字节 | AR-23 §6、kernel/03 K-10、RP-08 |
+| A13 | **VRM**：**映射 + 模式切换均已落地**（`1055f0f` 映射；`14bedbb` `VrmState` 持有/切换 + **RP-08 操作面断言**：`Fold→Clip→Fold` 后 `mirror.rev()`、`canonical_bytes()` 不变且 `take_damage()` 为空）。**仍缺**：`ScrollAnchor`、命中测试、a11y 投影、显示行总数、从配置读模式；另有一处已知粗化——`VisualRow.clipped` 是**单一 bool**，无法区分「遮住头/尾/两端」，而 kernel/03 §3.8 的 `VRowKind` 信息更多（按切片边界未做） | T1 | 每一步都不得改变列数与复制字节 | AR-23 §6、kernel/03 K-10、RP-08 |
 
 ## B. 尚未闭合的契约 / 规格登记（SD 系列）
 
