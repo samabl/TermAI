@@ -127,6 +127,19 @@
 
 
 **⚠ 第 181 轮对本节的更正（自我更正第 18 次）**：**「已有实现」三行必须按门禁强度区别对待，不能一律说成「已实现」**——**读 `tools/tokens/check.mjs` 第 3 行的自述**：「`// Gates: (1) schema (2) AR-22 rulers (3) WCAG contrast (4) codegen drift (5) hex debt (**warn only**).`」**因此**：
+**✅ 第 184 轮：E-P0-3 在本机的可执行任务，现在是完全指定的（D-6 的收束）**。**已核实**：`node tools/bench/check.mjs --json` 目前**只报状态与计数**——`"state": "INCONCLUSIVE"`、`"gatingNumbersProduced": 0`、`"detail": "no reference machine on this host: every discovered value is NON_GATING / INCONCLUSIVE and 0 gating…"`——**没有任何逐行的 NON_GATING 值**（JSON 里不存在 `values` / `nonGating` 数组）。
+
+**因此任务定义为**：
+
+| 项 | 内容 |
+| --- | --- |
+| **做什么** | **为 `machine: none` 且 `governed: no` 的五行（H12/H13/H17/H18/H19）产出并**标注 NON_GATING** 的值**，使 `bench` 的报告里出现这五行的数字（**而不是 gating 数字**） |
+| **输入来自哪里** | **H17 ← `tools/design-gates`**（`registry.owner` 已如此标注；其阈值默认 `maxDiffPct=0`，即零个不同像素）；**H18/H19 ← `tokens:check`**（现为 **hex warn-only** + **WCAG 对比度真实计算**）；**H12 ← `termai-core` 的 `InputEncoder`**（现仅单测）；**H13 ← 无**（打包未做） |
+| **硬边界（不可越过）** | **`B7` 要求本机 `gatingNumbersProduced === 0`**——**产出任何 gating 数字即判 FAIL**。**因此实现必须是「NON_GATING 值的呈现」**，**且不得让 `B7` 的数字变为非零** |
+| **副产品** | **H18 若要从「只警告」变成「阻断」，那是**收紧门禁**（不需 TSC），但**会改变 CI 行为**，须单独记录**——**不属于本任务，但本任务会暴露它** |
+| **不在本任务内** | **H1–H11（需 RM-A/RM-C 与 UI 宿主）**、**H14–H16（外部）**——**它们在 `B7` 与 E-P0-2 的限制下不可能在本机产出** |
+
+**这条定义是第 180–184 五轮核实的产物**；**它把一个「§5 测量实现未做」的笼统缺口，收敛成一个有输入、有边界、有副产品的具体任务**。
 **⚠ 第 183 轮：读 B7 之后，本节的任务定性必须再改一次——「让 bench 产出 §5 数字」是一个**不可能也不允许**的工作**。**`tools/bench/check.mjs:676` 的 B7 门禁是「机器绑定诚实边界」，其判据在 `:688`**：**`if (status.gatingNumbersProduced !== 0) problems.push('this tool produced …')`**——**即：本机没有参考机（RM-A/RM-C）时，工具**必须产出零个 gating 数字**；产出了就判 FAIL**。**其 PASS 文案（`:704`）也写着「no reference machine on this host: every discovered value is NON_GATING」。**
 
 **因此正确的任务定性是**：
