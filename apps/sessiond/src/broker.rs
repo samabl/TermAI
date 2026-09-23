@@ -1220,6 +1220,104 @@ mod tests {
         (Broker::new(policy(), reg, id), id)
     }
 
+    /// A broker whose Log has rotated, so a replay window's floor can lie in an earlier segment.
+    /// This is the precondition A10 needs and could not previously be produced: nothing rotated a log.
+    fn broker_with_rotated_log(tag: &str, first_seq: u64, max_bytes: usize) -> (Broker, SessionId) {
+        use termai_session::log::{FlushMode, Record, RotationPolicy};
+        let dir = tmp_dir(tag);
+        let id = SessionId(7);
+        let rot = RotationPolicy { max_bytes };
+        let mut w = SegmentWriter::create(&dir, 0, first_seq, [0u8; 8], 1, 0).unwrap();
+        for i in 0..20u8 {
+            w.append(
+                &Record::PtyOut {
+                    pane: 0,
+                    bytes: vec![i; 32],
+                },
+                u64::from(i),
+            )
+            .unwrap();
+            if w.needs_rotation(&rot) {
+                w.rotate(&dir, &rot, 1000).unwrap();
+            }
+        }
+        w.flush(FlushMode::FsyncFull).unwrap();
+        // Guard against a vacuous test: without at least two segments there is no boundary to span, and
+        // the acceptance case would pass against exactly the single-segment code A10 replaced.
+        assert!(
+            termai_session::log::list_segments(&dir).unwrap().len() >= 2,
+            "the helper must actually rotate, or the test proves nothing"
+        );
+        let mut reg = Registry::new();
+        reg.insert(id, Box::new(TextEngine::new(80, 24)), w, 1)
+            .unwrap();
+        (Broker::new(policy(), reg, id), id)
+    }
+
+    fn attach_payload_with_resume(id: SessionId, resume_from: Option<u64>) -> Vec<u8> {
+        codec::to_bytes(&codec::attach_request_to_value(&codec::AttachRequest {
+            proto_min: 1,
+            proto_max: 3,
+            client_kind: ClientKind::Cli,
+            session_id: id,
+            mode: codec::AttachMode::ReadOnly,
+            resume_from,
+            capabilities: vec![CAP_SESSION_READ, CAP_STDIN_WRITE],
+        }))
+    }
+
+    fn tail_replay_request(from_seq: u64) -> Vec<u8> {
+        // The request direction of 0x0502 is the same map with no replays in it, so from_seq is all
+        // it carries (codec.rs line 1361).
+        codec::to_bytes(&Value::map(vec![("from_seq", Value::U64(from_seq))]))
+    }
+
+    #[test]
+    fn tail_replay_accepts_a_window_spanning_a_rotation_boundary() {
+        // A10: the floor sits in an earlier segment, and every record the window needs is on disk.
+        let (mut b, id) = broker_with_rotated_log("rotate-window", 0, 200);
+        do_hello(&mut b);
+        b.on_frame(
+            &hdr(msg::ATTACH_REQUEST, flag::ENC, 2),
+            &attach_payload_with_resume(id, Some(0)),
+        )
+        .unwrap();
+        let out = b
+            .on_frame(
+                &hdr(msg::TAIL_REPLAY, flag::ENC, 3),
+                &tail_replay_request(0),
+            )
+            .unwrap();
+        assert_eq!(
+            out[0].msg_type,
+            msg::TAIL_REPLAY,
+            "a window the segments still hold must be replayed, not refused"
+        );
+    }
+
+    #[test]
+    fn tail_replay_still_refuses_a_window_below_every_segment() {
+        // Negative control: taking the union of segments must not accept a floor that predates them.
+        let (mut b, id) = broker_with_rotated_log("rotate-window-below", 5, 200);
+        do_hello(&mut b);
+        b.on_frame(
+            &hdr(msg::ATTACH_REQUEST, flag::ENC, 2),
+            &attach_payload_with_resume(id, Some(0)),
+        )
+        .unwrap();
+        let out = b
+            .on_frame(
+                &hdr(msg::TAIL_REPLAY, flag::ENC, 3),
+                &tail_replay_request(0),
+            )
+            .unwrap();
+        assert_eq!(
+            out[0].msg_type,
+            msg::ERROR,
+            "the floor is gone; refusal is required"
+        );
+    }
+
     fn hello() -> Hello {
         Hello {
             proto_min: 1,
