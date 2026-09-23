@@ -93,6 +93,13 @@
 - **本 P0 处置**：SD-20 从「测量不可信」改判为「一次记录错误 + 方法教训」：**跨提交比较 esctest 数字必须重测，禁止复用旧值**。
 - **剩余动作**：把 esctest 接入 CI（或任何门禁）前，必须① 固定 harness 二进制与 @@substitutions@@ 口径；② 在同一 commit 上跑两次做可复现性自证（AR-27）；③ 报告里同时给出 @@substitutions@@ 数与是否为零。
 
+## SD-21｜Context 事件的 `confidence` 单位未定义（线上 f32 与 Log u8 之间无映射规定）
+
+- **证据**：kernel/07 §3.6 把 `CommandBoundary.confidence` 定为 `f32`；kernel/04 §3.2.3 的 `CmdEnd` 记录只列字段名、**未写类型与单位**，而仓库实现（termai-session 的 Log 记录、termai-vt `shell.rs`）用的是 `u8`。
+- **影响**：线上与 Log 之间没有定义的换算（百分比 0–100？0–1？0–255？）。投影时若猜错，该字段会**静默失真**；而 AI 侧的提示符启发式置信度（kernel/01 §3.6 的 `confidence = Low` 语义）直接依赖它。
+- **本 P0 处置**：**线上保持 `f32`**（ADR-0026 D6；§3.6 是 Context 事件 schema owner）；`u8 → f32` 的换算必须在投影点**显式写出并注释**，禁止隐式 `as` 转换；单位确认前**不得声称该字段已冻结**。
+- **需要的动作**：kernel/04 owner 在 §3.2.3 写明 `CmdEnd.confidence` 的类型、单位与取值范围；若确为百分比，换算固定为 `f32 = u8 as f32 / 100.0`，并同步 kernel/07 §3.6 的注释。
+
 ## 处置总表
 
 | 编号 | 落点 | 类型 | 本 P0 处置 | 需要动作 |

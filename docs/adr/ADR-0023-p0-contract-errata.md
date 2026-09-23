@@ -83,6 +83,8 @@ P0 出口（HARNESS §7）要求 VT 一致性、IME/CJK、性能门禁与屏幕�
 3. 字段以 `kernel/04` §3.4 为准；本 ADR 只分配数值与编码档位，不改字段语义。
 4. 编码档位遵循 ADR-0018：结构性/低频消息走 **CBOR 演进档**，定长热路径走 **POD（≤4 KiB）**。
 5. 未知 `0x05xx` 数值的处置沿用 `kernel/07` §3.2：落在**已知区段** → 回 `Error{UnsupportedMsg}` 且不断连。
+>
+> **被 ADR-0026 扩充**：`0x0502 AttachAck/TailReplay` 的方向语义由「S→C」扩充为「**S→C 回复 + C→S 请求**」，并确定 floor 排他、无 floor 即拒绝、窗口不可满足时复用 `AttachStateInvalid`。**数值不变**，§3.7 的「永不复用」不受影响。
 
 ### D2｜字符串态载荷上限冻结（解 SD-08.1）
 
