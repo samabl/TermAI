@@ -27,7 +27,9 @@ const names = [];
 for (const line of lines) {
   if (!line.startsWith('*** TEST ') || !line.endsWith(' FAILED:')) continue;
   const id = line.slice('*** TEST '.length, line.length - ' FAILED:'.length);
-  if (id.startsWith(classPrefix)) names.push(id);
+  // The literal ALL means every failing test, which is how the suite-wide contamination count is
+  // taken; anything else is a class or test-name prefix.
+  if (classPrefix === 'ALL' || id.startsWith(classPrefix)) names.push(id);
 }
 
 console.log('triage: ' + names.length + ' failing test(s) matching ' + classPrefix);
