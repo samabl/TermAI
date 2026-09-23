@@ -602,6 +602,9 @@ fn csi_known(intermediates: &[u8], action: char) -> bool {
                 | 'u'
                 | '@'
                 | 'c'
+                | '\''
+                | 'a'
+                | 'b'
         );
     }
     match action {
@@ -612,6 +615,11 @@ fn csi_known(intermediates: &[u8], action: char) -> bool {
 }
 
 fn esc_known(intermediates: &[u8], byte: u8) -> bool {
+    // DECALN (ESC # 8) shares its final byte with DECRC (ESC 8): the intermediate is
+    // what tells them apart (kernel/01 section 3.2).
+    if intermediates == [b'#'] {
+        return byte == b'8';
+    }
     intermediates.is_empty()
         && matches!(byte, b'7' | b'8' | b'D' | b'E' | b'M' | b'c' | b'=' | b'>')
 }

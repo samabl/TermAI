@@ -1,6 +1,6 @@
 KEY "[5;5H"
 KEY "7"
 KEY "[1;1H"
-KEY "#8"
+KEY "#9"
 ASSERT CURSOR 0 0
 ASSERT COUNTER esc_unknown = 1

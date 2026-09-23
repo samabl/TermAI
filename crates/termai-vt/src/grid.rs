@@ -183,6 +183,8 @@ pub struct Grid {
     alt_saved: SavedCursor,
     modes: u64,
     wrap_pending: bool,
+    /// Last graphic character printed, which REP (CSI Ps b) repeats.
+    last_graphic: char,
     scroll_top: u16,
     scroll_bottom: u16,
     tab_stops: Vec<bool>,
@@ -235,6 +237,7 @@ impl Grid {
             alt_saved: SavedCursor::default(),
             modes: MODE_AUTOWRAP | MODE_CURSOR_VISIBLE,
             wrap_pending: false,
+            last_graphic: ' ',
             scroll_top: 0,
             scroll_bottom: rows.saturating_sub(1),
             tab_stops: default_tab_stops(cols),
@@ -706,6 +709,7 @@ impl Grid {
             self.append_combining(ch);
             return;
         }
+        self.last_graphic = ch;
         if self.wrap_pending && self.autowrap() {
             self.line_feed();
             self.cursor_col = 0;
@@ -842,8 +846,20 @@ impl Grid {
     }
 
     /// ESC dispatch.
-    pub fn esc_dispatch(&mut self, _intermediates: &[u8], ignore: bool, byte: u8) {
+    pub fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8) {
         if ignore {
+            return;
+        }
+        // Intermediates are part of the sequence identity, not decoration: dispatching
+        // on the final byte alone turned ESC # 8 (DECALN) into ESC 8 (DECRC) and moved
+        // the cursor (G1 finding inv-esc-intermediate-has-no-side-effect).
+        if intermediates == [b'#'] {
+            if byte == b'8' {
+                self.decaln();
+            }
+            return;
+        }
+        if !intermediates.is_empty() {
             return;
         }
         match byte {
@@ -1288,6 +1304,23 @@ impl Grid {
         self.cup(0, 0);
     }
 
+    /// DECALN (ESC # 8): fill the screen with E, reset the margins and home the cursor.
+    fn decaln(&mut self) {
+        let cell = self.styled('E');
+        for row in 0..self.rows {
+            for col in 0..self.cols {
+                self.put(row, col, cell);
+            }
+        }
+        self.combining.clear();
+        self.scroll_top = 0;
+        self.scroll_bottom = self.rows.saturating_sub(1);
+        self.cursor_row = 0;
+        self.cursor_col = 0;
+        self.wrap_pending = false;
+        self.mark_cursor();
+    }
+
     fn save_cursor(&mut self) {
         self.saved = SavedCursor {
             row: self.cursor_row,
@@ -1523,6 +1556,28 @@ impl Grid {
                 self.mark_cursor();
             }
             b'e' => self.cursor_down(def(params.get(0))),
+            b'\x60' => {
+                // HPA: horizontal position absolute (1-based; 0 or absent means column 1).
+                let col = params.get(0).saturating_sub(1);
+                self.cursor_col = col.min(self.cols.saturating_sub(1));
+                self.wrap_pending = false;
+                self.mark_cursor();
+            }
+            b'a' => {
+                // HPR: horizontal position relative.
+                let col = self.cursor_col.saturating_add(def(params.get(0)));
+                self.cursor_col = col.min(self.cols.saturating_sub(1));
+                self.wrap_pending = false;
+                self.mark_cursor();
+            }
+            b'b' => {
+                // REP: repeat the preceding graphic character, bounded by the screen.
+                let ch = self.last_graphic;
+                let cap = def(params.get(0)).min(self.cols.saturating_mul(self.rows));
+                for _ in 0..cap {
+                    self.print(ch);
+                }
+            }
             b'g' => self.clear_tab(params.get(0)),
             b'h' => self.set_modes(params, private, true),
             b'l' => self.set_modes(params, private, false),

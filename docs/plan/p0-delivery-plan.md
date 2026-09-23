@@ -153,6 +153,44 @@ P0 只启用三条现有团队线，其余（T3 Agent / T4 生态）在 P2/P3 �
 **本轮新增登记**：**SD-15**（快照不带 rev → 快照后 rev 基线无定义）、**SD-16**（`kernel/04` §3.4 首个 Interactive attach 自动授予租约 **与 AR-03 冲突 → 裁决：显式授权优先**）、**SD-17**（`proto_range` vs `proto_min/proto_max` 命名）、**SD-18**（attach 暴露的会话域错误码未登记 → 已在 `kernel/07` §3.8 补登 `NoSuchSession` / `AttachStateInvalid`；`Corrupt` 表达「未 attach」列为 WS-05b 待切换项）。
 
 **新增 ADR**：**ADR-0024**（渲染第一刀：crate 依赖位置 + 第三方依赖**零准入**）。
+#### G1 首轮实测（W1-B harness，总负责人独立复跑）
+
+命令：`npm run conformance`（= `node tools/conformance/run.mjs`）。**这是未判定 → 有数字的第一步**，但**不是 G1 通过**。
+
+| 项 | 实测 | 口径 |
+| --- | --- | --- |
+| 用例总数 | **275**（274 执行 + 1 因能力前置排除） | ctlseqs 派生 + 结构不变量 + spec 用例 |
+| L0 门禁子集 | **59/64 → R_strict = R_gate = 0.921875** | 只有 L0 车道出 Pass/Fail；L1/L2 只登记 |
+| 仅覆盖（无期望） | 210 | 结构不变量 |
+| 三车道纪律 | L1/L2 **从不**产出 PASS/FAIL（`probe_ok=true`） | AR-25.1 / B-2 |
+| ctlseqs 覆盖 | **208/208** 条目各有 ≥1 用例；其中 26 条有门禁用例 | AR-31 第 1 条的一部分 |
+| 真实语料占比 | **0/275** | AR-31 第 1 条要求 **≥20%** → **未达标** |
+| 机器绑定 | `NON_GATING`（非 RM-A/T0） | ADR-0014：云/开发机数值不得作门禁 |
+| 判定 | **G1: NOT_JUDGED** | 诚实：用例基数与真实语料都不够 |
+
+**首轮发现 5 个真实 L0 缺陷（这是 harness 的价值所在，不许掩盖）**：
+
+| # | 用例 | 现象 | 初判 |
+| --- | --- | --- | --- |
+| 1 | `termai-invariants/inv-esc-intermediate-has-no-side-effect` | step 4：光标期望 (0,0) 实得 (4,4) | ESC 中间字节序列**产生了副作用**（不该动光标） |
+| 2 | `xterm-ctlseqs-spec/spec-decaln` | 期望整行 `E`，实得空 | **DECALN（`ESC # 8`）未实现** |
+| 3 | `xterm-ctlseqs-spec/spec-hpa-basic` | 光标期望 (4,2) 实得 (4,4) | **HPA（`CSI Ps G`）未实现/未生效** |
+| 4 | `xterm-ctlseqs-spec/spec-hpr-basic` | 光标期望 (4,6) 实得 (4,4) | **HPR（`CSI Ps a`）未实现/未生效** |
+| 5 | `xterm-ctlseqs-spec/spec-rep` | 期望 `aaaa` 实得 `a` | **REP（`CSI Ps b`）未实现** |
+
+> 读法：前三/后两条都属**功能缺失**（未识别序列被忽略），第 1 条若是真缺陷则是**正确性**问题（副作用）。两者都必须先定位再决定：是补实现，还是登记差异。按 HARNESS §8.1-1，xterm 差异必须**登记在案**且受 OQ-VT-04 上限约束（全局 ≤25 项、单 minor 新增 ≤10）——**当前 5 项已用掉 5 个名额**。
+> 证据产物：`target/conformance/conformance-report.json`，sha256 `94426e91…84fa73`（`target/` 已忽略，不入库）。
+
+**修复结果（总负责人当轮闭环 —— 修掉，不是登记豁免）**：5 条全部修复。`crates/termai-vt` 三处改动：
+
+1. **`esc_dispatch` 以前忽略 `intermediates`、只按 final byte 派发**，于是 `ESC # 8`（DECALN）被执行成 `ESC 8`（DECRC）——这是**正确性缺陷**，按 K-04 属不可登记（S1 类），必须修。现在 intermediates 参与派发，并实现 DECALN（填 `E`、复位边距、光标归位、清 combining）。
+2. 补 **HPA**（`` CSI Ps ` ``）、**HPR**（`CSI Ps a`）、**REP**（`CSI Ps b`）。REP 需要「前一个图形字符」，故新增 `last_graphic` 状态，并以屏幕尺寸为上界（防超大参数）。
+3. 同步 `csi_known`：HPA/HPR/REP 不再计 `csi_unknown`；`esc_known` 纳入 `ESC # 8`。
+4. 同时修正**语料自身的一处错误前提**：`inv-esc-intermediate-has-no-side-effect` 原先用 `ESC # 8` 表达「未识别序列零副作用」，但 `#8` 是**已定义**的 DECALN；已改为未定义的 `ESC # 9`，保留该不变量的原意（其 `index.jsonl` 的 `documented` 字段本就写着「kernel/01 §3.2 的存在就是为了区分 `ESC # 8` 与 `ESC 8`」）。
+
+**复测**：`npm run conformance` → L0 gating **64/64，R_strict = R_gate = 1.0**，失败 0，报告 sha256 `e4296839…`；`--determinism-check` → **byte-identical**；`cargo test -p termai-vt` 全绿；`kernel-gates` **8 PASS / 0 FAIL**。
+
+> **这仍然不是 G1 通过**：① 用例 275 / AR-31 的 ≥2000；② 真实语料 0% / ≥20%；③ 运行在**非参考机**（`NON_GATING`）。此外 esctest2 全量仍有 325 failed（大量是 `CSI … t` 窗口尺寸查询、颜色族、DECRQM/DECRQSS 未实现——**真实缺口**，不得算作 G1 通过）。
 ### Wave 2（W1 收口后开，目标是「让 P0 可看见」）
 
 1. **WS-03 起桩**：`crates/termai-render` + `crates/termai-gpu`（新 crate 走 ADR-0019 追认 + K4 依赖白名单 + CODEOWNERS），先做 damage→shaping→atlas→present 的最小闭环与 T0 后端探测。
