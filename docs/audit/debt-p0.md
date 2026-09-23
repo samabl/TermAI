@@ -649,7 +649,7 @@ CUP(2,3); DECSC; DECSET(47); print is_alt; CUP(6,7); DECSC; DECRESET(47); print 
 | C1 | **TSC 未成立**（OQ-19） | 发起人 | §5/§8 的任何放宽目前**没有合法批准人** |
 | C2 | **CODEOWNERS 双签无法执行**：仓库只有一个所有者；且 GitHub 对未解析的 `@termai/*` **静默忽略** → 规则可能退化为空操作 | 发起人 | E4 目前**不可强制** |
 | C3 | **分支保护未启用** | 发起人 | required checks 无强制力 |
-| C4 | **`ci-cost.json` 与 $3,000/月上限未实现**；新增 macOS runner 抬高成本 | T5 | ADR-0014 决策 6；落地前不得声称「CI 成本受控」 |
+| C4 | **`ci-cost.json` 与 $3,000/月上限未实现**；新增 macOS runner 抬高成本 | T5 | ADR-0014 决策 6；落地前不得声称「CI 成本受控」  **第 104 轮已把实现依据定位到行**：schema 见 docs/spec/06-performance-methodology.md:277（每条流水线输出 ci-cost.json，字段 pipeline / minutes / runner_class / est_usd）；验收见同文件 A-PM-12（文件齐全、月度不超过 3000 美元、自托管不超过 1800、80% 告警、100% 降采样）；口径与单价见 docs/spec/07-engineering-quality-and-release.md:172（月成本约为各流水线单次分钟数乘月运行次数乘该类单价之和，再加签名与出口费用；云托管 Linux 2 核 0.008 美元每分钟、Windows 0.016、macOS 0.08；自托管 0.04 至 0.08 美元每核时）；上限拆分见 ADR-0014 第 235 行（云托管至多 1200、自托管至多 1800、合计 3000）。**因此实现等于按这四项填空加一个读数检查，无需再做设计。** |
 | C5 | **macOS arm64 从未真正编译/运行**；**Linux runner 的 K3 与 Node 门禁从未运行** | T5 | 两个新作业已标 UNVERIFIED |
 | C6 | **季度依赖图 / 半年度技术栈体检** | T5 | spec 07 §3.9；本文件只覆盖 P0 阶段 |
 
