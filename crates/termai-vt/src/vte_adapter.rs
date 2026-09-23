@@ -566,7 +566,8 @@ fn parse_u32(bytes: &[u8]) -> Option<u32> {
 }
 
 fn osc_known(num: u32) -> bool {
-    matches!(num, 0 | 2 | 7 | 8 | 9 | 52 | 133 | 633 | 777)
+    // 0 = icon + window title, 1 = icon title, 2 = window title.
+    matches!(num, 0 | 1 | 2 | 7 | 8 | 9 | 52 | 133 | 633 | 777)
 }
 
 fn csi_known(intermediates: &[u8], action: char) -> bool {
@@ -618,6 +619,8 @@ fn csi_known(intermediates: &[u8], action: char) -> bool {
     match action {
         'h' | 'l' => intermediates == [b'?'],
         'p' => intermediates == [b'$'] || intermediates == [b'?', b'$'],
+        // XTERM_SAVE / XTERM_RESTORE (`CSI ? Pm s` / `CSI ? Pm r`).
+        's' | 'r' => intermediates == [b'?'],
         'u' => intermediates == [b'>'] || intermediates == [b'='] || intermediates == [b'<'],
         _ => false,
     }

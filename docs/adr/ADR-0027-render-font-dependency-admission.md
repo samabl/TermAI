@@ -1,8 +1,8 @@
-# ADR-0027｜渲染/字体的第三方依赖准入（**Proposed**：SPDX 证据待补）
+# ADR-0027｜渲染/字体的第三方依赖准入（**Proposed**：许可证已采证，**cargo-deny 公告检查失败**）
 
 | 项 | 内容 |
 | --- | --- |
-| **状态** | **Proposed**（按 ADR README §3：**不可实施**） |
+| **状态** | **Proposed**（按 ADR README §3：**不可实施**）——**第 262 轮：许可证与来源检查通过，但 `advisories` 失败**（`rustybuzz` RUSTSEC-2026-0206、`ttf-parser` RUSTSEC-2026-0192，均 unmaintained 且无安全升级）；处置见 **ADR-0031** |
 | **日期** | P0 Wave 2 |
 | **决策者** | 总负责人（Orchestrator） |
 | **关联 AR** | AR-01、AR-03、AR-14、AR-21、AR-24 |
@@ -14,7 +14,7 @@
 
 E-P0-2 与 E-P0-3 都依赖渲染管线，而 **DC-17 指定的 wgpu / rustybuzz / swash 与窗口所需的 winit 都尚未准入**（ADR-0024 D3 明确「本次零准入」）。按 ADR-0015：进入链接边界的第三方单元必须逐项给出 **SPDX + A/R/D 判定**，**未知即拒绝**（P3）。
 
-**当前环境无法取得这些 crate 的权威许可证元数据**（网络被限制到非公网地址；本机 cargo registry 无这些 crate 的缓存）。因此本 ADR **只能把准入做成一张待填的表 + 一条可执行程序**，而不是替谁拍板许可证——那正是 AR-21 与 ADR-0015 要防的供应链缺口。
+~~**当前环境无法取得这些 crate 的权威许可证元数据**（网络被限制到非公网地址；本机 cargo registry 无这些 crate 的缓存）。~~ → **第 262 轮更正：crates.io 与 github.com 已可达**，SPDX 证据已采集（[ADR-0027-spdx-evidence.md](ADR-0027-spdx-evidence.md)）：269 个第三方包、**R=D=0、GPL/AGPL/SSPL 命中 0**、弱 copyleft 仅 `r-efi`。**因此本 ADR 的阻塞点已从「拿不到证据」变成「证据显示公告不合格」**——这恰恰是 AR-21 与 ADR-0015 要防的供应链缺口，且它在**依赖进入 workspace 之前**暴露。
 
 ## 2. 可选方案
 
@@ -29,16 +29,17 @@ E-P0-2 与 E-P0-3 都依赖渲染管线，而 **DC-17 指定的 wgpu / rustybuzz
 
 ### D1｜候选清单与链接边界判定档位（SPDX 待填）
 
-| crate | 用途 | 边界判定（ADR-0015） | SPDX |
+| crate | 用途 | 边界判定（ADR-0015） | SPDX（版本；2026-09-23 采证） |
 | --- | --- | --- | --- |
-| `wgpu` | GPU 网格与外壳绘制（DC-17） | LB-01 / LB-05（运行时 + 静态链接）→ **待判定** | **待 cargo-deny 输出** |
-| `winit` | 原生窗口与事件循环（仅 apps/termai-desktop） | LB-01 / LB-05 → **待判定** | **待填** |
-| `rustybuzz` | 唯一 OpenType shaping 引擎（kernel/03 K-05） | LB-01 / LB-05 → **待判定** | **待填** |
-| `swash` | 唯一栅格化/彩色字形引擎（kernel/03 K-05） | LB-01 / LB-05 → **待判定** | **待填** |
-| `fontdb` | 字体发现/回退链 | LB-01 → **待判定** | **待填** |
-| 传递依赖（如 `naga`） | 由 `cargo tree -e normal` 枚举 | 逐项按 LB-01/LB-05 | **待填** |
+| `wgpu` | GPU 网格与外壳绘制（DC-17） | LB-01 / LB-05（运行时 + 静态链接） | **MIT OR Apache-2.0**（30.0.1）→ **A** |
+| `winit` | 原生窗口与事件循环（仅 apps/termai-desktop） | LB-01 / LB-05 | **Apache-2.0**（0.30.13）→ **A** |
+| `rustybuzz` | 唯一 OpenType shaping 引擎（kernel/03 K-05） | LB-01 / LB-05 | **MIT**（0.20.1）→ **A** |
+| `swash` | 唯一栅格化/彩色字形引擎（kernel/03 K-05） | LB-01 / LB-05 | **Apache-2.0 OR MIT**（0.2.10）→ **A** |
+| `fontdb` | 字体发现/回退链 | LB-01 | **MIT**（0.24.0）→ **A** |
+| 传递依赖（`naga` 等 269 个第三方包） | 由 `cargo metadata` / `cargo tree -e normal` 枚举 | 逐项按 LB-01/LB-05/LB-03 | **见 [ADR-0027-spdx-evidence.md](ADR-0027-spdx-evidence.md)**：运行时闭包 236 + 构建期 33；**R=0、D=0**；黑名单（GPL/AGPL/SSPL）命中 **0**；弱 copyleft 仅 `r-efi`（`MIT OR Apache-2.0 OR LGPL-2.1-or-later`，按 LB-05 择 MIT/Apache 分支） |
 
 > **P3 规则**：任一候选若出现 `NOASSERTION` / `LicenseRef-*` / 无许可证文本 / 来源不明 → **拒绝**，并在本表登记拒绝理由，不得替换为「另一个同名 crate」。
+> **第 262 轮的 P3 判定（如实记录）**：采证中 **0 个** `NOASSERTION`/`LicenseRef-*`/无许可证文本。有 **16 个**包把 SPDX 写成 `MIT/Apache-2.0`（crates.io 历史写法，SPDX 未定义 `/`）——**它们不是「许可未知」而是「已知许可用了非标准分隔符」**：证据表同时给出 `strict tier = U` 与 `normalized tier = A` 两列，**归一化这一步不被隐藏**。按此判定它们**不构成 P3 拒绝项**；若 owner 认为 P3 必须按字面拒绝非标准书写，则应把 `/` 形式的包逐项转 `OR` 后重新采证。
 
 ### D2｜依赖位置与方向（立项义务，AGENTS §3）
 
@@ -49,7 +50,7 @@ E-P0-2 与 E-P0-3 都依赖渲染管线，而 **DC-17 指定的 wgpu / rustybuzz
 
 ### D3｜验收程序（把 Proposed 升为 Accepted 的唯一路径）
 
-1. 在可联网环境执行 `cargo deny check licenses advisories bans sources`，把输出与 `deny.toml` 作为证据；
+1. 在可联网环境执行 `cargo deny check licenses advisories bans sources`，把输出与 `deny.toml` 作为证据；**✅ 第 262 轮已执行**（cargo-deny 0.20.2，配置 = 仓库根 `deny.toml`）：`licenses ok / bans ok / sources ok`，**`advisories FAILED`**（两条 unmaintained）。完整输出见 [ADR-0027-spdx-evidence.md](ADR-0027-spdx-evidence.md) 的 cargo-deny 段。
 2. 用 `cargo tree -e normal --no-dev` 枚举**发布闭包内**的全部第三方单元，逐项填 SPDX 与 A/R/D；
 3. 任何一项为 R/D → 该候选**不得准入**，回到方案选型；
 4. 表填满后把本 ADR 状态改为 **Accepted**，并在 24h 内同步 `kernel/03` / spec 07 与 K4 允许边（HARNESS §12）；

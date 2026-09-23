@@ -36,6 +36,8 @@ pub const MODE_APP_CURSOR: u64 = 1 << 5;
 pub const MODE_INSERT: u64 = 1 << 6;
 /// ESC = / ESC >: application keypad.
 pub const MODE_APP_KEYPAD: u64 = 1 << 7;
+/// ANSI mode 20: linefeed/newline mode (LNM). When set, LF, VT and FF also do a CR.
+pub const MODE_LINEFEED: u64 = 1 << 8;
 
 const FLAG_NAMES: [(u16, &str); 10] = [
     (ATTR_BOLD, "bold"),
@@ -189,6 +191,9 @@ pub struct Grid {
     /// to `set_alt` (mode 1049's cursor across the switch).
     alt_decsc: SavedCursor,
     modes: u64,
+    /// One saved on/off slot per DEC private mode, as `CSI ? Pm s` / `CSI ? Pm r` (xterm's
+    /// `save_modes`). Sparse: a mode is present only after it has been saved at least once.
+    saved_private_modes: BTreeMap<u16, bool>,
     wrap_pending: bool,
     /// Last graphic character printed, which REP (CSI Ps b) repeats.
     last_graphic: char,
@@ -197,6 +202,9 @@ pub struct Grid {
     tab_stops: Vec<bool>,
     charset_g1: bool,
     title: String,
+    /// Icon (tab) title. xterm keeps this separate from the window title because OSC 1
+    /// and OSC 2 address them independently; OSC 0 sets both.
+    icon_title: String,
     cwd: Option<String>,
     cwd_remote: bool,
     links: Vec<LinkSpan>,
@@ -246,6 +254,7 @@ impl Grid {
             alt_saved: SavedCursor::default(),
             alt_decsc: SavedCursor::default(),
             modes: MODE_AUTOWRAP | MODE_CURSOR_VISIBLE,
+            saved_private_modes: BTreeMap::new(),
             wrap_pending: false,
             last_graphic: ' ',
             scroll_top: 0,
@@ -253,6 +262,7 @@ impl Grid {
             tab_stops: default_tab_stops(cols),
             charset_g1: false,
             title: String::new(),
+            icon_title: String::new(),
             cwd: None,
             cwd_remote: false,
             links: Vec::new(),
@@ -365,6 +375,12 @@ impl Grid {
     #[must_use]
     pub fn title(&self) -> &str {
         &self.title
+    }
+
+    /// Set the icon (tab) title (already stripped by the caller). Kept in-crate: the
+    /// snapshot DTO carries only the window title, and no external caller needs it.
+    pub(crate) fn set_icon_title(&mut self, title: &str) {
+        self.icon_title = title.to_string();
     }
 
     /// Set the working directory reported by OSC 7 / OSC 633.
@@ -534,6 +550,11 @@ impl Grid {
                 self.responses
                     .push(format!("\x1b[9;{rows};{cols}t").into_bytes());
             }
+            // 20 t / 21 t: report the icon label / window title as OSC L / OSC l. Both are
+            // pure state reports, like the character-cell reports above; xterm answers them
+            // from the title it already holds.
+            20 => self.responses.push(osc_report(b'L', &self.icon_title)),
+            21 => self.responses.push(osc_report(b'l', &self.title)),
             _ => {}
         }
     }
@@ -593,6 +614,10 @@ impl Grid {
 
     fn autowrap(&self) -> bool {
         self.modes & MODE_AUTOWRAP != 0
+    }
+
+    fn linefeed_newline(&self) -> bool {
+        self.modes & MODE_LINEFEED != 0
     }
 
     fn insert_mode(&self) -> bool {
@@ -996,7 +1021,14 @@ impl Grid {
                 self.tab();
             }
             0x0A..=0x0C => {
+                // LF/VT/FF. With LNM set (SM 20) the line feed also returns to
+                // column 1; without it the column is left where it was.
                 self.line_feed_explicit();
+                if self.linefeed_newline() {
+                    self.cursor_col = 0;
+                    self.wrap_pending = false;
+                    self.mark_cursor();
+                }
             }
             0x0D => {
                 self.cursor_col = 0;
@@ -1574,6 +1606,43 @@ impl Grid {
         self.wrap_pending = false;
         self.mark_cursor();
     }
+    /// `CSI ? Pm s` (xterm XTERM_SAVE): remember the current on/off state of each listed
+    /// DEC private mode. xterm keeps one saved slot per mode, so a later `CSI ? Pm r`
+    /// restores only the modes it names.
+    fn save_private_modes(&mut self, params: &Params) {
+        for i in 0..params.len() {
+            let mode = params.get(i);
+            if let Some(on) = self.savable_private_mode(mode) {
+                self.saved_private_modes.insert(mode, on);
+            }
+        }
+    }
+
+    /// `CSI ? Pm r` (xterm XTERM_RESTORE): restore the modes named, using the value saved
+    /// for each. A mode that was never saved is left alone.
+    fn restore_private_modes(&mut self, params: &Params) {
+        for i in 0..params.len() {
+            let mode = params.get(i);
+            if let Some(on) = self.saved_private_modes.get(&mode).copied() {
+                self.set_private_mode(mode, on);
+            }
+        }
+    }
+
+    /// The DEC private modes whose state `CSI ? Pm s` / `CSI ? Pm r` save and restore.
+    /// Restricted to plain on/off modes: the alternate-screen modes (47/1047/1049) are
+    /// excluded because restoring them would swap the visible buffer, which xterm does
+    /// but which nothing here needs yet.
+    fn savable_private_mode(&self, mode: u16) -> Option<bool> {
+        match mode {
+            1 => Some(self.modes & MODE_APP_CURSOR != 0),
+            6 => Some(self.modes & MODE_ORIGIN != 0),
+            7 => Some(self.modes & MODE_AUTOWRAP != 0),
+            25 => Some(self.cursor_visible),
+            _ => None,
+        }
+    }
+
     fn set_modes(&mut self, params: &Params, private: bool, enable: bool) {
         let mut i = 0;
         while i < params.len() {
@@ -1596,6 +1665,14 @@ impl Grid {
                 self.cup(0, 0);
             }
             7 => self.set_bit(MODE_AUTOWRAP, enable),
+            // 1048: save (h) / restore (l) the cursor, like DECSC/DECRC.
+            1048 => {
+                if enable {
+                    self.save_cursor();
+                } else {
+                    self.restore_cursor();
+                }
+            }
             25 => {
                 self.cursor_visible = enable;
                 self.set_bit(MODE_CURSOR_VISIBLE, enable);
@@ -1642,13 +1719,16 @@ impl Grid {
         }
         match mode {
             4 => pm(self.modes & MODE_INSERT != 0),
+            20 => pm(self.modes & MODE_LINEFEED != 0),
             _ => 0,
         }
     }
 
     fn set_standard_mode(&mut self, mode: u16, enable: bool) {
-        if mode == 4 {
-            self.set_bit(MODE_INSERT, enable);
+        match mode {
+            4 => self.set_bit(MODE_INSERT, enable),
+            20 => self.set_bit(MODE_LINEFEED, enable),
+            _ => {}
         }
     }
 
@@ -1881,7 +1961,11 @@ impl Grid {
             b'm' if intermediates.is_empty() => self.sgr(params),
             b'n' => self.device_status(params, private, ignore),
             b'r' if intermediates.is_empty() => self.set_scroll_region(params),
+            // XTERM_SAVE / XTERM_RESTORE: `CSI ? Pm s` / `CSI ? Pm r`, the DEC private-mode
+            // counterparts of save/restore cursor (xterm's savemodes/restoremodes).
+            b'r' if intermediates == [b'?'] => self.restore_private_modes(params),
             b's' if intermediates.is_empty() => self.save_cursor(),
+            b's' if intermediates == [b'?'] => self.save_private_modes(params),
             b'u' if intermediates.is_empty() => self.restore_cursor(),
             b't' if intermediates.is_empty() => self.window_op(params),
             _ => {}
@@ -2009,6 +2093,14 @@ fn def(value: u16) -> u16 {
     } else {
         value
     }
+}
+
+/// `ESC ] Ps Pt ESC \\`: the OSC form xterm uses to report a title (Ps = L icon, l window).
+fn osc_report(code: u8, text: &str) -> Vec<u8> {
+    let mut out = vec![0x1b, b']', code];
+    out.extend_from_slice(text.as_bytes());
+    out.extend_from_slice(b"\x1b\\");
+    out
 }
 
 fn default_tab_stops(cols: u16) -> Vec<bool> {
