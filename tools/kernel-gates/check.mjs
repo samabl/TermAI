@@ -71,6 +71,10 @@ const ALLOWED_LIB_EDGES = {
 // matched by the name denylist.
 const GPL_DENY_TOKENS = ['agpl', 'gpl', 'sspl'];
 
+// The crates AR-03 binds: kernel only. See the comment in gateK4 for why termai-render is not here.
+const KERNEL_CRATES = ['termai-tokens', 'termai-core', 'termai-ipc', 'termai-vt', 'termai-pty', 'termai-session'];
+const NETWORK_AI_UI_TOKENS = ['reqwest', 'hyper', 'tokio', 'ureq', 'curl', 'isahc', 'openai', 'anthropic', 'winit', 'wgpu', 'tao', 'egui', 'gtk', 'webkit', 'webview', 'fontdb', 'rustybuzz', 'swash'];
+
 // ADR-0019 D2: dependencies that are explicitly refused even though they are not GPL.
 const REFUSED_DEP_NAMES = ['portable-pty'];
 
@@ -246,6 +250,22 @@ function gateK4(ctx) {
   libs.forEach(function (m) { libNames[m.name] = true; });
   const appNames = {};
   apps.forEach(function (m) { appNames[m.name] = true; });
+
+  // AR-03 / AGENTS section 2 item 1: the kernel must not depend on AI, network or UI libraries. The
+  // crate list is explicit rather than inferred, and termai-render is deliberately absent from it - it
+  // is the UI-side pipeline, and admitting wgpu, winit, rustybuzz or swash there is a separate decision
+  // under ADR-0024 and ADR-0027, not a violation of this rule.
+  for (const m of manifests) {
+    if (KERNEL_CRATES.indexOf(m.name) < 0) continue;
+    for (const d of m.deps) {
+      const dn = d.name.toLowerCase();
+      for (const t of NETWORK_AI_UI_TOKENS) {
+        if (dn.indexOf(t) >= 0) {
+          failures.push(m.rel + ': kernel dependency "' + d.name + '" is a network/AI/UI library (AR-03)');
+        }
+      }
+    }
+  }
 
   const failures = [];
   const edges = [];
