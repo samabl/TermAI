@@ -7,6 +7,15 @@
 // It reports mismatches and exits non-zero when the stated count differs from the counted one, because here,
 //
 // Measured control (round 233), on the real documents rather than a fixture: with section 6.3 holding
+//
+// Scope, and one thing tried and reverted (round 234). Range claims look like the same class - HARNESS states
+// ADR-0001 to ADR-NNNN and an SD range, and both drifted this session - so an extension was written to check
+// them. It reported three mismatches and all three were false: A14's own row quotes the stale ADR range in
+// order to record it, and the delivery plan's line describes what W1-B registered at the time. A mechanical
+// pattern cannot tell an assertion from a quotation, which is the difference between a stale claim and a
+// record of one, so the extension was reverted rather than shipped crying wolf.
+//
+// The scope is therefore stated counts, where the pattern has no such ambiguity, and not ranges.
 // eighteen rules and the register's entry stating seventeen, it prints
 //   MISMATCH docs/audit/debt-p0.md: states 十七 (17), section 6.3 has 18
 // and exits 1. Restoring the entry returns it to 'every stated count agrees' and exit 0. That is the exact
