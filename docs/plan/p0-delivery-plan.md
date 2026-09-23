@@ -131,8 +131,10 @@ P0 只启用三条现有团队线，其余（T3 Agent / T4 生态）在 P2/P3 �
 | --- | --- | --- | --- |
 | W1-A | **完成**（T5） | `.github/workflows/ci.yml` 新增 `linux-x64` + `macos-arm64` 作业（jobs 共 8 个，经 YAML 解析）；`crates/termai-pty` 清 Linux clippy 3 处并用 `ptr::addr_of_mut!` 修掉一个真实 macOS 编译错误（E0308）。实跑：`cargo fmt --check` OK；`clippy --workspace -D warnings` OK；**`clippy --target x86_64-unknown-linux-gnu -D warnings` EXIT 0**（修复前 exit 101）；`clippy --target aarch64-apple-darwin` EXIT 0（check-only）；`kernel-gates` **8 PASS / 0 FAIL**；`--selftest` **18/18 捕获** | Linux runner 上的 K3 与 Node 门禁从未运行；Linux 的 B1–B10 未验证（B4 无 linux-x64 基线会显式 SKIP）；**macOS 从未真正编译/运行**，作业已标 `[first introduction, UNVERIFIED]` |
 | W1-B | 进行中（T1） | ctlseqs 生成器：**208 条唯一 ctlseqs 条目全部解析成功 → 208 个覆盖用例**；harness 可编译并验证三车道（L0 2/3→fail、L1 3/3→not_applicable、L2 2/3→registered） | 未接入上游 vttest/esctest；用例数距 AR-31 第 1 条的 ≥2000 仍很远；**不得声称 G1 通过** |
-| W1-C | 进行中（T1） | `tools/bench/` 目录已建立 | 未收口；本机无 RM-A/RM-C，任何数值只能 NON-GATING |
+| W1-C | **完成**（T1） | `tools/bench/` 5 文件（schema 引擎 + H1…H19 登记 + 合成夹具 + 门禁 B1–B8 + README）；`package.json` 增加 `bench:check` / `bench:selftest`。实跑：**`bench:check` 7 PASS / 0 FAIL**（§5 19 行逐字一致；bench-report 51 + fingerprint 48 个字段名与 kernel/06 §3.4/§3.7 完全相等；H1…H19 无缺号无重复；阈值每次从 §3.1/§3.6/AR-31 §9 重新推导；指纹单字段变更即哈希变化）；**`bench:selftest` 54/54 捕获**。**本机产出可引用门禁数字 = 0** | 无 RM-A/RM-C → 全部数值 INCONCLUSIVE / NON-GATING；H1–H19 的**实测**、`cargo xtask bench`、两次 G4 全集真跑（A-PM-01）仍未实现 |
 | W1-D | **完成**（总负责人） | ADR-0023 生效；HARNESS **CR-14 / CR-15** 登记；`kernel/07` §3.2（0x05xx）、`kernel/01` §8（上限冻结）、`kernel/03` §8（OQ-RND-07 关闭）、`docs/spec/03` §3.3（命名口径）同步。**D1 落码**：`termai-ipc` 0x0500–0x0503 + `sessiond` 线上用例（`cargo test -p sessiond --test wire` **8/8**；`-p termai-ipc` **34/34**）。**D2 落码**：`termai-vt` 三个上限常量 + 按类型分派（`cargo test -p termai-vt` 全绿，含新增 SOS 上限行为用例） | D3（clusters 侧表）未落码；D1 的 attach 状态机（tail replay / detach notice）仍待 WS-05 |
+
+**W1-B / W1-C 上报的规格歧义已按 M0 先例登记**为 [`docs/plan/p0-spec-defects.md`](p0-spec-defects.md)（**SD-09…SD-12**，不新增 HARNESS §11 的 OQ 编号，因为这些是分册 schema/枚举的表述缺口而非未决设计问题）：**SD-09** spec 07 §3.8.2 的扁平对象与 kernel/06 §3.7 的结构化字段同名冲突 → 以 kernel/06 为权威、扁平形态入加法字段，并登记 **HARNESS CR-16**；**SD-10** kernel/06 §4 的 `FailKind` 缺「绝对门禁越界」成员 → 以 `GATE_BREACH` 扩展项实现；**SD-11** kernel/06 §3.2 缺 H3（PTY-LAT-1）的 Run 定义 → 先标为**读数**，待 owner 确认；**SD-12** 三个机器分类原因码属从 ADR-0014/AR-31 推导的扩展。
 
 **总负责人对 W1-A 上报事项的裁决**：
 
