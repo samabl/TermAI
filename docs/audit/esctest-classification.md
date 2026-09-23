@@ -4,16 +4,16 @@
 > Implementation set read from crates/termai-vt/src/grid.rs (set_private_mode / set_standard_mode):
 > private 1/6/7/25/47/1047/1049/2004, standard 4.
 
-- tests classified: 287
-- uses-unimplemented-mode: 80
-- no-extension-mode (core-defect candidates): 207 (of which 198 make no DECSET/DECRESET/DECRQM call at all)
+- tests classified: 273
+- uses-unimplemented-mode: 78
+- no-extension-mode (core-defect candidates): 195 (of which 186 make no DECSET/DECRESET/DECRQM call at all)
 - unresolved: 0
 
 ## Top unimplemented modes among failing tests
 
 | mode | failing tests citing it |
 | --- | --- |
-| 69 | 71 |
+| 69 | 69 |
 | 40 | 5 |
 | 45 | 4 |
 | 3 | 4 |
@@ -32,7 +32,6 @@
 | CBTTests.test_CBT_OneTabStopByDefault | - |
 | CHTTests.test_CHT_ExplicitParameter | - |
 | CHTTests.test_CHT_OneTabStopByDefault | - |
-| CUUTests.test_CUU_StopsAtTopLineWhenBegunAboveScrollRegion | - |
 | ChangeColorTests.test_ChangeColor_CIELab | - |
 | ChangeColorTests.test_ChangeColor_CIELuv | - |
 | ChangeColorTests.test_ChangeColor_CIEXYZ | - |
@@ -77,7 +76,6 @@
 | DA2Tests.test_DA2_NoParameter | - |
 | DATests.test_DA_0 | - |
 | DATests.test_DA_NoParameter | - |
-| DCHTests.test_DCH_WorksOutsideTopBottomMargin | - |
 | DECBITests.test_DECBI_Basic | - |
 | DECBITests.test_DECBI_WholeScreenScrolls | - |
 | DECCRATests.test_DECCRA_defaultValuesInDest | - |
@@ -181,20 +179,10 @@
 | DECSETTiteInhibitTests.test_SaveRestoreCursor_ResetsOriginMode | - |
 | DECSETTiteInhibitTests.test_SaveRestoreCursor_WorksInLRM | - |
 | DECSTRTests.test_DECSTR_CursorStaysPut | - |
-| DECSTRTests.test_DECSTR_DECSC | - |
 | ECHTests.test_ECH_respectsISOProtection | - |
 | EDTests.test_ED_respectsISOProtection | - |
 | ELTests.test_EL_respectsISOProtection | - |
 | HTSTests.test_HTS_Basic | - |
-| INDTests.test_IND_ScrollsInTopBottomRegionStartingAbove | - |
-| INDTests.test_IND_ScrollsInTopBottomRegionStartingWithin | - |
-| INDTests.test_IND_StopsAtBottomLineWhenBegunBelowScrollRegion | - |
-| LFTests.test_LF_ScrollsInTopBottomRegionStartingAbove | - |
-| LFTests.test_LF_ScrollsInTopBottomRegionStartingWithin | - |
-| LFTests.test_LF_StopsAtBottomLineWhenBegunBelowScrollRegion | - |
-| NELTests.test_NEL_ScrollsInTopBottomRegionStartingAbove | - |
-| NELTests.test_NEL_ScrollsInTopBottomRegionStartingWithin | - |
-| NELTests.test_NEL_StopsAtBottomLineWhenBegunBelowScrollRegion | - |
 | RISTests.test_RIS_ResetTitleMode | - |
 | ResetColorTests.test_ResetColor_All | - |
 | ResetColorTests.test_ResetColor_Standard | - |

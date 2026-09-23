@@ -4,9 +4,9 @@
 > the lead builds the index so a later workstream only does a pure transformation
 > (read the function body at the given file:line and extract the DECSET/DECRESET/DECRQM modes).
 
-- log: target/conformance/decstr2/esctest.log
-- failing test names: 287 (deduplicated)
-- located in tests/*.py: 287 / 287
+- log: target/conformance/softreset/esctest.log
+- failing test names: 273 (deduplicated)
+- located in tests/*.py: 273 / 273
 
 | test | file:line |
 | --- | --- |
@@ -36,7 +36,6 @@
 | CUBTests.test_CUB_StopsAtLeftMarginInScrollRegion | cub.py:63 |
 | CUFTests.test_CUF_StopsAtRightMarginInScrollRegion | cuf.py:53 |
 | CUPTests.test_CUP_RespectsOriginMode | cup.py:78 |
-| CUUTests.test_CUU_StopsAtTopLineWhenBegunAboveScrollRegion | cuu.py:31 |
 | ChangeColorTests.test_ChangeColor_CIELab | change_color.py:93 |
 | ChangeColorTests.test_ChangeColor_CIELuv | change_color.py:99 |
 | ChangeColorTests.test_ChangeColor_CIEXYZ | change_color.py:75 |
@@ -84,7 +83,6 @@
 | DCHTests.test_DCH_DeleteAllWithMargins | dch.py:42 |
 | DCHTests.test_DCH_DoesNothingOutsideLeftRightMargin | dch.py:55 |
 | DCHTests.test_DCH_RespectsMargins | dch.py:29 |
-| DCHTests.test_DCH_WorksOutsideTopBottomMargin | dch.py:68 |
 | DECBITests.test_DECBI_Basic | decbi.py:18 |
 | DECBITests.test_DECBI_LeftOfMargin | decbi.py:62 |
 | DECBITests.test_DECBI_Scrolls | decbi.py:33 |
@@ -216,8 +214,6 @@
 | DECSETTiteInhibitTests.test_SaveRestoreCursor_ResetsOriginMode | decset_tite_inhibit.py:26 |
 | DECSETTiteInhibitTests.test_SaveRestoreCursor_WorksInLRM | decrc.py:14 |
 | DECSTRTests.test_DECSTR_CursorStaysPut | decstr.py:214 |
-| DECSTRTests.test_DECSTR_DECOM | decstr.py:67 |
-| DECSTRTests.test_DECSTR_DECSC | decstr.py:37 |
 | DLTests.test_DL_ClearOutLeftRightAndTopBottomScrollRegion | dl.py:198 |
 | DLTests.test_DL_InLeftRightAndTopBottomScrollRegion | dl.py:178 |
 | DLTests.test_DL_InLeftRightScrollRegion | dl.py:142 |
@@ -231,21 +227,11 @@
 | HVPTests.test_HVP_RespectsOriginMode | hvp.py:78 |
 | ICHTests.test_ICH_IsNoOpWhenCursorBeginsOutsideScrollRegion | ich.py:43 |
 | ICHTests.test_ICH_ScrollOffRightMarginInScrollRegion | ich.py:100 |
-| ILTests.test_IL_AboveScrollRegion | il.py:124 |
 | ILTests.test_IL_RespectsScrollRegion | il.py:90 |
 | ILTests.test_IL_RespectsScrollRegion_Over | il.py:108 |
 | INDTests.test_IND_MovesDoesNotScrollOutsideLeftRight | ind.py:80 |
-| INDTests.test_IND_ScrollsInTopBottomRegionStartingAbove | ind.py:51 |
-| INDTests.test_IND_ScrollsInTopBottomRegionStartingWithin | ind.py:66 |
-| INDTests.test_IND_StopsAtBottomLineWhenBegunBelowScrollRegion | ind.py:117 |
 | LFTests.test_LF_MovesDoesNotScrollOutsideLeftRight | lf.py:80 |
-| LFTests.test_LF_ScrollsInTopBottomRegionStartingAbove | lf.py:51 |
-| LFTests.test_LF_ScrollsInTopBottomRegionStartingWithin | lf.py:66 |
-| LFTests.test_LF_StopsAtBottomLineWhenBegunBelowScrollRegion | lf.py:122 |
 | NELTests.test_NEL_MovesDoesNotScrollOutsideLeftRight | nel.py:80 |
-| NELTests.test_NEL_ScrollsInTopBottomRegionStartingAbove | nel.py:51 |
-| NELTests.test_NEL_ScrollsInTopBottomRegionStartingWithin | nel.py:66 |
-| NELTests.test_NEL_StopsAtBottomLineWhenBegunBelowScrollRegion | nel.py:122 |
 | REPTests.test_REP_RespectsLeftRightMargins | rep.py:33 |
 | RISTests.test_RIS_ResetDECCOLM | ris.py:83 |
 | RISTests.test_RIS_ResetTitleMode | ris.py:50 |
