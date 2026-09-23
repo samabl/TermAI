@@ -25,6 +25,18 @@
 **第 44 轮按同法复核 `DL` / `SD`**：两簇的**首个失败用例**分别是 `test_DL_ClearOutLeftRightAndTopBottomScrollRegion` 与 `test_SD_BigScrollLeftRightAndTopBottomScrollRegion`（`dl.py:215`、`sd.py:194`），名字里的 **LeftRight** 指向**左右边距**（`DECSLRM` / 使能模式 69）——**同样不在 §3.5 表内**，`set_private_mode` 无 69、`set_scroll_region` 只处理 `CSI r`。→ 这两个失败用例属 **(b) 子集外偏差候选**，**不是核心 DL/SD 错**。
 
 **但不得整簇搬走**：`DL`/`SD` 各有多条用例，我只举证了**首个失败用例**；其余用例（纯上下滚动区域）**仍可能暴露真实核心缺陷**，必须逐条读前言后再定性。**举证到哪一条，就只能豁免到哪一条**——这是 K-04 逐条登记的意义，也是我上一轮把整簇 BS 搬走时差点犯的错。
+**第 45 轮复核 `DECSET` 16 条（按用例名逐个归类，因为该簇是混合的）**：
+
+| 用例 | 归类 | 依据 |
+| --- | --- | --- |
+| `DECAWM_NoLineWrapOnTabWithLeftRightMargin`、`DECAWM_OffRespectsLeftRightMargin`、`DECAWM_OnRespectsLeftRightMargin`、`DECLRMM` | **(b) 子集外** | 左右边距（`DECSLRM` / 模式 69） |
+| `ReverseWraparoundLastCol_BS`、`ReverseWraparound_BS`、`ReverseWraparound_Multi` | **(b) 子集外** | `XTREVWRAP`（模式 45），与第 43 轮 `BS` 同因 |
+| `Allow80To132`、`DECCOLM` | **(b) 子集外** | 132 列切换 = **应用请求 resize**，与 `DECSLPP` 同属「动态 resize + reflow」设计问题 |
+| `ALTBUF`、`OPT_ALTBUF`、`OPT_ALTBUF_CURSOR` | **(a) 真缺陷候选** | 模式 1047 / 1049（切换时清屏 / 保存光标）——第 38 轮的回归测试只覆盖**模式 47**，1047/1049 未覆盖 |
+| `SaveRestoreCursor` | **(a) 真缺陷候选** | `DECSC`/`DECRC` 是核心语义（vttest 也覆盖） |
+| `DECOM`、`DECOM_DECRQCRA`、`MoreFix` | **(a) 待定** | `DECOM`（模式 6）我们已实现，需读前言确认是原点模式与边距/校验和的交互 |
+
+→ **结论**：`DECSET` 不能整簇定性——**约一半是子集外（边距 / 反向回绕 / 132 列），另一半是待查的真缺陷候选**。下一步优先查 **(a) 候选里的 `SaveRestoreCursor`**（核心、最小、vttest 也覆盖），其次 `ALTBUF` 1047/1049 家族。
 ### A4 附：簇级归因的方法教训（第 43 轮更正）
 
 **上一轮我把 `BS` 的 8 条失败列进「(a) 真缺陷（核心 VT，必须修）」，这是错的。** 读 `bs.py:173-189` 的**测试前言**可见：该组用例先 `DECSET(DECAWM)`，再 **`DECSET(XTREVWRAP)`**（xterm 扩展模式 **45**），然后期望 BS 能**反向跨行**回退；而 `set_private_mode` **没有 45 这一支**，光标被夹在第 1 列（实测 got `Point(1,5)`，expected `Point(5,3)`）。**失败由未实现的扩展模式引起，不是核心 BS 语义错** → `BS` 更正为 **(b) 子集外偏差候选**（依据：XTREVWRAP 不在 `kernel/01` §3.5 表内）。
