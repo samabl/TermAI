@@ -145,6 +145,7 @@ M0 实现期间本工作区**不是 git 仓库**，因此当时的交付**无法
 - 已加入 **`.gitattributes`**：全仓 `eol=lf`。这不是美化——本仓库有**两个按字节比对**的合并阻断门禁（DC-09 的 token codegen 漂移检查、以及设计门禁对原型内联 token 块的哈希）；Windows 上 `core.autocrlf` 的 CRLF 转换会让「没人改过的文件」把门禁判红。
 - 已补齐忽略规则：设计门禁的比对产物（`*.current.png`）与本地排障捕获文件（`*.out.txt`、`zz_probe*`）不入库；`prototype/reference/`（第三方 GPL 截图）与 `target/` 保持排除。
 - **CI tokens 作业的漂移步骤如今可实际执行**：`node tools/tokens/build.mjs` 后 `git diff --exit-code` 通过（此前无 VCS，该步骤无法验证）。
+- **CI 作用域收窄为 Windows-only（有意为之，需追认）**：全部作业改跑 `windows-latest`，并新增 `windows-build` 作业产出 release 二进制（`termai` 534 KB / `sessiond` 130 KB / `pty_echo` 138 KB）。选 Windows 的理由是主平台（DC-16 / ConPTY）且入库的视觉基线是 win32-x64，设计门禁在此最强。**但这与 ADR-0014 的 v1 门禁架构（Win x64 + Linux x64 + macOS arm64）不一致**，属临时范围收窄，P0 出口前必须补齐。恢复 Linux 的代价已核实并写进 `ci.yml` 头注释：`cargo check --workspace --all-targets --target x86_64-unknown-linux-gnu` **当前通过（exit 0）**，但 K2 `clippy -D warnings` 会在 Linux 上失败（cfg(unix) 分支与 Windows-only 测试辅助代码有 warning），需先清理；macOS arm64 从未编译过。
 - **运行期会话日志隔离**：CLI 默认把 Session Log 写到 `.termai/logs/`，其中含**原始 PTY 输出**；该目录此前未被忽略，一旦在仓库内运行就会把终端内容变成待提交文件。已加入 `.gitignore`（AR-11 / §6.3：命令输出属 L2 敏感数据，默认不出设备，更不得入库）。
 - **许可文件补齐**：AR-21 与 ADR-0013 §27 要求仓库根提供 `LICENSE-APACHE` 与 `LICENSE-MIT`（全栈 **Apache-2.0 OR MIT**），M0 期间缺失，现已补入（Apache-2.0 含 APPENDIX 的完整文本 + 标准 MIT 文本及本项目版权行）。
 - **CODEOWNERS 与 PR 模板已建立**：`.github/CODEOWNERS` 逐条对齐 docs/spec/07 §3.1.2 的团队映射（T1 core-kernel / T2 shell-ux / T5 devex），并覆盖全部受版本控制的顶层目录；`.github/pull_request_template.md` 编码 AGENTS §6 的编号追溯、§2 的八条不可协商自检、HARNESS §8.1 六件套门禁与 AR-20 诚实声明。
