@@ -40,6 +40,9 @@
 **第 46 轮复核 `SaveRestoreCursor`（我在第 45 轮把它列为「(a) 真缺陷候选，因为 DECSC/DECRC 是核心」）—— 又是错的**：`decset.py:565-573` 用的是 **`DECSET(SaveRestoreCursor)`**，即 **DEC 私有模式 1048**（`CSI ? 1048 h/l` 保存/恢复光标），而 `set_private_mode` 只处理 1/6/7/25/47/1047/1049/2004 → 光标未恢复（got `cursor.x()=5` vs expected 2）。**核心 `DECSC`/`DECRC`（`ESC 7`/`ESC 8`）我们本来就实现**，失败源于**未实现的扩展模式 1048** → 归 **(b) 子集外**。
 
 **方法教训已经重复三次**（`BS`→模式 45、`DL`/`SD`→左右边距、`SaveRestoreCursor`→模式 1048）：**逐个读用例是错的粒度**。正确做法是**机械地全量分类**——对每条失败用例，抽取其函数体里用到的 `DECSET/DECRESET/DECRQM` 模式常量（经 `esccmd.py` 解析成数值），与「我们已实现的模式集合」比对，一次性给出 `uses-unimplemented-mode` / `no-extension-mode`。**这项分析已派单**（见 `docs/audit/esctest-triage.md`），**在它完成前，不再逐条读用例**——避免继续用低效且易错的方式产出结论。
+> **A4 的权威分类来源（第 55 轮起）**：**机器产物 `docs/audit/esctest-classification.md`**（由 `tools/conformance/classify-esctest.mjs` 从 `docs/audit/esctest-failing-index.md` 纯变换生成）。**下面的逐簇/逐用例人工结论一律视为「历史归因记录」**——它们保留是为了留下证据链与三次自我更正的教训，**但不再作为当前事实**；引用当前分类请用那张表。
+>
+> **仍需人判断的三件事（机器无法给出）**：① DECRQM 的 oracle 分歧（**SD-22**）；② 「esctest 全通过」的判定域是子集还是全集（**SD-23**，左右边距 72 条、颜色 40 条都挂在这上面）；③ 在**尚未渲染颜色**时报不报一套 256 色调色板才算诚实的能力声明。
 ### A4 附：簇级归因的方法教训（第 43 轮更正）
 
 **上一轮我把 `BS` 的 8 条失败列进「(a) 真缺陷（核心 VT，必须修）」，这是错的。** 读 `bs.py:173-189` 的**测试前言**可见：该组用例先 `DECSET(DECAWM)`，再 **`DECSET(XTREVWRAP)`**（xterm 扩展模式 **45**），然后期望 BS 能**反向跨行**回退；而 `set_private_mode` **没有 45 这一支**，光标被夹在第 1 列（实测 got `Point(1,5)`，expected `Point(5,3)`）。**失败由未实现的扩展模式引起，不是核心 BS 语义错** → `BS` 更正为 **(b) 子集外偏差候选**（依据：XTREVWRAP 不在 `kernel/01` §3.5 表内）。
