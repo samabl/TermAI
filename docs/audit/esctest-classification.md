@@ -4,9 +4,9 @@
 > Implementation set read from crates/termai-vt/src/grid.rs (set_private_mode / set_standard_mode):
 > private 1/6/7/25/47/1047/1049/2004, standard 4.
 
-- tests classified: 268
+- tests classified: 259
 - uses-unimplemented-mode: 78
-- no-extension-mode (core-defect candidates): 190 (of which 181 make no DECSET/DECRESET/DECRQM call at all)
+- no-extension-mode (core-defect candidates): 181 (of which 172 make no DECSET/DECRESET/DECRQM call at all)
 - unresolved: 0
 
 ## Top unimplemented modes among failing tests
@@ -28,10 +28,6 @@
 | BSTests.test_BS_ReverseWrapGoesToBottom | 7 |
 | BSTests.test_BS_ReverseWrapStartingInDoWrapPosition | 7 |
 | BSTests.test_BS_WrapsInWraparoundMode | 7 |
-| CBTTests.test_CBT_ExplicitParameter | - |
-| CBTTests.test_CBT_OneTabStopByDefault | - |
-| CHTTests.test_CHT_ExplicitParameter | - |
-| CHTTests.test_CHT_OneTabStopByDefault | - |
 | ChangeColorTests.test_ChangeColor_CIELab | - |
 | ChangeColorTests.test_ChangeColor_CIELuv | - |
 | ChangeColorTests.test_ChangeColor_CIEXYZ | - |
@@ -179,7 +175,6 @@
 | ECHTests.test_ECH_respectsISOProtection | - |
 | EDTests.test_ED_respectsISOProtection | - |
 | ELTests.test_EL_respectsISOProtection | - |
-| HTSTests.test_HTS_Basic | - |
 | RISTests.test_RIS_ResetTitleMode | - |
 | ResetColorTests.test_ResetColor_All | - |
 | ResetColorTests.test_ResetColor_Standard | - |
@@ -190,10 +185,6 @@
 | ResetSpecialColorTests.test_ResetSpecialColor_Single2 | - |
 | SCORCTests.test_SaveRestoreCursor_WorksInLRM | - |
 | SMTests.test_SM_LNM | - |
-| TBCTests.test_TBC_0 | - |
-| TBCTests.test_TBC_3 | - |
-| TBCTests.test_TBC_Default | - |
-| TBCTests.test_TBC_NoOp | - |
 | XtermSaveTests.test_XtermSave_SaveResetState | 7 |
 | XtermSaveTests.test_XtermSave_SaveSetState | 7 |
 | XtermWinopsTests.test_XtermWinops_DECSLPP | - |

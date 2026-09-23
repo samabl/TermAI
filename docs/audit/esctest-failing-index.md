@@ -4,9 +4,9 @@
 > the lead builds the index so a later workstream only does a pure transformation
 > (read the function body at the given file:line and extract the DECSET/DECRESET/DECRQM modes).
 
-- log: target/conformance/altfix/esctest.log
-- failing test names: 268 (deduplicated)
-- located in tests/*.py: 268 / 268
+- log: target/conformance/repro/esctest.log
+- failing test names: 259 (deduplicated)
+- located in tests/*.py: 259 / 259
 
 | test | file:line |
 | --- | --- |
@@ -18,12 +18,8 @@
 | BSTests.test_BS_ReversewrapFromLeftEdgeToRightMargin | bs.py:80 |
 | BSTests.test_BS_StopsAtLeftMargin | bs.py:122 |
 | BSTests.test_BS_WrapsInWraparoundMode | bs.py:36 |
-| CBTTests.test_CBT_ExplicitParameter | cbt.py:14 |
-| CBTTests.test_CBT_OneTabStopByDefault | cbt.py:7 |
 | CHATests.test_CHA_RespectsOriginMode | cha.py:64 |
-| CHTTests.test_CHT_ExplicitParameter | cht.py:14 |
 | CHTTests.test_CHT_IgnoresScrollingRegion | cht.py:21 |
-| CHTTests.test_CHT_OneTabStopByDefault | cht.py:8 |
 | CNLTests.test_CNL_StopsAtBottomLineWhenBegunBelowScrollRegion | cnl.py:37 |
 | CNLTests.test_CNL_StopsAtBottomMarginInScrollRegion | cnl.py:59 |
 | CPLTests.test_CPL_StopsAtTopLineWhenBegunAboveScrollRegion | cpl.py:37 |
@@ -220,7 +216,6 @@
 | ELTests.test_EL_respectsISOProtection | el.py:82 |
 | FFTests.test_FF_MovesDoesNotScrollOutsideLeftRight | ff.py:82 |
 | HPRTests.test_HPR_IgnoresOriginMode | hpr.py:55 |
-| HTSTests.test_HTS_Basic | hts.py:11 |
 | HVPTests.test_HVP_RespectsOriginMode | hvp.py:78 |
 | ICHTests.test_ICH_IsNoOpWhenCursorBeginsOutsideScrollRegion | ich.py:43 |
 | ICHTests.test_ICH_ScrollOffRightMarginInScrollRegion | ich.py:100 |
@@ -251,10 +246,6 @@
 | SUTests.test_SU_LeftRightAndTopBottomScrollRegion | su.py:146 |
 | SUTests.test_SU_OutsideLeftRightScrollRegion | su.py:127 |
 | SUTests.test_SU_RespectsLeftRightScrollRegion | su.py:109 |
-| TBCTests.test_TBC_0 | tbc.py:22 |
-| TBCTests.test_TBC_3 | tbc.py:33 |
-| TBCTests.test_TBC_Default | tbc.py:11 |
-| TBCTests.test_TBC_NoOp | tbc.py:49 |
 | VPRTests.test_VPR_IgnoresOriginMode | vpr.py:49 |
 | VTTests.test_VT_MovesDoesNotScrollOutsideLeftRight | vt.py:80 |
 | XtermSaveTests.test_XtermSave_SaveResetState | xterm_save.py:33 |
