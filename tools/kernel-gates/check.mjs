@@ -46,7 +46,7 @@ const SPEC_DEFECT_REGISTERS = [
   },
   {
     rel: 'docs/plan/p0-spec-defects.md',
-    ids: ['SD-09', 'SD-10', 'SD-11', 'SD-12', 'SD-13', 'SD-14', 'SD-15', 'SD-16', 'SD-17', 'SD-18', 'SD-19'],
+    ids: ['SD-09', 'SD-10', 'SD-11', 'SD-12', 'SD-13', 'SD-14', 'SD-15', 'SD-16', 'SD-17', 'SD-18', 'SD-19', 'SD-20'],
   },
 ];
 
@@ -335,7 +335,7 @@ function gateK5(ctx) {
 }
 
 function gateK6(ctx) {
-  const TITLE = 'spec-defect registers: m0 SD-01..SD-08 and p0 SD-09..SD-19 (AGENTS section 5)';
+  const TITLE = 'spec-defect registers: m0 SD-01..SD-08 and p0 SD-09..SD-20 (AGENTS section 5)';
   const notes = [];
   for (const reg of SPEC_DEFECT_REGISTERS) {
     const abs = path.join(ctx.root, reg.rel);

@@ -609,6 +609,7 @@ fn csi_known(intermediates: &[u8], action: char) -> bool {
     }
     match action {
         'h' | 'l' => intermediates == [b'?'],
+        'p' => intermediates == [b'$'] || intermediates == [b'?', b'$'],
         'u' => intermediates == [b'>'] || intermediates == [b'='] || intermediates == [b'<'],
         _ => false,
     }

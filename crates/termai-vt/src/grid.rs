@@ -1375,6 +1375,43 @@ impl Grid {
         }
     }
 
+    /// DECRQM (`CSI Ps $ p` / `CSI ? Ps $ p`): report one mode's state as
+    /// `CSI Ps ; Pm $ y`, where Pm is 0 not recognised, 1 set, 2 reset
+    /// (xterm ctlseqs; oracle = xterm). Reporting 0 for modes we do not track is the
+    /// honest answer - claiming a state we do not maintain would be worse than unknown.
+    fn decrqm(&mut self, params: &Params, private: bool) {
+        let mode = params.get(0);
+        let state = self.mode_state(mode, private);
+        let prefix = if private { "?" } else { "" };
+        self.responses
+            .push(format!("\x1b[{prefix}{mode};{state}$y").into_bytes());
+    }
+
+    fn mode_state(&self, mode: u16, private: bool) -> u8 {
+        fn pm(on: bool) -> u8 {
+            if on {
+                1
+            } else {
+                2
+            }
+        }
+        if private {
+            return match mode {
+                1 => pm(self.modes & MODE_APP_CURSOR != 0),
+                6 => pm(self.modes & MODE_ORIGIN != 0),
+                7 => pm(self.modes & MODE_AUTOWRAP != 0),
+                25 => pm(self.cursor_visible),
+                47 | 1047 | 1049 => pm(self.alt),
+                2004 => pm(self.modes & MODE_BRACKETED_PASTE != 0),
+                _ => 0,
+            };
+        }
+        match mode {
+            4 => pm(self.modes & MODE_INSERT != 0),
+            _ => 0,
+        }
+    }
+
     fn set_standard_mode(&mut self, mode: u16, enable: bool) {
         if mode == 4 {
             self.set_bit(MODE_INSERT, enable);
@@ -1577,6 +1614,9 @@ impl Grid {
                 for _ in 0..cap {
                     self.print(ch);
                 }
+            }
+            b'p' if intermediates == [b'$'] || intermediates == [b'?', b'$'] => {
+                self.decrqm(params, private);
             }
             b'g' => self.clear_tab(params.get(0)),
             b'h' => self.set_modes(params, private, true),
