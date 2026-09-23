@@ -158,6 +158,28 @@ export const CASES = [
     expect_responses: ['1b5b323b3352'],
     body: ['KEY "' + CSI + '2;3H' + CSI + '6n"'] },
 
+  // ---------------------------------------------------------- device attributes
+  // ADR-0030 D-2. DA1 answers `CSI c` / `CSI 0 c` with VT100 + AVO (`?1;2`); DA2
+  // answers `CSI > c` / `CSI > 0 c` with Pp=0, Pv=314, Pc=0. The 314 is TermAI's own
+  // self-reported version (the lower bound of the range esctest accepts, 314..=999), NOT an
+  // xterm version number. expect_responses asserts the exact emitted bytes.
+  { id: 'spec-da1-primary-attributes', suite: 'xterm-ctlseqs-spec', entry: 'CSI Ps c',
+    documented: 'ADR-0030 D-2: CSI c -> ESC [ ? 1 ; 2 c (VT100 + Advanced Video Option)',
+    expect_responses: ['1b5b3f313b3263'],
+    body: ['KEY "' + CSI + 'c"'] },
+  { id: 'spec-da1-primary-attributes-ps0', suite: 'xterm-ctlseqs-spec', entry: 'CSI Ps c',
+    documented: 'ADR-0030 D-2: CSI 0 c -> ESC [ ? 1 ; 2 c',
+    expect_responses: ['1b5b3f313b3263'],
+    body: ['KEY "' + CSI + '0c"'] },
+  { id: 'spec-da2-secondary-attributes', suite: 'xterm-ctlseqs-spec', entry: 'CSI > Ps c',
+    documented: 'ADR-0030 D-2: CSI > c -> ESC [ > 0 ; 314 ; 0 c (Pv is TermAI self-reported, not xterm)',
+    expect_responses: ['1b5b3e303b3331343b3063'],
+    body: ['KEY "' + CSI + '>c"'] },
+  { id: 'spec-da2-secondary-attributes-ps0', suite: 'xterm-ctlseqs-spec', entry: 'CSI > Ps c',
+    documented: 'ADR-0030 D-2: CSI > 0 c -> ESC [ > 0 ; 314 ; 0 c',
+    expect_responses: ['1b5b3e303b3331343b3063'],
+    body: ['KEY "' + CSI + '>0c"'] },
+
   // ------------------------------------------------- kernel/01 section 3.3 / 3.4
   { id: 'inv-osc-aborted', suite: 'termai-invariants',
     documented: 'kernel/01 section 3.3: ESC + non-ST aborts an OSC and is re-processed as ESC',

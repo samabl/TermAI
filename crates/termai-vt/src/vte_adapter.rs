@@ -570,6 +570,13 @@ fn osc_known(num: u32) -> bool {
 }
 
 fn csi_known(intermediates: &[u8], action: char) -> bool {
+    // Device attributes (ADR-0030 D-2): DA1 is `CSI c` / `CSI 0 c` and DA2 is
+    // `CSI > c` / `CSI > 0 c`. grid::csi_dispatch answers both forms, so the
+    // unknown-CSI counter must treat both as known. Historically 'c' sat in the
+    // empty-intermediates list below while the dispatcher had no 'c' arm at all.
+    if action == 'c' {
+        return intermediates.is_empty() || intermediates == [b'>'];
+    }
     if intermediates.is_empty() {
         return matches!(
             action,
@@ -603,7 +610,6 @@ fn csi_known(intermediates: &[u8], action: char) -> bool {
                 | 't'
                 | 'u'
                 | '@'
-                | 'c'
                 | '\''
                 | 'a'
                 | 'b'

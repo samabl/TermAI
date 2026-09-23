@@ -490,6 +490,23 @@ impl Grid {
         }
     }
 
+    /// DA1 (`CSI c` / `CSI 0 c`) and DA2 (`CSI > c` / `CSI > 0 c`) device attributes
+    /// (ADR-0030 D-2).
+    ///
+    /// DA1 reports `?1;2` only: VT100 plus the Advanced Video Option, which is exactly the
+    /// capability set this layer implements at the declared VT level 1. It deliberately does
+    /// not advertise selective erase, locator, colour, or the other options a higher xterm
+    /// DA1 would claim. DA2's `314` is TermAI's own self-reported version, chosen as the
+    /// lower bound of the range esctest accepts (314..=999) so that it is never mistaken for
+    /// an xterm version number.
+    fn device_attributes(&mut self, secondary: bool) {
+        if secondary {
+            self.responses.push(b"\x1b[>0;314;0c".to_vec());
+        } else {
+            self.responses.push(b"\x1b[?1;2c".to_vec());
+        }
+    }
+
     /// XTWINOPS (`CSI Ps t`) window/text-area report subset (SD-19).
     ///
     /// Only the character-cell reports are answered. `14 t` / `15 t` / `16 t` are
@@ -1848,6 +1865,10 @@ impl Grid {
                     self.print(ch);
                 }
             }
+            // DA1: CSI c / CSI 0 c (ADR-0030 D-2).
+            b'c' if intermediates.is_empty() => self.device_attributes(false),
+            // DA2: CSI > c / CSI > 0 c (intermediate '>').
+            b'c' if intermediates == [b'>'] => self.device_attributes(true),
             // DECSTR (soft reset). esctest issues this before every case, and with no handler
             // the scrolling region leaked from one case into the next.
             b'p' if intermediates == [b'!'] => self.soft_reset(),
