@@ -5,6 +5,10 @@
 # (ADR-0015 supply chain). That is why build artifacts are reported rather than uploaded:
 # an upload action would need its own ADR.
 #
+# Toolchain: Rust is pinned by rust-toolchain.toml and Node by package.json engines
+# (>=22, because the design-gates CDP client needs a global WebSocket, which Node 20
+# does not have - the first CI run died on "ReferenceError: WebSocket is not defined").
+#
 # SCOPE (deliberate and temporary): every job runs on windows-latest.
 # Reasons: Windows x64 is the primary platform (DC-16 / ConPTY), and the visual baselines
 # committed in prototype/baseline are win32-x64, so the design gates are strongest here.
@@ -53,7 +57,7 @@ jobs:
       - name: Set up Node 20
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Regenerate tokens and fail on artifact drift
         run: |
           node tools/tokens/build.mjs
@@ -89,7 +93,7 @@ jobs:
       - name: Set up Node 20
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       # Static layer: pure Node, no browser, runs on every runner/commit.
       # --strict is explicit (and a no-op): S8 hardcoded-hex debt is blocking by default,
       # AR-22 target = 0. The flag is kept so the intent is visible in the pipeline.
@@ -134,13 +138,14 @@ jobs:
       - name: Set up Node 20
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-      - name: Ensure stable Rust toolchain (preinstalled rustup; no third-party action)
+          node-version: 22
+      # The toolchain is pinned by rust-toolchain.toml, not by "stable": the first CI run
+      # resolved stable to 1.98.0 and K2 failed on clippy lints that do not exist on the
+      # 1.94.0 the M0 gates were verified against. rustup installs the pinned channel on
+      # first use, so no third-party toolchain action is needed.
+      - name: Rust toolchain (pinned by rust-toolchain.toml)
         run: |
-          if (Get-Command rustup -ErrorAction SilentlyContinue) {
-            rustup toolchain install stable --profile minimal
-            rustup default stable
-          }
+          rustup show
           rustc --version
           cargo --version
       # K3 runs the whole workspace test suite. On a host whose ConPTY cannot create a

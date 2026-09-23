@@ -16,6 +16,6 @@
     "kernel:selftest": "node tools/kernel-gates/check.mjs --selftest"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   }
 }

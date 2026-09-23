@@ -64,6 +64,8 @@
 /package.json                       @termai/devex @samabl
 /.gitattributes                     @termai/devex @samabl
 /.gitignore                         @termai/devex @samabl
+# 工具链锁：改动即为「构建与工具链」变更（spec 07 §1.2），归 T5；升级需走 clippy/fmt 全量重跑。
+/rust-toolchain.toml                @termai/devex @samabl
 
 # ---- app 层装配 ----
 # 说明：spec 07 第 3.1.2 节列的是 apps/termai-desktop 与 packages/webview-shell，

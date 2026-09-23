@@ -1,0 +1,17 @@
+# Pinned Rust toolchain (spec 07 section 1.2 "build and toolchain: locking").
+#
+# Why this file exists: the first CI run resolved "stable" to 1.98.0 while the local
+# toolchain that the whole M0 gate set was verified against is 1.94.0. Newer clippy
+# releases add lints, so K2 (clippy -D warnings) failed in CI on 10 findings in
+# crates/termai-vt/src/vte_adapter.rs (clippy::byte_char_slices) that do not exist on
+# 1.94.0. Pinning makes "green locally" mean "green in CI".
+#
+# Upgrading this pin is a deliberate task, not a side effect of a CI run:
+#   1. bump the channel here,
+#   2. run cargo fmt --all, cargo clippy --workspace --all-targets -- -D warnings and
+#      the full test suite,
+#   3. fix or explicitly allow each new lint and record it in the PR.
+[toolchain]
+channel = "1.94.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
