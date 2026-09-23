@@ -292,6 +292,11 @@ jobs:
       # reports G1: NOT_JUDGED until a real-corpus oracle is available.
       - name: conformance L0 (G1 corpus, gating lane)
         run: npm run conformance
+      # The last of the four CI gates to be asked whether it can fail. It injects a corrupted
+      # expectation into a regenerable case, asserts the runner reports it, restores, and requires the
+      # restored corpus to run clean - so neither a broken runner nor a self-test that cannot fail.
+      - name: conformance selftest (corrupt one expectation; prove the runner reports it)
+        run: node tools/conformance/selftest.mjs
       # ADR-0014 decision 6 / spec 06 A-PM-12: the cost manifest must be complete and the month under
       # the cap. The structural part of this check gates (schema, arithmetic), and it fails only when
       # the cap is actually reached - a reading under the cap must not turn the build red.
@@ -347,6 +352,11 @@ jobs:
       # reports G1: NOT_JUDGED until a real-corpus oracle is available.
       - name: conformance L0 (G1 corpus, gating lane)
         run: npm run conformance
+      # The last of the four CI gates to be asked whether it can fail. It injects a corrupted
+      # expectation into a regenerable case, asserts the runner reports it, restores, and requires the
+      # restored corpus to run clean - so neither a broken runner nor a self-test that cannot fail.
+      - name: conformance selftest (corrupt one expectation; prove the runner reports it)
+        run: node tools/conformance/selftest.mjs
       # ADR-0014 decision 6 / spec 06 A-PM-12: the cost manifest must be complete and the month under
       # the cap. The structural part of this check gates (schema, arithmetic), and it fails only when
       # the cap is actually reached - a reading under the cap must not turn the build red.
