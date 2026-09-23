@@ -297,6 +297,8 @@ jobs:
       # the cap is actually reached - a reading under the cap must not turn the build red.
       - name: ci-cost check (manifest schema + monthly cap per A-PM-12)
         run: node tools/ci-cost/check.mjs
+      - name: ci-cost selftest (inject a bad total and a cap breach; prove both are caught)
+        run: node tools/ci-cost/check.mjs --selftest
 
   # ADR-0014 decision 2: Linux x64 is a first-class gate platform, so it gets a native
   # runner instead of a cross-check issued from Windows. See the platform-matrix block at the
@@ -350,6 +352,8 @@ jobs:
       # the cap is actually reached - a reading under the cap must not turn the build red.
       - name: ci-cost check (manifest schema + monthly cap per A-PM-12)
         run: node tools/ci-cost/check.mjs
+      - name: ci-cost selftest (inject a bad total and a cap breach; prove both are caught)
+        run: node tools/ci-cost/check.mjs --selftest
       - name: Regenerate tokens and fail on artifact drift
         run: |
           node tools/tokens/build.mjs
