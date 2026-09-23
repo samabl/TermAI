@@ -139,7 +139,7 @@ P0 只启用三条现有团队线，其余（T3 Agent / T4 生态）在 P2/P3 �
 **总负责人对 W1-A 上报事项的裁决**：
 
 1. **两个新作业保持 blocking**（不设 `continue-on-error`）：ADR-0014 要求 v1 门禁架构**可判定**，非阻断作业等于「有作业没牙」，与 A2「兼容性是入场券」冲突。首次 Linux/macOS 运行若红，按真缺陷修复，不靠豁免。
-2. **kernel 作业显示名 `K1-K7 → K1-K8` 接受**：`kernel-gates` 早已执行 K8（构建产物门禁，ADR-0021）。分支保护未启用，无 required-check 名称冲突；若将来启用分支保护，需把新名一并登记。
+2. **kernel 作业显示名 `K1-K7 → K1-K8` 接受**：`kernel-gates` 早已执行 K8（**工作流策略门禁**：产物留存 ADR-0021 ＋ **每个 check 步骤必须配对 selftest**——第 141 轮加入，见登记表 K8 段）。分支保护未启用，无 required-check 名称冲突；若将来启用分支保护，需把新名一并登记。
 3. **`ci-cost.json` 与 $3,000/月上限（ADR-0014 决策 6）仍未实现**，登记为 WS-06 的 T5 待办。新增 macOS runner 会显著抬高成本，**在该看板落地前不得声称「CI 成本受控」**。
 4. **`rust-toolchain.toml` 不新增跨平台 target**：两个新作业在原生平台运行，不应强迫所有开发机下载他平台 std。W1-A 为验证临时安装了 `aarch64-apple-darwin` target，属本机环境变化，不入库。
 

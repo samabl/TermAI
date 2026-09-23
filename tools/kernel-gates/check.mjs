@@ -417,7 +417,7 @@ const ADMITTED_ACTIONS = ['actions/checkout', 'actions/setup-node', 'actions/upl
 const ARTIFACT_PATH_DENY = ['target/debug', '.termai', '*.log', 'target/**', 'path: .', '**/*'];
 
 function gateK8(ctx) {
-  const TITLE = 'build artifacts: a build job publishes artifacts with a retention policy (ADR-0021)';
+  const TITLE = 'workflow policy: artifacts with retention (ADR-0021) + every check paired with a selftest';
   const rel = '.github/workflows/ci.yml';
   const abs = path.join(ctx.root, rel);
   if (!fs.existsSync(abs)) {
@@ -435,6 +435,43 @@ function gateK8(ctx) {
   const unadmitted = used.filter(function (u) { return ADMITTED_ACTIONS.indexOf(u.split('@')[0]) < 0; });
   if (unadmitted.length) {
     return gate('K8', TITLE, STATUS.FAIL, 'action(s) not admitted by ADR-0021: ' + unadmitted.join(', '), unadmitted);
+  }
+
+  // Every CI check must carry a matching selftest, or its green is output rather than evidence: a gate
+  // whose failure path has never been exercised is not known to work. tokens, design and kernel
+  // established the convention; rounds 132-137 restored it for bench, conformance and ci-cost after a
+  // wiring change lost it. Round 140 tried to infer gate-ness from step names and raised thirteen false
+  // alarms (cargo check, Set up Node 20), so the pairings are listed explicitly. Adding a gate to CI
+  // means adding its row here in the same change.
+  const GATE_PAIRS = [
+    ['tokens', 'tokens:check', 'tokens:selftest'],
+    ['design', 'design:check', 'design:selftest'],
+    ['kernel', 'kernel:check', 'kernel:selftest'],
+    ['bench', 'bench:check', 'bench:selftest'],
+    ['conformance', 'conformance L0', 'conformance selftest'],
+    ['ci-cost', 'ci-cost check', 'ci-cost selftest'],
+  ];
+  const stepNames = [];
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (t.indexOf('- name:') !== 0) continue;
+    let v = t.slice('- name:'.length).trim();
+    if (v.length > 1 && v[0] === '"' && v[v.length - 1] === '"') v = v.slice(1, -1);
+    stepNames.push(v);
+  }
+  const hasStepStartingWith = function (prefix) {
+    for (const n of stepNames) if (n.indexOf(prefix) === 0) return true;
+    return false;
+  };
+  const pairing = [];
+  for (const pair of GATE_PAIRS) {
+    const hasCheck = hasStepStartingWith(pair[1]);
+    const hasSelf = hasStepStartingWith(pair[2]);
+    if (hasCheck && !hasSelf) pairing.push(pair[0] + ': has a check step but no selftest');
+    if (!hasCheck && hasSelf) pairing.push(pair[0] + ': has a selftest but no check step');
+  }
+  if (pairing.length) {
+    return gate('K8', TITLE, STATUS.FAIL, pairing.length + ' check/selftest pairing violation(s)', pairing);
   }
 
   const uploads = [];
