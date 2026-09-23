@@ -16,7 +16,7 @@
 //                   refused dependencies (portable-pty, AR-28.3)
 //   K5 license      every package.license == "Apache-2.0 OR MIT" (or license.workspace = true),
 //                   and [workspace.package].license == that SPDX expression (AR-21)
-//   K6 spec-defects docs/plan/m0-spec-defects.md exists and registers SD-01..SD-05
+//   K6 spec-defects the M0 (SD-01..SD-08) and P0 (SD-09..SD-18) registers stay complete
 //   K7 codeowners   .github/CODEOWNERS names every tracked top-level directory and every
 //                   rule names an owner; spec 07 section 3.1.2 requires 100% coverage and
 //                   "no directory without an owner may merge"
@@ -37,7 +37,18 @@ const DEFAULT_ROOT = path.resolve(HERE, '..', '..');
 
 const STATUS = { PASS: 'PASS', FAIL: 'FAIL', SKIP: 'SKIP' };
 const LICENSE_EXPR = 'Apache-2.0 OR MIT';
-const SPEC_DEFECTS = ['SD-01', 'SD-02', 'SD-03', 'SD-04', 'SD-05'];
+// K6 registry: every implementation-period defect register must exist and keep its ids.
+// The M0 register keeps SD-01..SD-08; the P0 register keeps SD-09..SD-18 (AGENTS section 5).
+const SPEC_DEFECT_REGISTERS = [
+  {
+    rel: 'docs/plan/m0-spec-defects.md',
+    ids: ['SD-01', 'SD-02', 'SD-03', 'SD-04', 'SD-05', 'SD-06', 'SD-07', 'SD-08'],
+  },
+  {
+    rel: 'docs/plan/p0-spec-defects.md',
+    ids: ['SD-09', 'SD-10', 'SD-11', 'SD-12', 'SD-13', 'SD-14', 'SD-15', 'SD-16', 'SD-17', 'SD-18'],
+  },
+];
 
 // ADR-0019 D1: admitted library -> library edges. Anything else (including an edge into an
 // app or an unregistered crate) is merge-blocking. Fail-closed by design.
@@ -324,18 +335,21 @@ function gateK5(ctx) {
 }
 
 function gateK6(ctx) {
-  const TITLE = 'spec-defects registry: docs/plan/m0-spec-defects.md (AGENTS section 5)';
-  const rel = 'docs/plan/m0-spec-defects.md';
-  const abs = path.join(ctx.root, rel);
-  if (!fs.existsSync(abs)) {
-    return gate('K6', TITLE, STATUS.FAIL, rel + ' is missing');
+  const TITLE = 'spec-defect registers: m0 SD-01..SD-08 and p0 SD-09..SD-18 (AGENTS section 5)';
+  const notes = [];
+  for (const reg of SPEC_DEFECT_REGISTERS) {
+    const abs = path.join(ctx.root, reg.rel);
+    if (!fs.existsSync(abs)) {
+      return gate('K6', TITLE, STATUS.FAIL, reg.rel + ' is missing', notes);
+    }
+    const text = fs.readFileSync(abs, 'utf8');
+    const missing = reg.ids.filter(function (id) { return text.indexOf(id) < 0; });
+    if (missing.length) {
+      return gate('K6', TITLE, STATUS.FAIL, reg.rel + ' does not register: ' + missing.join(', '), notes);
+    }
+    notes.push(reg.rel + ' registers ' + reg.ids[0] + '..' + reg.ids[reg.ids.length - 1]);
   }
-  const text = fs.readFileSync(abs, 'utf8');
-  const missing = SPEC_DEFECTS.filter(function (id) { return text.indexOf(id) < 0; });
-  if (missing.length) {
-    return gate('K6', TITLE, STATUS.FAIL, rel + ' does not register: ' + missing.join(', '));
-  }
-  return gate('K6', TITLE, STATUS.PASS, rel + ' registers ' + SPEC_DEFECTS[0] + '..' + SPEC_DEFECTS[SPEC_DEFECTS.length - 1]);
+  return gate('K6', TITLE, STATUS.PASS, SPEC_DEFECT_REGISTERS.length + ' register(s) complete', notes);
 }
 
 // Top-level directories excluded from the ownership check: build output, VCS metadata
@@ -554,9 +568,11 @@ function makeManifestRoot() {
       fs.copyFileSync(src, path.join(d, 'Cargo.toml'));
     }
   }
-  const sd = path.join(DEFAULT_ROOT, 'docs', 'plan', 'm0-spec-defects.md');
   fs.mkdirSync(path.join(dest, 'docs', 'plan'), { recursive: true });
-  if (fs.existsSync(sd)) fs.copyFileSync(sd, path.join(dest, 'docs', 'plan', 'm0-spec-defects.md'));
+  for (const reg of SPEC_DEFECT_REGISTERS) {
+    const src = path.join(DEFAULT_ROOT, reg.rel);
+    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dest, reg.rel));
+  }
   return dest;
 }
 
@@ -640,6 +656,16 @@ function runSelftest() {
       });
       const g = gateK6({ root: root });
       st.check('K6: dropped SD-05 registration is caught', g.status === STATUS.FAIL, g.detail);
+    }
+
+    // injection 7b: dropped registration in the P0 defect register.
+    {
+      const root = makeManifestRoot(); temps.push(root);
+      mutateFile(root, 'docs/plan/p0-spec-defects.md', function (t) {
+        return t.split('SD-13').join('SD-19');
+      });
+      const g = gateK6({ root: root });
+      st.check('K6: dropped SD-13 registration in the P0 register is caught', g.status === STATUS.FAIL, g.detail);
     }
 
     // injection 8: CODEOWNERS that leaves a top-level directory without its own rule.
