@@ -1426,7 +1426,8 @@ impl Grid {
     }
 
     fn cursor_up(&mut self, n: u16) {
-        let floor = if self.origin() { self.scroll_top } else { 0 };
+        let inside = self.cursor_row >= self.scroll_top && self.cursor_row <= self.scroll_bottom;
+        let floor = if inside { self.scroll_top } else { 0 };
         let target = self.cursor_row.saturating_sub(n);
         self.cursor_row = target.max(floor);
         self.wrap_pending = false;
@@ -1434,7 +1435,8 @@ impl Grid {
     }
 
     fn cursor_down(&mut self, n: u16) {
-        let ceil = if self.origin() {
+        let inside = self.cursor_row >= self.scroll_top && self.cursor_row <= self.scroll_bottom;
+        let ceil = if inside {
             self.scroll_bottom
         } else {
             self.rows.saturating_sub(1)
