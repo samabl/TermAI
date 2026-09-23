@@ -251,6 +251,11 @@ function gateK4(ctx) {
   const appNames = {};
   apps.forEach(function (m) { appNames[m.name] = true; });
 
+  // Declared before the AR-03 loop below: round 160 placed that loop above this point and shipped a check
+  // whose violation branch threw a temporal-dead-zone ReferenceError instead of failing. The selftest
+  // injection near the bottom of this file exercises that branch now, so the mistake cannot return silently.
+  const failures = [];
+
   // AR-03 / AGENTS section 2 item 1: the kernel must not depend on AI, network or UI libraries. The
   // crate list is explicit rather than inferred, and termai-render is deliberately absent from it - it
   // is the UI-side pipeline, and admitting wgpu, winit, rustybuzz or swash there is a separate decision
@@ -267,7 +272,6 @@ function gateK4(ctx) {
     }
   }
 
-  const failures = [];
   const edges = [];
 
   for (const m of manifests) {
@@ -683,6 +687,27 @@ function runSelftest() {
       });
       const g = gateK4({ root: root });
       st.check('K4: GPL-named dependency is caught', g.status === STATUS.FAIL, g.detail);
+    }
+
+    // injection: a kernel crate depending on a UI library (AR-03). This injection caught the round-160
+    // branch, which passed ordinary runs and threw only when its violation path was exercised.
+    {
+      const root = makeManifestRoot();
+      temps.push(root);
+      mutateFile(root, 'crates/termai-vt/Cargo.toml', function (t) {
+        return t.replace('[dependencies]', '[dependencies]\nwgpu = "0.19"');
+      });
+      const g = gateK4({ root: root });
+      st.check('K4: a kernel crate depending on a UI library is caught (AR-03)', g.status === STATUS.FAIL, g.detail);
+    }
+
+    // control: the same scratch root without the UI dependency must pass, so the rule refuses a class of
+    // dependency rather than every dependency.
+    {
+      const root = makeManifestRoot();
+      temps.push(root);
+      const g = gateK4({ root: root });
+      st.check('K4: the unmodified scratch root still passes (AR-03 control)', g.status === STATUS.PASS, g.detail);
     }
 
     // injection 5: wrong crate license.
