@@ -20,7 +20,7 @@
 | A10 | **跨段重放未实现**（TAIL_REPLAY 只读当前 segment；旋转后只会 BelowWindow） | T1 | 段滚动/归档后必须仍能重放或明确要求全量快照 | ADR-0026 §5 负面 1 |
 | A11 | **TailReplay 事件只投影 5 类** → **不能替代 GRID_SNAPSHOT** | T1 | 新增 tag 须先出 ADR | ADR-0026 D5 |
 | A12 | **新 IPC 面无 fuzz 语料**；8 MiB 上限未端到端实跑；broker 的 FRAME_TOO_LARGE 分支未单测 | T1 | AGENTS §6；G6 = 24h 无 crash | §8.1-6、DC-37 |
-| A13 | **VRM（软换行/裁剪）未实现**（前置 SD-13 已落地，不再阻塞） | T1 | VRM 必须产生 **0 个 GridDelta**；`row_flags` 已可用作输入 | AR-23 §6、kernel/03 K-10、RP-08 |
+| A13 | **VRM（软换行/裁剪）未实现**（前置 SD-13 已落地，不再阻塞） | T1 | **进行中（WS-VRM）**；VRM 必须产生 **0 个 GridDelta**；`row_flags` 已可用作输入 | AR-23 §6、kernel/03 K-10、RP-08 |
 
 ## B. 尚未闭合的契约 / 规格登记（SD 系列）
 
