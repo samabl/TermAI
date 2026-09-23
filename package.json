@@ -13,7 +13,9 @@
     "design:selftest": "node tools/design-gates/check-design.mjs --selftest",
     "design:baseline": "node tools/design-gates/check-design.mjs --update-baseline",
     "kernel:check": "node tools/kernel-gates/check.mjs",
-    "kernel:selftest": "node tools/kernel-gates/check.mjs --selftest"
+    "kernel:selftest": "node tools/kernel-gates/check.mjs --selftest",
+    "bench:check": "node tools/bench/check.mjs",
+    "bench:selftest": "node tools/bench/check.mjs --selftest"
   },
   "engines": {
     "node": ">=22"
