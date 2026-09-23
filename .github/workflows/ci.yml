@@ -274,6 +274,19 @@ jobs:
         run: node tools/kernel-gates/check.mjs
       - name: kernel:selftest (inject faults; prove the gates are not always-green)
         run: node tools/kernel-gates/check.mjs --selftest
+      # E-P0-3's "gates in CI" half. ADR-0014 decision 5: section 5 numbers are NON_GATING off an
+      # RM-A/RM-C reference machine and a cloud runner may not stand in, so these steps gate the
+      # STRUCTURAL half (HARNESS row parity, schema parity, methodology self-check) and report the
+      # measurement half as INCONCLUSIVE. They are wired now so that a reference machine makes them
+      # judge, rather than discovering at that point that nothing runs them. Both exit 0 in the
+      # INCONCLUSIVE state by design: a non-gating result must not turn the build red.
+      - name: bench:check (structural gates; section 5 numbers NON_GATING per ADR-0014)
+        run: npm run bench:check
+      # G1's gating lane. The upstream esctest adapter lives in conformance:upstream and needs the
+      # pinned checkout, so it is deliberately not wired here; this runs the L0 corpus only, which
+      # reports G1: NOT_JUDGED until a real-corpus oracle is available.
+      - name: conformance L0 (G1 corpus, gating lane)
+        run: npm run conformance
 
   # ADR-0014 decision 2: Linux x64 is a first-class gate platform, so it gets a native
   # runner instead of a cross-check issued from Windows. See the platform-matrix block at the
@@ -304,6 +317,19 @@ jobs:
         run: node tools/kernel-gates/check.mjs
       - name: kernel:selftest (inject faults; prove the gates are not always-green)
         run: node tools/kernel-gates/check.mjs --selftest
+      # E-P0-3's "gates in CI" half. ADR-0014 decision 5: section 5 numbers are NON_GATING off an
+      # RM-A/RM-C reference machine and a cloud runner may not stand in, so these steps gate the
+      # STRUCTURAL half (HARNESS row parity, schema parity, methodology self-check) and report the
+      # measurement half as INCONCLUSIVE. They are wired now so that a reference machine makes them
+      # judge, rather than discovering at that point that nothing runs them. Both exit 0 in the
+      # INCONCLUSIVE state by design: a non-gating result must not turn the build red.
+      - name: bench:check (structural gates; section 5 numbers NON_GATING per ADR-0014)
+        run: npm run bench:check
+      # G1's gating lane. The upstream esctest adapter lives in conformance:upstream and needs the
+      # pinned checkout, so it is deliberately not wired here; this runs the L0 corpus only, which
+      # reports G1: NOT_JUDGED until a real-corpus oracle is available.
+      - name: conformance L0 (G1 corpus, gating lane)
+        run: npm run conformance
       - name: Regenerate tokens and fail on artifact drift
         run: |
           node tools/tokens/build.mjs
