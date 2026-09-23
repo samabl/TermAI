@@ -49,6 +49,57 @@ pub fn start_reader(backend: &Arc<dyn PtyBackend>, handle: &PtyHandle) -> mpsc::
     receiver
 }
 
+/// Find `needle` inside `hay`.
+fn find_subslice(hay: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || hay.len() < needle.len() {
+        return None;
+    }
+    (0..=hay.len() - needle.len()).find(|&i| &hay[i..i + needle.len()] == needle)
+}
+
+/// Reader that also answers the terminal status reports a ConPTY program sends while it
+/// starts. conhost asks for the cursor position (CSI 6 n) and the shell **blocks until it is
+/// answered**: a test that only drains the pty never gets past the init sequence, so it can
+/// never observe a real command or its descendants (measured: 4 bytes out - just the query -
+/// and the job stayed at one process). The reply here is the minimal 1;1 report
+/// (CSI 1 ; 1 R); a grid-backed caller answers from Grid::take_responses instead.
+pub fn start_reader_answering_dsr(
+    backend: &Arc<dyn PtyBackend>,
+    handle: &PtyHandle,
+) -> mpsc::Receiver<Vec<u8>> {
+    let (sender, receiver) = mpsc::channel();
+    let backend = Arc::clone(backend);
+    let handle = handle.clone();
+    let writer = Arc::clone(&backend);
+    let write_handle = handle.clone();
+    thread::spawn(move || {
+        let mut out = Vec::new();
+        let mut buffer = [0u8; 8192];
+        let mut pending: Vec<u8> = Vec::new();
+        loop {
+            match backend.read(&handle, &mut buffer) {
+                Ok(0) => break,
+                Ok(read) => {
+                    let chunk = &buffer[..read];
+                    out.extend_from_slice(chunk);
+                    pending.extend_from_slice(chunk);
+                    while let Some(pos) = find_subslice(&pending, b"\x1b[6n") {
+                        pending.drain(..pos + 4);
+                        write_all(&writer, &write_handle, b"\x1b[1;1R");
+                    }
+                    // Keep a tail wide enough to catch an escape sequence split across reads.
+                    if pending.len() > 8 {
+                        let keep = pending.len() - 8;
+                        pending.drain(..keep);
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        let _ = sender.send(out);
+    });
+    receiver
+}
 /// Collect a reader thread result with a hard timeout; a hang fails the test.
 pub fn collect_reader(receiver: mpsc::Receiver<Vec<u8>>, timeout: Duration) -> Vec<u8> {
     match receiver.recv_timeout(timeout) {
@@ -113,6 +164,23 @@ pub fn shell_command() -> Command {
     #[cfg(unix)]
     {
         Command::with_args("/bin/sleep", vec!["300".to_string()])
+    }
+}
+
+/// Poll a tree snapshot until it holds at least `count` processes or the deadline passes.
+pub fn wait_for_count(
+    backend: &Arc<dyn PtyBackend>,
+    tree: &ProcessTree,
+    count: usize,
+    limit: Duration,
+) -> Vec<ProcEntry> {
+    let deadline = Instant::now() + limit;
+    loop {
+        let entries = backend.tree_snapshot(tree).unwrap_or_default();
+        if entries.len() >= count || Instant::now() >= deadline {
+            return entries;
+        }
+        thread::sleep(Duration::from_millis(10));
     }
 }
 
