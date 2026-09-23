@@ -137,7 +137,13 @@ M0 **不主张** P0 出口达成：vttest/esctest/kitty 上游套件、三平台
 
 ## 6.1 关于仓库与提交流程（AGENTS §6）
 
-本工作区**不是 git 仓库**（`git status` 报 `not a repository`），因此 M0 交付**无法**满足 AGENTS §6 的提交规范（Conventional Commits、每个 PR 关联 AR/DC 编号）与 AGENTS §4 的 CODEOWNERS 双签要求。这不是实现者可以绕过的事项：**建议在 M1 开工前 `git init` 并建立 CODEOWNERS 与分支保护**，否则后续「跨边界改动需双签」无从执行。CI 工作流已按 git 驱动编写（依赖 `git diff --exit-code`），在无 VCS 的环境里这些步骤无法验证。
+M0 实现期间本工作区**不是 git 仓库**，因此当时的交付**无法**满足 AGENTS §6 的提交规范（Conventional Commits、每个 PR 关联 AR/DC 编号）与 AGENTS §4 的 CODEOWNERS 双签要求。**该缺口已在 M0 收口后闭合**：
+
+- 已 `git init -b main`，初始提交为 M0 交付快照，提交信息按 AGENTS §6 关联 AR/DC/ADR 编号。
+- 已加入 **`.gitattributes`**：全仓 `eol=lf`。这不是美化——本仓库有**两个按字节比对**的合并阻断门禁（DC-09 的 token codegen 漂移检查、以及设计门禁对原型内联 token 块的哈希）；Windows 上 `core.autocrlf` 的 CRLF 转换会让「没人改过的文件」把门禁判红。
+- 已补齐忽略规则：设计门禁的比对产物（`*.current.png`）与本地排障捕获文件（`*.out.txt`、`zz_probe*`）不入库；`prototype/reference/`（第三方 GPL 截图）与 `target/` 保持排除。
+- **CI tokens 作业的漂移步骤如今可实际执行**：`node tools/tokens/build.mjs` 后 `git diff --exit-code` 通过（此前无 VCS，该步骤无法验证）。
+- **仍未完成**：CODEOWNERS、分支保护与 PR 门禁尚未建立，因此 AGENTS §4 的「跨边界改动双签」目前仍无强制力。这是 M1 开工前必须补上的治理项。
 
 ## 7. 交付期发现的规格缺陷
 
