@@ -827,6 +827,811 @@ pub fn context_event_to_value(pane: u16, kind: u16, payload: &[u8]) -> Value {
     ])
 }
 
+// ---------------------------------------------------------------------------
+// TAIL_REPLAY (0x0502) - the P0 tail of the Session Log (ADR-0023 D1,
+// kernel/04 section 3.4)
+//
+// Wire shape: {from_seq: u64, events: [ReplayEvent]}. from_seq is EXCLUSIVE: the server
+// only ever sends events with seq > from_seq (kernel/04 section 3.4), which is what
+// makes a repeated request idempotent (resume_from = last_applied_seq).
+//
+// Each event is a kernel/07 section 3.6 Context event. tag is the oneof discriminant
+// ("tag 即契约") and every payload field name is taken VERBATIM from that table. The
+// envelope adds what section 3.6 fixes outside the oneof: seq (the only ordering /
+// dedup key), ts_mono_ns (the Log carries exactly one timestamp, see ReplayEvent), and
+// pane (kernel/04 section 3.2.3 gives every record a pane; it is optional because
+// StateChange carries none).
+//
+// TAIL_REPLAY is "仅 P0 事件" (kernel/04 section 3.4): the P1 volatile raw ring (PtyOut)
+// is never replayed. A gap in events[].seq therefore means "a record of another
+// retention class was filtered out", NOT loss; loss is expressed by refusing the
+// request outright (see sessiond::broker and AR-26).
+// ---------------------------------------------------------------------------
+
+/// kernel/07 section 3.6 event tags. Values are contract: never reused.
+pub mod context_tag {
+    pub const SESSION_LIFECYCLE: u64 = 1;
+    pub const COMMAND_BOUNDARY: u64 = 2;
+    pub const EXIT_STATUS: u64 = 3;
+    pub const CWD_CHANGED: u64 = 4;
+    pub const TITLE_CHANGED: u64 = 5;
+    pub const RESIZE: u64 = 6;
+    pub const ERROR_FRAGMENT: u64 = 7;
+    pub const MODE_CHANGED: u64 = 8;
+    pub const TRANSPORT_STATE: u64 = 9;
+    pub const TRUNCATION_NOTICE: u64 = 10;
+}
+
+/// kernel/07 section 3.6 tag 7: an error fragment is untrusted data by contract.
+pub const CONTEXT_TRUST_UNTRUSTED: &str = "untrusted";
+
+/// kernel/07 section 3.6 tag 2 phase.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CommandPhase {
+    PromptStart,
+    CmdStart,
+    CmdEnd,
+}
+
+impl CommandPhase {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::PromptStart => "prompt_start",
+            Self::CmdStart => "cmd_start",
+            Self::CmdEnd => "cmd_end",
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, CodecError> {
+        match s {
+            "prompt_start" => Ok(Self::PromptStart),
+            "cmd_start" => Ok(Self::CmdStart),
+            "cmd_end" => Ok(Self::CmdEnd),
+            _ => Err(CodecError::Bad("command phase")),
+        }
+    }
+}
+
+/// kernel/07 section 3.6 tag 5 scope.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TitleScope {
+    Icon,
+    Window,
+}
+
+impl TitleScope {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Icon => "icon",
+            Self::Window => "window",
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, CodecError> {
+        match s {
+            "icon" => Ok(Self::Icon),
+            "window" => Ok(Self::Window),
+            _ => Err(CodecError::Bad("title scope")),
+        }
+    }
+}
+
+/// kernel/07 section 3.6 tag 9 kind.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TransportKind {
+    Local,
+    Ssh,
+    Container,
+    Wsl,
+}
+
+impl TransportKind {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::Ssh => "ssh",
+            Self::Container => "container",
+            Self::Wsl => "wsl",
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, CodecError> {
+        match s {
+            "local" => Ok(Self::Local),
+            "ssh" => Ok(Self::Ssh),
+            "container" => Ok(Self::Container),
+            "wsl" => Ok(Self::Wsl),
+            _ => Err(CodecError::Bad("transport kind")),
+        }
+    }
+}
+
+/// kernel/07 section 3.6 tag 9 state.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TransportStatus {
+    Connecting,
+    Ready,
+    Lost,
+}
+
+impl TransportStatus {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Connecting => "connecting",
+            Self::Ready => "ready",
+            Self::Lost => "lost",
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, CodecError> {
+        match s {
+            "connecting" => Ok(Self::Connecting),
+            "ready" => Ok(Self::Ready),
+            "lost" => Ok(Self::Lost),
+            _ => Err(CodecError::Bad("transport state")),
+        }
+    }
+}
+
+fn get_bool(v: &Value, key: &str) -> Result<bool, CodecError> {
+    match v.get(key) {
+        Some(Value::Bool(b)) => Ok(*b),
+        _ => Err(CodecError::Missing("bool field")),
+    }
+}
+
+fn get_f32(v: &Value, key: &str) -> Result<f32, CodecError> {
+    v.get(key)
+        .and_then(Value::as_f32)
+        .ok_or(CodecError::Missing("f32 field"))
+}
+
+fn get_opt_u64(v: &Value, key: &str) -> Result<Option<u64>, CodecError> {
+    match v.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(x) => Ok(Some(x.as_u64().ok_or(CodecError::Bad("u64 field"))?)),
+    }
+}
+
+fn get_opt_i32(v: &Value, key: &str) -> Result<Option<i32>, CodecError> {
+    match v.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::I64(x)) => i32::try_from(*x)
+            .map(Some)
+            .map_err(|_| CodecError::Bad("i32 field out of range")),
+        Some(Value::U64(x)) => i32::try_from(*x)
+            .map(Some)
+            .map_err(|_| CodecError::Bad("i32 field out of range")),
+        _ => Err(CodecError::Bad("i32 field")),
+    }
+}
+
+fn get_opt_u8(v: &Value, key: &str) -> Result<Option<u8>, CodecError> {
+    match v.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(x) => u8::try_from(x.as_u64().ok_or(CodecError::Bad("u8 field"))?)
+            .map(Some)
+            .map_err(|_| CodecError::Bad("u8 field out of range")),
+    }
+}
+
+fn get_u16_list(v: &Value, key: &str) -> Result<Vec<u16>, CodecError> {
+    get_array(v, key)?
+        .iter()
+        .map(|x| {
+            u16::try_from(x.as_u64().ok_or(CodecError::Bad("u16 list"))?)
+                .map_err(|_| CodecError::Bad("u16 list out of range"))
+        })
+        .collect()
+}
+
+fn get_opt_pair(v: &Value, key: &str) -> Result<Option<(u32, u32)>, CodecError> {
+    match v.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Array(a)) if a.len() == 2 => {
+            let w = u32::try_from(a[0].as_u64().ok_or(CodecError::Bad("pair"))?)
+                .map_err(|_| CodecError::Bad("pair out of range"))?;
+            let h = u32::try_from(a[1].as_u64().ok_or(CodecError::Bad("pair"))?)
+                .map_err(|_| CodecError::Bad("pair out of range"))?;
+            Ok(Some((w, h)))
+        }
+        _ => Err(CodecError::Bad("pair")),
+    }
+}
+
+/// One kernel/07 section 3.6 Context event body. Field names on the wire are the
+/// table's keyword-column names verbatim; the in-crate CBOR codec carries confidence as
+/// a real IEEE-754 binary32 (cbor.rs major type 7 / ai 26).
+#[derive(Clone, PartialEq, Debug)]
+pub enum ContextEventBody {
+    /// tag 1. state uses the kernel/04 section 3.1 six-state vocabulary.
+    SessionLifecycle {
+        state: SessionState,
+        reason: Option<String>,
+    },
+    /// tag 2.
+    CommandBoundary {
+        cmd_id: u64,
+        phase: CommandPhase,
+        osc: u16,
+        confidence: f32,
+    },
+    /// tag 3.
+    ExitStatus {
+        cmd_id: u64,
+        code: Option<i32>,
+        signal: Option<u8>,
+    },
+    /// tag 4. cwd is a PathRef: length-prefixed UTF-8 (a CBOR byte string is
+    /// length-prefixed), plus the lossy marker.
+    CwdChanged { cwd: String, lossy: bool },
+    /// tag 5.
+    TitleChanged { title: String, scope: TitleScope },
+    /// tag 6.
+    Resize {
+        rows: u16,
+        cols: u16,
+        px: Option<(u32, u32)>,
+    },
+    /// tag 7. trust is the fixed literal "untrusted" on the wire and is validated on
+    /// decode, so it needs no Rust field.
+    ErrorFragment {
+        cmd_id: Option<u64>,
+        redacted: String,
+        rule_ids: Vec<u16>,
+    },
+    /// tag 8.
+    ModeChanged { modes: u64 },
+    /// tag 9.
+    TransportState {
+        kind: TransportKind,
+        state: TransportStatus,
+    },
+    /// tag 10. kernel/07 section 3.6 declares reason: enum without enumerating its
+    /// members, so the field travels as an opaque text value (no member is invented
+    /// here); the member table is a registered spec gap.
+    TruncationNotice { dropped_bytes: u64, reason: String },
+    /// kernel/07 section 3.6 V3: a reader must ignore an unknown tag and count it,
+    /// never panic and never disconnect. Preserving the tag and payload verbatim is
+    /// what lets a consumer do that without losing data.
+    Unknown { tag: u64, payload: Value },
+}
+
+impl ContextEventBody {
+    #[must_use]
+    pub const fn tag(&self) -> u64 {
+        match self {
+            Self::SessionLifecycle { .. } => context_tag::SESSION_LIFECYCLE,
+            Self::CommandBoundary { .. } => context_tag::COMMAND_BOUNDARY,
+            Self::ExitStatus { .. } => context_tag::EXIT_STATUS,
+            Self::CwdChanged { .. } => context_tag::CWD_CHANGED,
+            Self::TitleChanged { .. } => context_tag::TITLE_CHANGED,
+            Self::Resize { .. } => context_tag::RESIZE,
+            Self::ErrorFragment { .. } => context_tag::ERROR_FRAGMENT,
+            Self::ModeChanged { .. } => context_tag::MODE_CHANGED,
+            Self::TransportState { .. } => context_tag::TRANSPORT_STATE,
+            Self::TruncationNotice { .. } => context_tag::TRUNCATION_NOTICE,
+            Self::Unknown { tag, .. } => *tag,
+        }
+    }
+
+    #[must_use]
+    pub fn to_payload(&self) -> Value {
+        match self {
+            Self::SessionLifecycle { state, reason } => Value::map(vec![
+                ("state", t(state.as_str())),
+                ("reason", reason.as_deref().map_or(Value::Null, t)),
+            ]),
+            Self::CommandBoundary {
+                cmd_id,
+                phase,
+                osc,
+                confidence,
+            } => Value::map(vec![
+                ("cmd_id", u(*cmd_id)),
+                ("phase", t(phase.as_str())),
+                ("osc", u(u64::from(*osc))),
+                ("confidence", Value::F32(confidence.to_bits())),
+            ]),
+            Self::ExitStatus {
+                cmd_id,
+                code,
+                signal,
+            } => Value::map(vec![
+                ("cmd_id", u(*cmd_id)),
+                (
+                    "code",
+                    code.map_or(Value::Null, |c| Value::I64(i64::from(c))),
+                ),
+                ("signal", signal.map_or(Value::Null, |s| u(u64::from(s)))),
+            ]),
+            Self::CwdChanged { cwd, lossy } => Value::map(vec![
+                ("cwd", Value::Bytes(cwd.as_bytes().to_vec())),
+                ("lossy", Value::Bool(*lossy)),
+            ]),
+            Self::TitleChanged { title, scope } => {
+                Value::map(vec![("title", t(title)), ("scope", t(scope.as_str()))])
+            }
+            Self::Resize { rows, cols, px } => Value::map(vec![
+                ("rows", u(u64::from(*rows))),
+                ("cols", u(u64::from(*cols))),
+                (
+                    "px",
+                    px.map_or(Value::Null, |(w, h)| {
+                        Value::Array(vec![u(u64::from(w)), u(u64::from(h))])
+                    }),
+                ),
+            ]),
+            Self::ErrorFragment {
+                cmd_id,
+                redacted,
+                rule_ids,
+            } => Value::map(vec![
+                ("cmd_id", cmd_id.map_or(Value::Null, u)),
+                ("redacted", t(redacted)),
+                (
+                    "rule_ids",
+                    Value::Array(rule_ids.iter().map(|r| u(u64::from(*r))).collect()),
+                ),
+                ("trust", t(CONTEXT_TRUST_UNTRUSTED)),
+            ]),
+            Self::ModeChanged { modes } => Value::map(vec![("modes", u(*modes))]),
+            Self::TransportState { kind, state } => Value::map(vec![
+                ("kind", t(kind.as_str())),
+                ("state", t(state.as_str())),
+            ]),
+            Self::TruncationNotice {
+                dropped_bytes,
+                reason,
+            } => Value::map(vec![
+                ("dropped_bytes", u(*dropped_bytes)),
+                ("reason", t(reason)),
+            ]),
+            Self::Unknown { payload, .. } => payload.clone(),
+        }
+    }
+
+    pub fn from_payload(tag: u64, p: &Value) -> Result<Self, CodecError> {
+        Ok(match tag {
+            context_tag::SESSION_LIFECYCLE => Self::SessionLifecycle {
+                state: SessionState::parse(get_text(p, "state")?)?,
+                reason: match p.get("reason") {
+                    None | Some(Value::Null) => None,
+                    Some(Value::Text(s)) => Some(s.clone()),
+                    _ => return Err(CodecError::Bad("reason")),
+                },
+            },
+            context_tag::COMMAND_BOUNDARY => {
+                let osc = get_u16_checked(p, "osc")?;
+                if osc != 133 && osc != 633 {
+                    return Err(CodecError::Bad("osc"));
+                }
+                Self::CommandBoundary {
+                    cmd_id: get_u64(p, "cmd_id")?,
+                    phase: CommandPhase::parse(get_text(p, "phase")?)?,
+                    osc,
+                    confidence: get_f32(p, "confidence")?,
+                }
+            }
+            context_tag::EXIT_STATUS => Self::ExitStatus {
+                cmd_id: get_u64(p, "cmd_id")?,
+                code: get_opt_i32(p, "code")?,
+                signal: get_opt_u8(p, "signal")?,
+            },
+            context_tag::CWD_CHANGED => Self::CwdChanged {
+                cwd: match p.get("cwd") {
+                    Some(Value::Bytes(b)) => {
+                        String::from_utf8(b.clone()).map_err(|_| CodecError::Bad("cwd utf8"))?
+                    }
+                    _ => return Err(CodecError::Missing("cwd")),
+                },
+                lossy: get_bool(p, "lossy")?,
+            },
+            context_tag::TITLE_CHANGED => Self::TitleChanged {
+                title: get_text(p, "title")?.to_string(),
+                scope: TitleScope::parse(get_text(p, "scope")?)?,
+            },
+            context_tag::RESIZE => Self::Resize {
+                rows: get_u16_checked(p, "rows")?,
+                cols: get_u16_checked(p, "cols")?,
+                px: get_opt_pair(p, "px")?,
+            },
+            context_tag::ERROR_FRAGMENT => {
+                if get_text(p, "trust")? != CONTEXT_TRUST_UNTRUSTED {
+                    return Err(CodecError::Bad("trust"));
+                }
+                Self::ErrorFragment {
+                    cmd_id: get_opt_u64(p, "cmd_id")?,
+                    redacted: get_text(p, "redacted")?.to_string(),
+                    rule_ids: get_u16_list(p, "rule_ids")?,
+                }
+            }
+            context_tag::MODE_CHANGED => Self::ModeChanged {
+                modes: get_u64(p, "modes")?,
+            },
+            context_tag::TRANSPORT_STATE => Self::TransportState {
+                kind: TransportKind::parse(get_text(p, "kind")?)?,
+                state: TransportStatus::parse(get_text(p, "state")?)?,
+            },
+            context_tag::TRUNCATION_NOTICE => Self::TruncationNotice {
+                dropped_bytes: get_u64(p, "dropped_bytes")?,
+                reason: get_text(p, "reason")?.to_string(),
+            },
+            other => Self::Unknown {
+                tag: other,
+                payload: p.clone(),
+            },
+        })
+    }
+}
+
+/// One replayed event. seq is the Log record's sequence number and the only ordering /
+/// dedup key (kernel/07 section 3.6). ts_mono_ns is the Log record timestamp: kernel/04
+/// section 3.2.2 stores exactly one ts_ns per record and does not separate a monotonic
+/// from a wall clock, so no ts_wall_ns is invented here.
+#[derive(Clone, PartialEq, Debug)]
+pub struct ReplayEvent {
+    pub seq: u64,
+    pub ts_mono_ns: u64,
+    pub pane: Option<u16>,
+    pub body: ContextEventBody,
+}
+
+impl ReplayEvent {
+    #[must_use]
+    pub fn to_value(&self) -> Value {
+        Value::map(vec![
+            ("seq", u(self.seq)),
+            ("ts_mono_ns", u(self.ts_mono_ns)),
+            ("pane", self.pane.map_or(Value::Null, |p| u(u64::from(p)))),
+            ("tag", u(self.body.tag())),
+            ("payload", self.body.to_payload()),
+        ])
+    }
+
+    pub fn from_value(v: &Value) -> Result<Self, CodecError> {
+        let tag = get_u64(v, "tag")?;
+        let payload = v.get("payload").ok_or(CodecError::Missing("payload"))?;
+        Ok(Self {
+            seq: get_u64(v, "seq")?,
+            ts_mono_ns: get_u64(v, "ts_mono_ns")?,
+            pane: match v.get("pane") {
+                None | Some(Value::Null) => None,
+                Some(_) => Some(get_u16_checked(v, "pane")?),
+            },
+            body: ContextEventBody::from_payload(tag, payload)?,
+        })
+    }
+}
+
+/// TAIL_REPLAY (0x0502, S->C) payload. from_seq is the EXCLUSIVE replay floor.
+#[derive(Clone, PartialEq, Debug)]
+pub struct TailReplay {
+    pub from_seq: u64,
+    pub events: Vec<ReplayEvent>,
+}
+
+/// TailReplay -> CBOR.
+#[must_use]
+pub fn tail_replay_to_value(r: &TailReplay) -> Value {
+    Value::map(vec![
+        ("from_seq", u(r.from_seq)),
+        (
+            "events",
+            Value::Array(r.events.iter().map(ReplayEvent::to_value).collect()),
+        ),
+    ])
+}
+
+pub fn tail_replay_from_value(v: &Value) -> Result<TailReplay, CodecError> {
+    Ok(TailReplay {
+        from_seq: get_u64(v, "from_seq")?,
+        events: get_array(v, "events")?
+            .iter()
+            .map(ReplayEvent::from_value)
+            .collect::<Result<Vec<_>, _>>()?,
+    })
+}
+
+/// The request direction of 0x0502: the same map with no replays in it. A client asks
+/// for the tail after from_seq; an absent field means "use the subscription resume
+/// point" and is handled by the broker, so it is not decoded here.
+pub fn tail_replay_request_from_value(v: &Value) -> Result<u64, CodecError> {
+    get_u64(v, "from_seq")
+}
+
+/// Tests for the TAIL_REPLAY wire (0x0502) and the kernel/07 section 3.6 oneof.
+#[cfg(test)]
+mod replay_tests {
+    use super::*;
+
+    fn hex(s: &str) -> Vec<u8> {
+        let b = s.as_bytes();
+        (0..b.len() / 2)
+            .map(|i| {
+                let hi = (b[2 * i] as char).to_digit(16).unwrap() as u8;
+                let lo = (b[2 * i + 1] as char).to_digit(16).unwrap() as u8;
+                (hi << 4) | lo
+            })
+            .collect()
+    }
+
+    // ---- TAIL_REPLAY (0x0502) and the kernel/07 section 3.6 event schema ----
+
+    fn ev(seq: u64, pane: Option<u16>, body: ContextEventBody) -> ReplayEvent {
+        ReplayEvent {
+            seq,
+            ts_mono_ns: seq * 10,
+            pane,
+            body,
+        }
+    }
+
+    fn sample_events() -> Vec<ReplayEvent> {
+        vec![
+            ev(
+                1,
+                Some(0),
+                ContextEventBody::SessionLifecycle {
+                    state: SessionState::Running,
+                    reason: Some("closed".into()),
+                },
+            ),
+            ev(
+                2,
+                None,
+                ContextEventBody::CommandBoundary {
+                    cmd_id: 9,
+                    phase: CommandPhase::PromptStart,
+                    osc: 633,
+                    confidence: 0.5,
+                },
+            ),
+            ev(
+                3,
+                Some(0),
+                ContextEventBody::ExitStatus {
+                    cmd_id: 9,
+                    code: Some(-2),
+                    signal: Some(9),
+                },
+            ),
+            ev(
+                4,
+                Some(0),
+                ContextEventBody::CwdChanged {
+                    cwd: "C:/tmp".into(),
+                    lossy: false,
+                },
+            ),
+            ev(
+                5,
+                Some(0),
+                ContextEventBody::TitleChanged {
+                    title: "term".into(),
+                    scope: TitleScope::Icon,
+                },
+            ),
+            ev(
+                6,
+                Some(0),
+                ContextEventBody::Resize {
+                    rows: 24,
+                    cols: 80,
+                    px: Some((800, 600)),
+                },
+            ),
+            ev(
+                7,
+                Some(0),
+                ContextEventBody::ErrorFragment {
+                    cmd_id: None,
+                    redacted: "<redacted>".into(),
+                    rule_ids: vec![1, 2],
+                },
+            ),
+            ev(8, Some(0), ContextEventBody::ModeChanged { modes: 0b1011 }),
+            ev(
+                9,
+                Some(0),
+                ContextEventBody::TransportState {
+                    kind: TransportKind::Wsl,
+                    state: TransportStatus::Lost,
+                },
+            ),
+            ev(
+                10,
+                Some(0),
+                ContextEventBody::TruncationNotice {
+                    dropped_bytes: 7,
+                    reason: "p1_ring_overflow".into(),
+                },
+            ),
+        ]
+    }
+
+    /// Frozen golden vector: any field rename / reorder / type change breaks this.
+    #[test]
+    fn tail_replay_matches_frozen_golden_bytes() {
+        let r = TailReplay {
+            from_seq: 5,
+            events: vec![ev(
+                6,
+                Some(0),
+                ContextEventBody::ExitStatus {
+                    cmd_id: 3,
+                    code: Some(1),
+                    signal: None,
+                },
+            )],
+        };
+        let bytes = to_bytes(&tail_replay_to_value(&r));
+        let expected = hex(
+            "A26866726F6D5F73657105666576656E747381A563736571066A74735F6D6F6E6F5F6E73183C64\
+             70616E65006374616703677061796C6F6164A366636D645F69640364636F646501667369676E616CF6",
+        );
+        assert_eq!(bytes, expected);
+        assert_eq!(
+            tail_replay_from_value(&from_bytes(&bytes).unwrap()).unwrap(),
+            r
+        );
+    }
+
+    #[test]
+    fn tail_replay_round_trips_every_section_3_6_event() {
+        let r = TailReplay {
+            from_seq: 0,
+            events: sample_events(),
+        };
+        let bytes = to_bytes(&tail_replay_to_value(&r));
+        let back = tail_replay_from_value(&from_bytes(&bytes).unwrap()).unwrap();
+        assert_eq!(back, r);
+        assert_eq!(
+            back.events.iter().map(|e| e.body.tag()).collect::<Vec<_>>(),
+            (1..=10).collect::<Vec<u64>>(),
+            "each event keeps its section 3.6 tag"
+        );
+    }
+
+    #[test]
+    fn context_event_confidence_is_a_real_binary32() {
+        let body = ContextEventBody::CommandBoundary {
+            cmd_id: 1,
+            phase: CommandPhase::CmdEnd,
+            osc: 133,
+            confidence: 0.9,
+        };
+        let bytes = to_bytes(&body.to_payload());
+        assert!(
+            bytes
+                .windows(5)
+                .any(|w| w == [0xFA, 0x3F, 0x66, 0x66, 0x66]),
+            "confidence must be CBOR binary32 (0xFA), not a byte-string carrier"
+        );
+        let back = ContextEventBody::from_payload(
+            context_tag::COMMAND_BOUNDARY,
+            &from_bytes(&bytes).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(back, body);
+    }
+
+    #[test]
+    fn tail_replay_rejects_missing_fields_and_bad_enums() {
+        // No payload at all.
+        let no_payload = Value::map(vec![("seq", u(1)), ("ts_mono_ns", u(2)), ("tag", u(3))]);
+        assert!(ReplayEvent::from_value(&no_payload).is_err());
+        // tag 3 without the required cmd_id is not a complete ExitStatus (code and
+        // signal really are optional and may be null).
+        let partial = Value::map(vec![
+            ("seq", u(1)),
+            ("ts_mono_ns", u(2)),
+            ("tag", u(3)),
+            ("payload", Value::map(vec![("code", Value::Null)])),
+        ]);
+        assert!(ReplayEvent::from_value(&partial).is_err());
+        // tag 2 with an osc outside the frozen {133, 633} set.
+        let bad_osc = Value::map(vec![
+            ("seq", u(1)),
+            ("ts_mono_ns", u(2)),
+            ("tag", u(2)),
+            (
+                "payload",
+                Value::map(vec![
+                    ("cmd_id", u(1)),
+                    ("phase", Value::Text("cmd_end".into())),
+                    ("osc", u(99)),
+                    ("confidence", Value::F32(0.5f32.to_bits())),
+                ]),
+            ),
+        ]);
+        assert!(ReplayEvent::from_value(&bad_osc).is_err());
+        // tag 7 whose trust is not the frozen literal.
+        let bad_trust = Value::map(vec![
+            ("seq", u(1)),
+            ("ts_mono_ns", u(2)),
+            ("tag", u(7)),
+            (
+                "payload",
+                Value::map(vec![
+                    ("cmd_id", Value::Null),
+                    ("redacted", Value::Text("x".into())),
+                    ("rule_ids", Value::Array(vec![])),
+                    ("trust", Value::Text("trusted".into())),
+                ]),
+            ),
+        ]);
+        assert!(ReplayEvent::from_value(&bad_trust).is_err());
+        // A request without from_seq.
+        assert!(tail_replay_request_from_value(&Value::map(vec![(
+            "events",
+            Value::Array(vec![])
+        )]))
+        .is_err());
+    }
+
+    #[test]
+    fn tail_replay_ignores_unknown_fields_for_forward_compat() {
+        // kernel/07 section 3.6 V3 / section 3.7: a newer minor adds optional fields.
+        let mut v = tail_replay_to_value(&TailReplay {
+            from_seq: 0,
+            events: sample_events(),
+        });
+        if let Value::Map(ref mut m) = v {
+            m.push((Value::Text("future_field".into()), Value::U64(1)));
+            if let Some((_, Value::Array(events))) = m.last_mut() {
+                if let Some(Value::Map(e)) = events.first_mut() {
+                    e.push((Value::Text("future_event_field".into()), Value::U64(2)));
+                }
+            }
+        }
+        let back = tail_replay_from_value(&from_bytes(&to_bytes(&v)).unwrap()).unwrap();
+        assert_eq!(back.events.len(), 10);
+        assert_eq!(back.events[0].seq, 1);
+    }
+
+    /// kernel/07 section 3.6 V3 / N-6: an unknown event tag must decode, never panic.
+    #[test]
+    fn tail_replay_unknown_tag_is_preserved_not_fatal() {
+        let r = TailReplay {
+            from_seq: 1,
+            events: vec![ev(
+                2,
+                Some(0),
+                ContextEventBody::Unknown {
+                    tag: 42,
+                    payload: Value::map(vec![("future", Value::Text("x".into()))]),
+                },
+            )],
+        };
+        let bytes = to_bytes(&tail_replay_to_value(&r));
+        let back = tail_replay_from_value(&from_bytes(&bytes).unwrap()).unwrap();
+        assert_eq!(back, r);
+        assert_eq!(back.events[0].body.tag(), 42);
+        assert_eq!(to_bytes(&tail_replay_to_value(&back)), bytes);
+    }
+
+    #[test]
+    fn tail_replay_request_is_the_same_map_without_events() {
+        let v = tail_replay_to_value(&TailReplay {
+            from_seq: 7,
+            events: vec![],
+        });
+        assert_eq!(tail_replay_request_from_value(&v).unwrap(), 7);
+        assert_eq!(
+            tail_replay_from_value(&v).unwrap(),
+            TailReplay {
+                from_seq: 7,
+                events: vec![]
+            }
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

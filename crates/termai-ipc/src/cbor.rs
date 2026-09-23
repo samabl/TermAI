@@ -2,8 +2,10 @@
 //!
 //! Implemented in-crate: no dependency enters the link boundary before it passes the
 //! ADR-0015 admission table. Supported: null, bool, unsigned/negative int, byte
-//! string, text string, array, map. Indefinite lengths are rejected: the kernel
-//! contract requires definite lengths so that a frame can never be unterminated.
+//! string, text string, array, map, and the two fixed-width IEEE-754 floats (major
+//! type 7, ai 26 / 27) required by kernel/07 section 3.6. Half-precision floats and
+//! indefinite lengths are rejected: the kernel contract requires definite lengths so
+//! that a frame can never be unterminated.
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Value {
@@ -15,6 +17,12 @@ pub enum Value {
     Text(String),
     Array(Vec<Value>),
     Map(Vec<(Value, Value)>),
+    /// IEEE-754 single precision, carried as its raw 32-bit pattern (RFC 8949 major
+    /// type 7, additional information 26). Bits rather than `f32` so that `Value` keeps
+    /// `Eq`; kernel/07 section 3.6 uses this for `CommandBoundary.confidence: f32`.
+    F32(u32),
+    /// IEEE-754 double precision, raw 64-bit pattern (RFC 8949 major type 7, ai 27).
+    F64(u64),
 }
 
 impl Value {
@@ -41,6 +49,24 @@ impl Value {
                 .iter()
                 .find(|(k, _)| k.as_text() == Some(key))
                 .map(|(_, v)| v),
+            _ => None,
+        }
+    }
+
+    /// IEEE-754 single precision value, or None for any other CBOR major type.
+    #[must_use]
+    pub fn as_f32(&self) -> Option<f32> {
+        match self {
+            Value::F32(bits) => Some(f32::from_bits(*bits)),
+            _ => None,
+        }
+    }
+
+    /// IEEE-754 double precision value, or None for any other CBOR major type.
+    #[must_use]
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            Value::F64(bits) => Some(f64::from_bits(*bits)),
             _ => None,
         }
     }
@@ -123,6 +149,14 @@ pub fn encode_into(v: &Value, out: &mut Vec<u8>) {
                 encode_into(val, out);
             }
         }
+        Value::F32(bits) => {
+            out.push(0xFA);
+            out.extend_from_slice(&bits.to_be_bytes());
+        }
+        Value::F64(bits) => {
+            out.push(0xFB);
+            out.extend_from_slice(&bits.to_be_bytes());
+        }
     }
 }
 
@@ -133,7 +167,10 @@ pub fn encode(v: &Value) -> Vec<u8> {
     out
 }
 
-fn read_head(buf: &[u8], pos: &mut usize) -> Result<(u8, u64), CborError> {
+/// Returns (major, additional information, decoded payload). The additional
+/// information is needed to tell a binary32 float (ai 26) from a binary64 float
+/// (ai 27), which share major type 7 but not a payload interpretation.
+fn read_head(buf: &[u8], pos: &mut usize) -> Result<(u8, u8, u64), CborError> {
     let first = *buf.get(*pos).ok_or(CborError::Truncated)?;
     *pos += 1;
     let major = first >> 5;
@@ -162,14 +199,14 @@ fn read_head(buf: &[u8], pos: &mut usize) -> Result<(u8, u64), CborError> {
         }
         other => return Err(CborError::UnsupportedAdditional(other)),
     };
-    Ok((major, value))
+    Ok((major, add, value))
 }
 
 fn decode_at(buf: &[u8], pos: &mut usize, depth: u8) -> Result<Value, CborError> {
     if depth > MAX_DEPTH {
         return Err(CborError::DepthExceeded);
     }
-    let (major, value) = read_head(buf, pos)?;
+    let (major, add, value) = read_head(buf, pos)?;
     match major {
         0 => Ok(Value::U64(value)),
         1 => Ok(Value::I64(-1 - value as i64)),
@@ -205,10 +242,13 @@ fn decode_at(buf: &[u8], pos: &mut usize, depth: u8) -> Result<Value, CborError>
             Ok(Value::Map(entries))
         }
         6 => Err(CborError::UnsupportedMajor(6)),
-        7 => match value {
+        7 => match add {
             20 => Ok(Value::Bool(false)),
             21 => Ok(Value::Bool(true)),
             22 => Ok(Value::Null),
+            // read_head already consumed the 4 / 8 payload bytes of ai 26 / 27.
+            26 => Ok(Value::F32(value as u32)),
+            27 => Ok(Value::F64(value)),
             _ => Err(CborError::UnsupportedMajor(7)),
         },
         other => Err(CborError::UnsupportedMajor(other)),
@@ -265,6 +305,33 @@ mod tests {
             ("ver", Value::U64(1)),
             ("kind", Value::Text("cli".into())),
         ]));
+    }
+
+    #[test]
+    fn fixed_width_floats_roundtrip_and_use_rfc_8949_encodings() {
+        // 0xFA = major 7 / ai 26 (binary32), 0xFB = major 7 / ai 27 (binary64).
+        assert_eq!(
+            encode(&Value::F32(1.5f32.to_bits())),
+            vec![0xFA, 0x3F, 0xC0, 0x00, 0x00]
+        );
+        assert_eq!(
+            encode(&Value::F64(1.5f64.to_bits())),
+            vec![0xFB, 0x3F, 0xF8, 0, 0, 0, 0, 0, 0]
+        );
+        roundtrip(Value::F32(0.9f32.to_bits()));
+        roundtrip(Value::F64((-0.25f64).to_bits()));
+        assert_eq!(Value::F32(0.9f32.to_bits()).as_f32(), Some(0.9f32));
+        assert_eq!(Value::F64(0.5f64.to_bits()).as_f64(), Some(0.5f64));
+        assert_eq!(Value::U64(1).as_f32(), None);
+    }
+
+    #[test]
+    fn half_precision_floats_are_rejected() {
+        // 0xF9 = major 7 / ai 25 (binary16), which this subset deliberately does not carry.
+        assert_eq!(
+            decode(&[0xF9, 0x3C, 0x00]),
+            Err(CborError::UnsupportedMajor(7))
+        );
     }
 
     #[test]
