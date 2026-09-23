@@ -573,16 +573,33 @@ impl Grid {
     }
 
     /// Set `LINE_WRAPPED` on the row that DECAWM just left behind (ADR-0025 D1).
+    ///
+    /// A flag-only change still has to damage the row: otherwise the wrap link never
+    /// reaches a mirror that is following GridDelta (only a full resync would carry it).
     fn mark_line_wrapped(&mut self, row: u16) {
-        if let Some(flags) = self.row_flags.get_mut(usize::from(row)) {
-            *flags |= LINE_WRAPPED;
+        let changed = match self.row_flags.get_mut(usize::from(row)) {
+            Some(flags) if *flags & LINE_WRAPPED == 0 => {
+                *flags |= LINE_WRAPPED;
+                true
+            }
+            _ => false,
+        };
+        if changed {
+            self.mark_row(row);
         }
     }
 
     /// Clear a row's LineFlags: it is no longer a wrapped continuation.
     fn clear_line_flags(&mut self, row: u16) {
-        if let Some(flags) = self.row_flags.get_mut(usize::from(row)) {
-            *flags = 0;
+        let changed = match self.row_flags.get_mut(usize::from(row)) {
+            Some(flags) if *flags != 0 => {
+                *flags = 0;
+                true
+            }
+            _ => false,
+        };
+        if changed {
+            self.mark_row(row);
         }
     }
 

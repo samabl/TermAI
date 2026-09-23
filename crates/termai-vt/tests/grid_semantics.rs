@@ -187,6 +187,34 @@ fn autowrap_sets_line_wrapped_on_the_row_it_leaves() {
 }
 
 #[test]
+fn autowrap_flag_change_is_carried_by_the_grid_delta() {
+    // ADR-0025 D3: termai-render consumes row_flags from the delta stream, so the
+    // wrap must damage the row it marks; otherwise only a full resync would show it.
+    let mut t = Terminal::new(5, 3);
+    let initial = t.take_delta(0).expect("initial damage");
+    t.feed(b"abcde");
+    let fill = t.take_delta(initial.rev).expect("cell writes");
+    let row0 = fill
+        .rows
+        .iter()
+        .find(|p| p.row == 0)
+        .expect("row 0 payload");
+    assert_eq!(
+        row0.flags & LINE_WRAPPED,
+        0,
+        "the wrap has not happened yet"
+    );
+    t.feed(b"f");
+    let wrap = t.take_delta(fill.rev).expect("wrap damage");
+    let row0 = wrap
+        .rows
+        .iter()
+        .find(|p| p.row == 0)
+        .expect("the wrapped row must be damaged");
+    assert_ne!(row0.flags & LINE_WRAPPED, 0);
+}
+
+#[test]
 fn explicit_line_feed_does_not_set_line_wrapped_and_clears_it() {
     let mut t = Terminal::new(5, 3);
     t.feed(b"abcde\n");
