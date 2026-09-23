@@ -46,6 +46,28 @@ export function statedCounts(text) {
 }
 
 const CN = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10 };
+// --- gate-count claim (added round 240): 'N gates in each job' against the GATE_PAIRS rows ---
+// Countable from source, with no judgement in the answer, so it belongs here rather than in a candidate
+// lister. The risk is missing a rephrased claim, not a false report.
+export function gatePairCount(text) {
+  const lines = text.split(NL);
+  const s = lines.findIndex(function (l) { return l.indexOf('const GATE_PAIRS = [') >= 0; });
+  if (s < 0) return -1;
+  let n = 0;
+  for (let i = s; i < lines.length; i += 1) {
+    if (i > s && lines[i].trim() === '];') break;
+    if (/^    \['/.test(lines[i])) n += 1;
+  }
+  return n;
+}
+
+export function statedGateCounts(text) {
+  const out = [];
+  const re = /各(\S+?)道门禁/g;
+  let m;
+  while ((m = re.exec(text)) !== null) out.push(m[1]);
+  return out;
+}
 export function cnToNum(s) {
   if (/^[0-9]+$/.test(s)) return parseInt(s, 10);
   if (s === '十') return 10;
@@ -96,5 +118,12 @@ for (const f of files) {
     if (v !== n) { bad += 1; console.log('MISMATCH ' + f + ': states ' + s.stated + ' (' + v + '), section 6.3 has ' + n); }
   }
 }
-console.log('check-claims: section 6.3 has ' + n + ' rule(s); ' + (bad ? bad + ' mismatch(es)' : 'every stated count agrees'));
+const realGates = gatePairCount(fs.readFileSync(path.join('tools', 'kernel-gates', 'check.mjs'), 'utf8'));
+for (const f of files) {
+  for (const s of statedGateCounts(fs.readFileSync(f, 'utf8'))) {
+    const v = cnToNum(s);
+    if (v !== realGates) { bad += 1; console.log('MISMATCH ' + f + ': states ' + s + ' (' + v + ') gates, GATE_PAIRS has ' + realGates); }
+  }
+}
+console.log('check-claims: GATE_PAIRS lists ' + realGates + ' pair(s); ' + (bad ? bad + ' mismatch(es)' : 'every stated count and gate count agrees'));
 process.exit(bad ? 1 : 0);
