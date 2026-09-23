@@ -926,6 +926,29 @@ pub struct SegmentRead {
 }
 
 /// Read a whole segment, stopping at the first damaged record.
+/// Read only the fixed-size segment header, verifying its magic and CRC.
+///
+/// Each sealed segment records where it starts in `SegmentHeader::first_seq`, so a caller can locate
+/// the segment covering a sequence without reading any records. This exists for the cross-segment
+/// replay window (A10): the broker walks headers from the newest segment backwards to find the first
+/// segment the window needs, then reads only those segments.
+///
+/// # Errors
+/// Fails if the file is shorter than a header, or if the header's magic or CRC does not verify.
+pub fn read_segment_header(path: &Path) -> Result<SegmentHeader, LogError> {
+    let mut file = File::open(path)?;
+    let mut hb = [0u8; SEGMENT_HEADER_LEN];
+    let mut read = 0_usize;
+    while read < SEGMENT_HEADER_LEN {
+        let n = file.read(&mut hb[read..])?;
+        if n == 0 {
+            return Err(LogError::Truncated { offset: 0 });
+        }
+        read += n;
+    }
+    SegmentHeader::decode(&hb)
+}
+
 pub fn read_segment(path: &Path) -> Result<SegmentRead, LogError> {
     let mut bytes = Vec::new();
     File::open(path)?.read_to_end(&mut bytes)?;
@@ -1440,6 +1463,35 @@ mod tests {
         }
         let expected: Vec<u64> = (0..20).collect();
         assert_eq!(seqs, expected, "seq must be monotonic across segments");
+    }
+
+    #[test]
+    fn read_segment_header_reports_first_seq_without_reading_records() {
+        let dir = tmp_dir("header-only");
+        let mut w = SegmentWriter::create(&dir, 0, 7, [0u8; 8], 1, 0).unwrap();
+        w.append(
+            &Record::PtyOut {
+                pane: 0,
+                bytes: vec![1; 16],
+            },
+            0,
+        )
+        .unwrap();
+        w.flush(FlushMode::FsyncFull).unwrap();
+
+        let h = read_segment_header(w.path()).unwrap();
+        assert_eq!(
+            h.first_seq, 7,
+            "the header must carry the segment's first seq"
+        );
+
+        // Negative control: a file shorter than a header must be refused, not misread.
+        let short = dir.join("short.seg");
+        std::fs::write(&short, [0u8; 8]).unwrap();
+        assert!(matches!(
+            read_segment_header(&short),
+            Err(LogError::Truncated { .. })
+        ));
     }
 
     #[test]
