@@ -52,7 +52,7 @@
 >
 > **全部门禁（第 144 轮实跑复核：六个 check 与四个 selftest 全绿）**：`kernel-gates` **8 PASS / 0 FAIL**；`conformance` **gating 64/64（R=1.0）**、ctlseqs 208/208、**G1: NOT_JUDGED**；`bench:check` **7 PASS / 0 FAIL** 但 **gating INCONCLUSIVE / REFERENCE_MACHINE_UNAVAILABLE**（`gatingNumbersProduced: 0`）。
 >
-> **E-P0-1 当前口径（已过 AR-27 两次运行自检，失败集合逐字节相同）**：**267 passed / 41 known-bug / 259 failed / substitutions 0**，调用必须带 `-- --expected-terminal xterm --xterm-checksum 336`（缺它会得到 110/117 一类**伪失败**，见计划 §6.3 规则 8）。
+> **E-P0-1 当前口径（已过 AR-27 自检；**第 145 轮在当前树上第三次确认——失败集合与第 97 轮逐字节相同**，说明第 98–144 轮的全部改动（CI 接线、`A10` 三部件、四个 selftest、K8 配对强制）**没有引入任何回归**）**：**267 passed / 41 known-bug / 259 failed / substitutions 0**，调用必须带 `-- --expected-terminal xterm --xterm-checksum 336`（缺它会得到 110/117 一类**伪失败**，见计划 §6.3 规则 8）。
 >
 > **现在还剩什么、以及为什么**：
 > 1. **要决策的（不在实现者权限内）**：`docs/plan/p0-open-decisions.md` **五项**（D-4：§8.2 可靠性测量的归属与口径；**D-5：§5 测量实现的主场——ADR-0014 的 xtask 不存在，实际主场是 Node `tools/bench`**）——**D-1 判定域**（约 69 条 + 颜色 45 + `XtermWinops` 19 的归属；**建议子集读法**）、**D-2 颜色能力声明**（建议 P0 不应答）、**D-3 设备身份**（建议报真实身份）。**一次评审可推进 118+ 条。**
