@@ -31,3 +31,24 @@
 2. **单复数**：第二版只匹配复数 `tests passed` / `tests failed`，而 esctest 对**单条**用例写 `1 test passed` 与 `1 TEST FAILED` → 全部落进「无匹配」→ **又一次假全绿**。**修正**：`tests?`。
 
 两次都是**命令错、被测对象没错**，且**只有去读汇总行原文才发现**（当时是 `0 tests passed` / `1 TEST FAILED`）。与计划 §6.3 规则 11 同源：**结论异常时先重跑或换写法，再怀疑被测对象**。
+
+## Reverse-wrap slice spec（第 268 轮补记：9 条的真实性质与精确契约）
+
+9 条真实失败**全部是反绕（reverse wraparound）**，不是网格 bug：
+
+| 项 | 值 |
+| --- | --- |
+| 常量 | `XTREVWRAP = 45`（xterm 380 起）、`XTREVWRAP2 = 1045`（xterm 383 起的收窄版） |
+| esctest 选择 | `esccmd.ReverseWraparound()`：`--xterm-reverse-wrap >= 383` 时返回 1045，否则返回 **45** |
+| **我们的调用** | 适配器**不传** `--xterm-reverse-wrap`（默认 **0**）→ esctest 取 **45**，并走各测试 `else` 分支的**旧行为（pre-383）** |
+| 前置 | 反绕**同时**需要 `DECAWM`（测试 `test_BS_ReverseWrapRequiresDECAWM` 证明：只 mode 45 不反绕，只 DECAWM 不反绕） |
+
+**需要实现的语义（旧行为 = 我们当前被断言的那一支）**：
+
+1. 新增 `MODE_REVERSE_WRAP`（private mode **45**；`DECRQM` 也要能报它）。
+2. **BS（0x08）**：`wrap_pending` 为真时**只取消它、光标不动**（`test_DECSET_ReverseWraparoundLastCol_BS`：末列写 `b` 后 BS，x 仍是 width）；否则 x>1 时 x−1；x==1 且 mode45+DECAWM 时**回上一行末列**；若已在**上边距**（scroll_top）则绕到**下边距**（scroll_bottom）末列（`test_BS_ReverseWrapGoesToBottom`：`DECSTBM(2,5)`、CUP(1,2)、BS → **(80,5)**）。
+3. **CUB（CSI Ps D）**：同样的反绕，但要按次数逐格移动；`test_CUB_AfterNoWrappedInlines`/`AfterOneWrappedInline` 的 `else` 分支给出确切落点（**80 列下分别是 (5,3) 与 (9,3)**）。
+4. 边距/左右边距交互（`@vtLevel(4)` 的那几条当前**不在** level-1 判定集内，但实现时不要把它们弄坏）。
+
+**为什么我（编排者）本轮没直接改**：旧行为的精确落点依赖逐格移动 + 上下边距绕行 + `wrap_pending` 取消三者的组合，而 `test_BS_WrapsInWraparoundMode`（空行从 (1,3) 反绕到 (80,2)）与 `test_BS_AfterNoWrappedInlines`（同样 mode 45 却不越硬换行）**只有把完整测试体读全才不矛盾**；盲改会把「顺序污染」与「真实语义」再搅在一起。**下一轮的验收判据**：逐条单跑 9 条全绿 + `esctest-report` 的 `failed_real` 从 **18** 继续下降，且**不得**改动已被 triage 判为污染的那 10 条。
+

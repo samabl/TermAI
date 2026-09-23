@@ -95,6 +95,7 @@ node tools/conformance/triage-single.mjs <log> <ClassPrefix 或 ALL> <outRoot>
 坑：分诊必须到单条用例——按类隔离对类内污染是盲的（第 82 轮）。
 坑：--include 是正则；类名里的点号会匹配任意字符。
 坑：空输出要当无效，不是 0 失败（第 81 轮把自己的过滤写法错当成工具无输出）。
+坑（第 268 轮）：**esctest 的反绕测试取决于 `--xterm-reverse-wrap` 的取值**——不传时默认 **0**，`ReverseWraparound()` 返回 **45**，各测试走 **`else`（pre-383 旧行为）**分支；若将来为别的目的加上该参数，**同一批断言会换成另一组期望值**（这正是计划 §6.3 规则 8 的又一实例：数字与产生它的命令不可分离）。
 坑（第 263 轮，两次假绿）：**esctest 的单条用例汇总行是单数**——`1 test passed` 与 `1 TEST FAILED`；若解析只写复数，会把「跑了 1 条且失败」读成「无匹配」。且 **`--include` 用锚定正则（`^Name$`）会一条都不匹配**，而「无匹配」与「0 失败」在汇总行上都表现为 `0 tests passed`。**判据**：解析后必须确认 `passed + failed + known-bug > 0`，否则判 `INVALID`，不得当成通过。
 
 ## 5. 改动的验收顺序（每次照做）
