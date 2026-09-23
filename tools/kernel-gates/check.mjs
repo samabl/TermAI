@@ -16,7 +16,7 @@
 //                   refused dependencies (portable-pty, AR-28.3)
 //   K5 license      every package.license == "Apache-2.0 OR MIT" (or license.workspace = true),
 //                   and [workspace.package].license == that SPDX expression (AR-21)
-//   K6 spec-defects the M0 (SD-01..SD-08) and P0 (SD-09..SD-18) registers stay complete
+//   K6 spec-defects the M0 (SD-01..SD-08) and P0 (SD-09..SD-23) registers stay complete
 //   K7 codeowners   .github/CODEOWNERS names every tracked top-level directory and every
 //                   rule names an owner; spec 07 section 3.1.2 requires 100% coverage and
 //                   "no directory without an owner may merge"
