@@ -1,0 +1,3 @@
+KEY "Pabc\x18z"
+ASSERT ROW 0 = z
+ASSERT COUNTER string_cancelled = 1

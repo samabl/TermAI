@@ -1,0 +1,2 @@
+KEY "]0;hello\x07"
+ASSERT TITLE hello

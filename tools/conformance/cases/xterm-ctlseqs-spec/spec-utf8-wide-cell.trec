@@ -1,0 +1,3 @@
+KEY "あ"
+ASSERT ROW 0 = あ
+ASSERT CURSOR 0 2

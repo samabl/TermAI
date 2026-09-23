@@ -1,0 +1,5 @@
+KEY "a\r\nb"
+KEY "[1;1H[1L"
+ASSERT ROW 0 =
+ASSERT ROW 1 = a
+ASSERT ROW 2 = b

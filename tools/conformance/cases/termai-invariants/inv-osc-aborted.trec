@@ -1,0 +1,4 @@
+KEY "]0;abc[31mok"
+ASSERT ROW 0 = ok
+ASSERT COUNTER osc_aborted = 1
+ASSERT TITLE =

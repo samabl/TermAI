@@ -1,0 +1,2 @@
+KEY "hi"
+ASSERT ROW 0 = hi

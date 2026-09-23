@@ -1,0 +1,5 @@
+KEY "[1;80H"
+KEY "a"
+KEY "b"
+ASSERT CURSOR 1 1
+ASSERT ROW 1 = b

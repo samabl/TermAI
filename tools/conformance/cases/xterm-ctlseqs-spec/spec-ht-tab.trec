@@ -1,0 +1,2 @@
+KEY "a\tb"
+ASSERT ROW 0 = a       b

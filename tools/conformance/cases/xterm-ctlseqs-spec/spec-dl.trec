@@ -1,0 +1,3 @@
+KEY "a\r\nb"
+KEY "[1;1H[1M"
+ASSERT ROW 0 = b

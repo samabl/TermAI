@@ -1,0 +1,3 @@
+KEY "]0;unterminated[1;1Hdone"
+ASSERT ROW 0 = done
+ASSERT COUNTER osc_aborted = 1

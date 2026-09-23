@@ -15,7 +15,11 @@
     "kernel:check": "node tools/kernel-gates/check.mjs",
     "kernel:selftest": "node tools/kernel-gates/check.mjs --selftest",
     "bench:check": "node tools/bench/check.mjs",
-    "bench:selftest": "node tools/bench/check.mjs --selftest"
+    "bench:selftest": "node tools/bench/check.mjs --selftest",
+    "conformance": "node tools/conformance/run.mjs",
+    "conformance:check": "node tools/conformance/run.mjs --determinism-check",
+    "conformance:gen": "node tools/conformance/gen-spec.mjs",
+    "conformance:verify": "node tools/conformance/gen-spec.mjs --check"
   },
   "engines": {
     "node": ">=22"

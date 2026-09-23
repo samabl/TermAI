@@ -1,0 +1,4 @@
+KEY "abc"
+KEY "[2J"
+ASSERT ROW 0 =
+ASSERT CURSOR 0 3

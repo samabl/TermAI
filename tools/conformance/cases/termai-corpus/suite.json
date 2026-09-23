@@ -1,0 +1,5 @@
+{
+  "suite": "termai-corpus",
+  "suite_version": "crates/termai-vt/corpus (in-repo regression corpus)",
+  "oracle": "termai-corpus"
+}

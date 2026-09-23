@@ -1,0 +1,4 @@
+KEY "[?7l[1;80H"
+KEY "a"
+KEY "b"
+ASSERT CURSOR 0 79

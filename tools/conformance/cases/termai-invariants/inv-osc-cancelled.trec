@@ -1,0 +1,3 @@
+KEY "]0;abc\x18z"
+ASSERT ROW 0 = z
+ASSERT COUNTER string_cancelled = 1
