@@ -67,6 +67,20 @@
 **未解之谜**：**esctest 路径下 `DECSTBM(2,4)` 之后 `scroll_top/scroll_bottom` 到底是什么？** 若为全屏，则两个 got 值同时成立。
 
 **下一步（明确可执行）**：**在真实路径里取数**——让 harness 在 `CUD`/`CUU` 上输出一次性诊断（或让探针走同一条 `--server` 路径），直接打印 esctest 路径下的 region 与光标；**不要在另一个测试里复现序列再跨路径比较**。改动已回滚、探针已删除，证据留在本条。
+### A4 附：第 64 轮——真实路径测量法（本会话最有用的工具）与 CUD/CUU 的半解
+
+**方法**：不必靠 esctest 全量去判断一个改动是否生效，可直接驱动 harness 本体——它的行协议是 `FEED <hex>`：
+
+```powershell
+$s = "FEED 1b5b323b34721b5b333b31481b5b3939421b5b366e`nQUIT`n"   # DECSTBM(2,4); CUP(3;1); CUD(99); DSR
+$s | & .\target\debug\termai-vt-conformance.exe --server
+```
+
+**实测**：改动前 `RESP 1b5b32343b3152`（`\x1b[24;1R`，第 24 行）；改动后 `RESP 1b5b343b3152`（`\x1b[4;1R`，**第 4 行 = 规范要求**）。**已提交**（`f4fe7fe`）。
+
+**同时解释了第 61/63 轮的「无效果」**：那两次 `cargo build` 输出 `Finished ... in 0.04s` 且**没有 `Compiling` 行**——**量的是未含改动的旧二进制**。**教训：`cargo build` 必须看到 `Compiling termai-vt` 才算重建；否则测的是旧产物。**
+
+**仍未解**：同一份 exe 直接 `FEED` 得到第 4 行，但**经适配器跑 esctest 仍是 `got 24`**（passed 仍 224 / failed 302）。**差异在适配器发送的内容或其建立的状态，不在此改动**。**因此那两条用例不声称已修好**；下一步：对单条用例 dump 适配器实际 FEED 的字节。
 ## B. 尚未闭合的契约 / 规格登记（SD 系列）
 
 | 编号 | 内容 | 状态 |
