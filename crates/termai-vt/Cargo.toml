@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
+description = "TermAI VT engine: ECMA-48/xterm parser, grid, charsets, DECSTR/DECSC/alt-buffer, mode and cursor handling, replay (kernel/01, kernel/05)."
 
 [dependencies]
 termai-core = { workspace = true }

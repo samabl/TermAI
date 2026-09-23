@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
+description = "termai CLI: PTY launch, logdump, grid digest, and the protocol probes used to confirm a change reached the measured binary (kernel/02)."
 
 [[bin]]
 name = "termai"
