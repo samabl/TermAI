@@ -84,7 +84,7 @@ node tools/conformance/triage-single.mjs <log> <ClassPrefix 或 ALL> <outRoot>
 | 网络（仅非公网可达） | 渲染依赖的 SPDX 证据 → E-P0-2 无法准入 |
 | RM-A/B/C 参考机 | E-P0-3 的判定（接线已完成） |
 | 仓库设置 / 发起人 | C1 TSC、C2 CODEOWNERS 双签、C3 分支保护、C5 真实 CI 运行 |
-| **Chrome / Edge（`CHROME_PATH`）** | **`design:check` 的浏览器层（B4 视觉回归）：本机无浏览器时该门禁**判 FAIL**（`maxDiffPct=0` 无法比对），**而 CI 的 design job 会安装浏览器**。**第 250 轮实跑：`design:check` 得 `19 PASS / 1 FAIL`，唯一阻断项是 B4**——**因此「全绿」指的是**本机能跑的那些门禁**，设计门禁与 vttest 同属**环境受限** | **⚠ 第 251 轮补精确化**：**本机跑不了的只是 `design:check` 的**浏览器层**——**它的 `--selftest` 在本机**可以跑，且**通过**（**`injected faults caught: 19/19`**，**注入施加在临时副本上、原型源未被改动**）。**因此「环境受限」指的是**核查**，不是**自检**。**（同一轮实测：`tokens:selftest` 亦通过——**至此六个 selftest 在本机全部跑通**：kernel 23/23、bench、ci-cost 3/3、conformance、tokens、design 19/19。）**
+| **Chrome / Edge（`CHROME_PATH`）** | **`design:check` 的浏览器层（B4 视觉回归）：本机无浏览器时该门禁**判 FAIL**（`maxDiffPct=0` 无法比对），**而 CI 的 design job 会安装浏览器**。**第 250 轮实跑：`design:check` 得 `19 PASS / 1 FAIL`，唯一阻断项是 B4**——**因此「全绿」指的是**本机能跑的那些门禁**，设计门禁与 vttest 同属**环境受限** | **⚠ 第 251 轮补精确化**：**本机跑不了的只是 `design:check` 的**浏览器层**——**它的 `--selftest` 在本机**可以跑，且**通过**（**`injected faults caught: 19/19`**，**注入施加在临时副本上、原型源未被改动**）。**因此「环境受限」指的是**核查**，不是**自检**。**（同一轮实测：`tokens:selftest` 亦通过——**至此六个 selftest 在本机全部跑通**：kernel 23/23、bench、ci-cost 3/3、conformance、tokens、design 19/19。）** **⚠ 第 252 轮再补：该门禁**半数可在本机跑****——**`design:check --static` 实测 `10 PASS / 0 FAIL / 10 SKIP`，result PASS，exit 0**（**10 个 SKIP 就是浏览器层的那些，工具明确标注「not executed: --static / --no-browser requested」**）。**因此准确的画像是**：**静态层（10 关）本机通过；浏览器层（10 关）本机无法执行——`--static` 下 SKIP，完整检查下因 B4 无法比对而 FAIL。** **而 CI 的 design job 正是分两步跑**（先 static layer、再 full）——**本机与 CI 的差别因此只在第二步。**
 ## 7. 约定检查（文档自身的规则，可运行）
 
 ```powershell
