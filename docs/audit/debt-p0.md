@@ -113,6 +113,8 @@
 | A10 | ~~**跨段重放未实现**（TAIL_REPLAY 只读当前 segment；旋转后只会 BelowWindow）~~ **已实现（第 115–125 轮）**：`read_segment_header`（`55b4441`）→ `replay_window_check_across`（`6d5b75d`）→ broker 接线（`8faa12c`）→ **端到端验收**（`83f3fef`：`broker_with_rotated_log` 造 ≥2 段的轮转日志，跨边界窗口**被接受**；对照：下界早于所有段仍须拒绝；**helper 内含「确实轮转过」的守卫**，防恒真）。**关键事实**：`SegmentHeader.first_seq` 在头部，所以按段头由新到旧走查——**常见情形只多一次头部读、attach 延迟不随日志年龄增长**（AR-26 第 4 条 <2s）。 | T1 | 段滚动/归档后必须仍能重放或明确要求全量快照 | ADR-0026 D3、kernel/04 §3.2.1、AR-26 第 4 条 |
 | A11 | **TailReplay 事件只投影 5 类** → **不能替代 GRID_SNAPSHOT** | T1 | 新增 tag 须先出 ADR | ADR-0026 D5 |
 | A12 | **IPC fuzz smoke 已落地**（`c495e07`：确定性 xorshift64*、固定种子、≥20000 次、随机帧头极端 `len` 不分配、CBOR 不 panic、含**正例对照组**）。**仍缺**：① **24h / ≥10⁸ 次**的持续 fuzz（G6 门禁本体，需 CI 排期）；② PTY 与 VT 侧的持续 fuzz；③ 8 MiB 上限端到端实跑与 broker 的 `FRAME_TOO_LARGE` 分支单测 | T1 | AGENTS §6；G6 = 24h 无 crash | §8.1-6、DC-37 |
+| A13 | **VRM**：**映射 + 模式切换均已落地**（`1055f0f` 映射；`14bedbb` `VrmState` 持有/切换 + **RP-08 操作面断言**：`Fold→Clip→Fold` 后 `mirror.rev()`、`canonical_bytes()` 不变且 `take_damage()` 为空）。**仍缺**：`ScrollAnchor`、命中测试、a11y 投影、显示行总数、从配置读模式；另有一处已知粗化——`VisualRow.clipped` 是**单一 bool**，无法区分「遮住头/尾/两端」，而 kernel/03 §3.8 的 `VRowKind` 信息更多（按切片边界未做） | T1 | 每一步都不得改变列数与复制字节 | AR-23 §6、kernel/03 K-10、RP-08 |
+| A14 | **`HARNESS.md:686` 的目录清单仍写「ADR-0001…ADR-0027」**，而 `ADR-0028` 已于第 177 轮落地（其 README 索引行也已于第 192 轮补上） | 文档 | ~~是否更新该行~~ **已解决（第 194 轮）**：**`git log -L 686,686:HARNESS.md` 显示该行**在每一次新增 ADR 的提交里都被改过**——ADR-0023（`d85030b`）、0024（`5601d1d`）、0025（`ec27022`）、0026（`15b81be`）、0027（`14cc76d`）。**因此「新增 ADR 即更新此行」是本项目既有的约定**，**第 177 轮我未照做，此行因此停在 0027**。**已按约定改为 `ADR-0001…ADR-0028`，并标注 ADR-0028 为 Accepted。** | — |
 ### §2 八条不可协商约束的核实状态（第 196 轮汇总：已核实四条、空洞四条，后者因其対象尚未存在）
 
 | # | 约束 | 状态 | 依据 |
@@ -127,8 +129,6 @@
 | **8** | **AR-21** 核心链接边界内不得出现 GPL／AGPL／SSPL | ✅ **已核实，且已被门禁守住** | `K4` 的 `GPL_DENY_TOKENS`（`agpl`/`gpl`/`sspl`）+ `isDeniedName`，`kernel-gates` 8 PASS 中常有此条 |
 
 **结论**：**八条中四条已核实（其中两条已由门禁守住）、四条因対象尚未存在而空洞**。**空洞不是「安全」**——**它们是「尚未可违反」**：**AR-01 与 AR-12 的上半会在 E-P0-2 的第一刀落地时同时变成可违反，而那时需要的是「先写检查，再写代码」**（§6.3 规则 10）。
-| A13 | **VRM**：**映射 + 模式切换均已落地**（`1055f0f` 映射；`14bedbb` `VrmState` 持有/切换 + **RP-08 操作面断言**：`Fold→Clip→Fold` 后 `mirror.rev()`、`canonical_bytes()` 不变且 `take_damage()` 为空）。**仍缺**：`ScrollAnchor`、命中测试、a11y 投影、显示行总数、从配置读模式；另有一处已知粗化——`VisualRow.clipped` 是**单一 bool**，无法区分「遮住头/尾/两端」，而 kernel/03 §3.8 的 `VRowKind` 信息更多（按切片边界未做） | T1 | 每一步都不得改变列数与复制字节 | AR-23 §6、kernel/03 K-10、RP-08 |
-| A14 | **`HARNESS.md:686` 的目录清单仍写「ADR-0001…ADR-0027」**，而 `ADR-0028` 已于第 177 轮落地（其 README 索引行也已于第 192 轮补上） | 文档 | ~~是否更新该行~~ **已解决（第 194 轮）**：**`git log -L 686,686:HARNESS.md` 显示该行**在每一次新增 ADR 的提交里都被改过**——ADR-0023（`d85030b`）、0024（`5601d1d`）、0025（`ec27022`）、0026（`15b81be`）、0027（`14cc76d`）。**因此「新增 ADR 即更新此行」是本项目既有的约定**，**第 177 轮我未照做，此行因此停在 0027**。**已按约定改为 `ADR-0001…ADR-0028`，并标注 ADR-0028 为 Accepted。** | — |
 
 **第 44 轮按同法复核 `DL` / `SD`**：两簇的**首个失败用例**分别是 `test_DL_ClearOutLeftRightAndTopBottomScrollRegion` 与 `test_SD_BigScrollLeftRightAndTopBottomScrollRegion`（`dl.py:215`、`sd.py:194`），名字里的 **LeftRight** 指向**左右边距**（`DECSLRM` / 使能模式 69）——**同样不在 §3.5 表内**，`set_private_mode` 无 69、`set_scroll_region` 只处理 `CSI r`。→ 这两个失败用例属 **(b) 子集外偏差候选**，**不是核心 DL/SD 错**。
 
