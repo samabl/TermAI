@@ -26,7 +26,7 @@
 >
 > 4. **环境缺口（非排期缺口）**：vttest（无 C 编译器）、G1 真实语料 oracle（需 Xvfb + 钉定 xterm）、渲染依赖 SPDX 证据（网络受限）、RM-A/B/C 参考机（E-P0-3 判定）。
 >
-> 5. **现在就能开工的（本会话唯一一项）**：**§5 的 NON_GATING 呈现**——见 `docs/plan/p0-open-decisions.md` **D-6**：**为五个 `machine: none` 的行（H12/H13/H17/H18/H19）产出并标注 NON_GATING 的值**。**输入来源（H17←`tools/design-gates`；H18/H19←`tokens`；H12←`InputEncoder`；H13←无）、硬边界（`B7` 要求 `gatingNumbersProduced` 恒为 0）、验收证明要求（注入 + 对照）均已写明。** **它不需要参考机、不需要 TSC、不需要新环境**——**是四项待决之外唯一可立即开工的 P0 工作**。
+> 5. **现在就能开工的（本会话唯一一项）**：**§5 的 NON_GATING 呈现**——**完整规格见 `docs/plan/p0-open-decisions.md` D-6 的五步**（值的来源 → 值的**进入路径**（`--report` 现只校验 schema，**读取路径不存在，这是要建的东西**）→ 呈现 → 计数器 → 验收）。**范围经第 187 轮收窄**：**可立即开工的是 `governed: no` 的三行（H17/H18/H19）**——**H17←`tools/design-gates`、H18/H19←`tokens`**；**H12（`governed: partial`）需先解释其含义**；**H13（`governed: yes` 且 `machine: none`）与 `B7` 存在待澄清的张力，不在本批**。**硬边界经第 188/189 轮更正**：**不是「`B7` 要求恒为 0」**（那条判据因计数器是**字面常量**而**处于沉睡**）——**而是「必须把计数器做成从结果计算的值」，并注入一个产出 gating 数字的行以确认 `B7` 因此判 FAIL**。**验收证明要求（注入 + 对照）见 D-6 第 ⑤ 步。** **它不需要参考机、不需要 TSC、不需要新环境**——**是四项待决之外唯一可立即开工的 P0 工作**。
 >
 > **本会话新增的机器产物**：`docs/audit/esctest-classification.md` + `docs/audit/esctest-failing-index.md`（268→259 条失败的全量定位与分类，由 `tools/conformance/{failing-index,classify-esctest}.mjs` 生成）。
 >
