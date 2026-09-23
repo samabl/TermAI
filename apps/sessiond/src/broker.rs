@@ -805,24 +805,58 @@ impl Broker {
             .registry
             .log_position(self.session)
             .map_or(0, |(_, seq)| seq);
-        let read = match termai_session::log::read_segment(&path) {
-            Ok(r) => r,
-            Err(_) => {
-                return Ok(vec![replay_refusal(
-                    corr_id,
-                    termai_session::log::ReplayGap::TailUnreadable {
-                        last_valid: None,
-                        head,
-                    },
-                )])
-            }
+        // A10: the floor may lie in an earlier segment after rotation, so gather every segment from
+        // the one the window starts in. Segments ascend by first_seq, so walking newest-first and
+        // stopping at the first one that starts at or below the floor keeps a contiguous suffix. In
+        // the usual case (floor inside the newest segment) this is one header read and no extra
+        // record I/O, which is what keeps attach latency off the session's age - AR-26 item 4.
+        let unreadable = || {
+            replay_refusal(
+                corr_id,
+                termai_session::log::ReplayGap::TailUnreadable {
+                    last_valid: None,
+                    head,
+                },
+            )
         };
-        if let Err(gap) = termai_session::log::replay_window_check(&read, from_seq, head) {
+        let Some(dir) = path.parent() else {
+            return Ok(vec![unreadable()]);
+        };
+        let Ok(segs) = termai_session::log::list_segments(dir) else {
+            return Ok(vec![unreadable()]);
+        };
+        let mut keep_from = 0_usize;
+        let mut found = false;
+        for idx in (0..segs.len()).rev() {
+            match termai_session::log::read_segment_header(&segs[idx].1) {
+                Ok(h) => {
+                    keep_from = idx;
+                    if h.first_seq <= from_seq {
+                        found = true;
+                        break;
+                    }
+                }
+                Err(_) => return Ok(vec![unreadable()]),
+            }
+        }
+        if !found && !segs.is_empty() {
+            // Every segment starts above the floor; keep them all so the check reports BelowWindow
+            // with the true first_available rather than a fabricated tail error.
+            keep_from = 0;
+        }
+        let mut reads = Vec::with_capacity(segs.len() - keep_from);
+        for (_, seg_path) in &segs[keep_from..] {
+            match termai_session::log::read_segment(seg_path) {
+                Ok(r) => reads.push(r),
+                Err(_) => return Ok(vec![unreadable()]),
+            }
+        }
+        if let Err(gap) = termai_session::log::replay_window_check_across(&reads, from_seq, head) {
             return Ok(vec![replay_refusal(corr_id, gap)]);
         }
-        let events: Vec<codec::ReplayEvent> = read
-            .records
+        let events: Vec<codec::ReplayEvent> = reads
             .iter()
+            .flat_map(|r| r.records.iter())
             .filter(|r| r.id.seq > from_seq)
             .filter_map(replay_event_from_record)
             .collect();
