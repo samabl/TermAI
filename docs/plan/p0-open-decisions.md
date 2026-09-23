@@ -142,6 +142,15 @@
 
 **第 253 轮：步骤 ① 的**可取得值**已实测（本机）**——**这使该步不必从零开始**：
 
+**✅ 第 254 轮：步骤 ① 已**实做并通过 B8**——不再只是规格**。**做法**：按 `BENCH_REPORT_SCHEMA`（`tools/bench/lib.mjs:290`）写出含 **H18（26）与 H19（5.17）两条 `metrics`** 的报告（**H17 缺失，原因见上**），**再用 `node tools/bench/check.mjs --report <path>` 校验**：
+
+| 尝试 | B8 结果 |
+| --- | --- |
+| 第一版 | **FAIL，4 处违规**：`selfcheck` 的三处 verdict 写成 `SKIP`（**该枚举只许 `PASS\|FAIL\|INCONCLUSIVE\|INVALID`**）；**且缺必填字段 `cost`** |
+| 修正后 | **PASS**——「report satisfies kernel/06 3.4 / 3.7 schemaVersion 1.0.0」 |
+
+**因此实现步骤 ② 的人不必再踩这两处**：**① `selfcheck.*.verdict` 用 `INCONCLUSIVE`（不是 `SKIP`——`SKIP` 只存在于**指标**级枚举）；② `cost` 是必填对象 `{ minutes, runnerClass, estUsd }`（在 schema 末尾，容易漏读）。** **示例报告在 `target/bench/h17-h18-h19-partial.json`（构建目录、不入库）**；**其存在证明：本机可为 H18／H19 产出**符合 kernel/06 3.7 的报告**。**
+
 | 行 | 值从哪来 | **本机实测结果** |
 | --- | --- | --- |
 | **H18 硬编码色值** | `tokens:check` 第 5 关 | **26 处硬编码色值（17 个不同）**，位于 `termai-ui-prototype.html`（**该关 warn-only，故 `result: PASS`**） |
