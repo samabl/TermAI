@@ -282,6 +282,11 @@ jobs:
       # INCONCLUSIVE state by design: a non-gating result must not turn the build red.
       - name: bench:check (structural gates; section 5 numbers NON_GATING per ADR-0014)
         run: npm run bench:check
+      # The kernel gates get a selftest in CI; the bench gates must too, or their non-always-green
+      # property is only ever demonstrated on a developer's machine. This injects faults and proves
+      # the judgement logic reports them (bench:selftest, 6 control + 21 fault branches).
+      - name: bench:selftest (inject faults; prove the bench gates can fail)
+        run: npm run bench:selftest
       # G1's gating lane. The upstream esctest adapter lives in conformance:upstream and needs the
       # pinned checkout, so it is deliberately not wired here; this runs the L0 corpus only, which
       # reports G1: NOT_JUDGED until a real-corpus oracle is available.
@@ -330,6 +335,11 @@ jobs:
       # INCONCLUSIVE state by design: a non-gating result must not turn the build red.
       - name: bench:check (structural gates; section 5 numbers NON_GATING per ADR-0014)
         run: npm run bench:check
+      # The kernel gates get a selftest in CI; the bench gates must too, or their non-always-green
+      # property is only ever demonstrated on a developer's machine. This injects faults and proves
+      # the judgement logic reports them (bench:selftest, 6 control + 21 fault branches).
+      - name: bench:selftest (inject faults; prove the bench gates can fail)
+        run: npm run bench:selftest
       # G1's gating lane. The upstream esctest adapter lives in conformance:upstream and needs the
       # pinned checkout, so it is deliberately not wired here; this runs the L0 corpus only, which
       # reports G1: NOT_JUDGED until a real-corpus oracle is available.
