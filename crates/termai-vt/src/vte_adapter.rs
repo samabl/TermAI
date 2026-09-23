@@ -580,6 +580,8 @@ fn csi_known(intermediates: &[u8], action: char) -> bool {
                 | 'F'
                 | 'G'
                 | 'H'
+                | 'I'
+                | 'Z'
                 | 'f'
                 | 'J'
                 | 'K'

@@ -1022,6 +1022,25 @@ impl Grid {
         self.mark_cursor();
     }
 
+    /// CBT stepping: move to the previous tab stop, stopping at column 1.
+    fn tab_back(&mut self) {
+        let mut col = self.cursor_col;
+        while col > 0 {
+            col -= 1;
+            if self
+                .tab_stops
+                .get(usize::from(col))
+                .copied()
+                .unwrap_or(false)
+            {
+                break;
+            }
+        }
+        self.cursor_col = col;
+        self.wrap_pending = false;
+        self.mark_cursor();
+    }
+
     fn line_feed(&mut self) {
         self.wrap_pending = false;
         if self.cursor_row == self.scroll_bottom {
@@ -1725,6 +1744,18 @@ impl Grid {
                 let row = params.get(0).saturating_sub(1);
                 let col = params.get(1).saturating_sub(1);
                 self.cup(row, col);
+            }
+            b'I' => {
+                // CHT: cursor forward tabulation (ECMA-48). Ps defaults to 1.
+                for _ in 0..def(params.get(0)) {
+                    self.tab();
+                }
+            }
+            b'Z' => {
+                // CBT: cursor backward tabulation (ECMA-48). Ps defaults to 1.
+                for _ in 0..def(params.get(0)) {
+                    self.tab_back();
+                }
             }
             b'J' => self.erase_display(params.get(0)),
             b'K' => self.erase_line(params.get(0)),
