@@ -17,7 +17,7 @@ mod vte_adapter;
 pub use backend::{
     AdvanceReport, BackendCaps, BackendId, EscapeSink, Params, ParseError, ParseErrorKind,
     ParserState, StringKind, StringTerm, VtBackend, DCS_LEN_LIMIT_DEFAULT, MAX_PARAMS,
-    OSC_LEN_LIMIT_DEFAULT,
+    OSC_LEN_LIMIT_DEFAULT, SOS_PM_LEN_LIMIT_DEFAULT,
 };
 pub use counters::VtCounters;
 pub use golden::{golden_hash, parse_golden, write_golden, GoldenDoc, GoldenError};

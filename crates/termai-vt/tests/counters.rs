@@ -32,9 +32,11 @@ fn every_counter_key_has_a_trigger() {
     t.feed(b"\x1b]0;x\x1bA");
     record(&t, ParseErrorKind::OscAborted, &mut seen);
 
-    let mut t = Terminal::new(40, 4);
+    // Explicit small limits keep this wiring test independent of the default caps
+    // (ADR-0023 D2 raised the defaults to OSC 1 MiB / DCS 16 MiB).
+    let mut t = Terminal::with_backend(40, 4, Box::new(VteBackend::new().with_limits(64, 64)));
     let mut osc = b"\x1b]0;".to_vec();
-    osc.extend(std::iter::repeat(b'x').take(70_000));
+    osc.extend(std::iter::repeat(b'x').take(200));
     osc.push(0x07);
     t.feed(&osc);
     record(&t, ParseErrorKind::OscOverflow, &mut seen);
