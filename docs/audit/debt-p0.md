@@ -336,6 +336,23 @@ CHECKSUM 1 1 1 1
 
 **两者都是标准 ECMA-48（`ESC 7`/`ESC 8`）的核心序列**，**不在 §3.5 表内是因为它们属核心**，与 CHT/CBT 同源——**属真缺陷，不是子集外**。
 
+### A4 附：第 87 轮——`AltVsMain` 所需的修法已定位，但**不能复用 `alt_saved`**（改动已回滚）
+
+**用例要求**（`save_restore_cursor.py:120-142`）：**主屏与备用屏各自维护 `DECSC` 保存位置**——主屏 `CUP(2,3)` 后 `DECSC`；切到备用屏 `CUP(6,7)` 后 `DECSC`；切回主屏后 `DECRC` **应得 `Point(2,3)`**（实得 `Point(6,7)`）。xterm 特有行为（DEC 终端无备用屏），`grid.rs` 的注释也写明了这一动机。
+
+**我先尝试的修法（已回滚）**：让 `save_cursor`/`restore_cursor` 按 `self.alt` 选择写入 `saved` 或 `alt_saved`。**结果：该用例仍失败。**
+
+**原因（读代码后确认）**：**`alt_saved` 已被 `set_alt` 占用**——`grid.rs:1636-1642` 在**进入**备用屏时把当前光标存进 `alt_saved`，`1667-1672` 在**退出**（`save_cursor=true`，即模式 1049）时用它恢复。**所以 `alt_saved` 的语义是「1049 进出备用屏的光标」，不是「备用屏里的 DECSC 槽」。** 我的改动既没修好用例，又**有可能破坏 1049 的语义**——**因此回滚是正确的**。
+
+**正确的修法（已写明，下一轮可直接做）**：**新增一个独立字段**（如 `alt_decsc: SavedCursor`）专供备用屏里的 `DECSC`：
+1. `save_cursor`：`if self.alt { self.alt_decsc = saved } else { self.saved = saved }`；
+2. `restore_cursor`：`let saved = if self.alt { self.alt_decsc } else { self.saved }`；
+3. `soft_reset`：**同时**把 `saved` 与 `alt_decsc` 重置为默认（与第 79/86 轮一致）；
+4. **不要碰 `alt_saved`**（它属于 `set_alt`/1049）。
+5. 并补一条单元测试：主屏 `DECSC` → 切备用屏 → `DECSC` → 切回 → `DECRC` 得主屏位置；**再切回备用屏 `DECRC` 得备用屏位置**（覆盖用例的两半）。
+
+**状态**：改动**已回滚**；`cargo test -p termai-vt` **0 失败**；`kernel-gates` **8 PASS / 0 FAIL**。
+
 ### A4 附：第 86 轮——**DECSTR 不应移动光标（+3，达 256）**；并记录一次我自己的流程违规
 
 **代码改动（`f6d6c29`）**：`soft_reset()` 原先**把光标归位**。`esctest` 的 `test_SaveRestoreCursor_Reset` 证明这是错的：写 `a`（光标到第 2 列）→ `DECSC` → **`DECSTR`** → 写 `b`——**期望 `b` 落在光标原本所在处，而不是家**；再 `DECRC`、写 `c`，第 1 行应为 `"cb"`。**归位会让 `b` 覆盖 `a`，第 1 行变成 `c`。** 现在只重置「保存的位置」为家，**不动光标**。
