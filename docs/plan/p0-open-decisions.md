@@ -127,6 +127,18 @@
 
 
 **⚠ 第 181 轮对本节的更正（自我更正第 18 次）**：**「已有实现」三行必须按门禁强度区别对待，不能一律说成「已实现」**——**读 `tools/tokens/check.mjs` 第 3 行的自述**：「`// Gates: (1) schema (2) AR-22 rulers (3) WCAG contrast (4) codegen drift (5) hex debt (**warn only**).`」**因此**：
+**⚠ 第 183 轮：读 B7 之后，本节的任务定性必须再改一次——「让 bench 产出 §5 数字」是一个**不可能也不允许**的工作**。**`tools/bench/check.mjs:676` 的 B7 门禁是「机器绑定诚实边界」，其判据在 `:688`**：**`if (status.gatingNumbersProduced !== 0) problems.push('this tool produced …')`**——**即：本机没有参考机（RM-A/RM-C）时，工具**必须产出零个 gating 数字**；产出了就判 FAIL**。**其 PASS 文案（`:704`）也写着「no reference machine on this host: every discovered value is NON_GATING」。**
+
+**因此正确的任务定性是**：
+
+| 行 | 能否在本机产出**gating** 数字 | 能否产出**NON_GATING** 值 |
+| --- | --- | --- |
+| **H1–H11（machine: RM-A/RM-C）** | **不能，且被 `B7` 禁止**（产出即 FAIL）——**这是 ADR-0014 的有意设计，不是缺陷** | 可以（标注 NON_GATING） |
+| **H12、H13、H17、H18、H19（machine: none）** | — | **可以，且它们的 `governed` 本就是 `no`**（非门禁） |
+
+**所以 E-P0-3 的「§5 测量实现」在本机的可执行形态是**：**为 machine-free 的五行产出并标注 NON_GATING 的值**，**而不是「让 bench 报出 gating 数字」**——**后者在任何没有 RM-A/RM-C 的机器上都是被 `B7` 主动拒绝的**。**一个按「让 bench 报数字」派下去的工单会在 `B7` 前撞墙，而撞墙的原因写在 ADR-0014 里。**
+
+**这条更正同时解释了第 180 轮那句「`gating numbers produced: 0`」**：**它不是「没做」，而是**系统按设计拒绝在没有参考机时给出 gating 数字**——**以及没有把 machine-free 的五行按 NON_GATING 报出来**。
 **⚠ 第 182 轮：完成 H17 的核实，并再次收窄本节的判断（自我更正第 19 次）**。**① H17 的门禁值不等于 §5 的 0.1%，而是**更严**：**`tools/design-gates/browser.mjs:454`**——**`maxDiffPct` 的默认值是 `0`**（`opts.maxDiffPct === undefined ? 0 : …`），**而 `:720` 的判定是**：**`maxDiffPct > 0 ? d.diffPct <= maxDiffPct : d.diffPixels === 0`**——**即默认以「零个不同像素」为准，严格于 §5 的 ≤0.1%**。**且它确实阻断**（超限即失败，`:736`）。**因此 H17 不是弱项，而是超集**。
 
 **② 更重要：「绑定缺口」比我第 180 轮说的要小**。**H17 在 `registry.mjs` 里的 `owner` 字段写的就是 `tools/design-gates`、`carrier` 写的就是 `design:check`**——**即：H 行与实现工具之间的对应关系，本来就记在 `owner` / `carrier` 两个字段里**。**我第 180 轮说「实现没有被绑定到 H 行」，这一句需要收窄**：**绑定信息存在于登记表，缺的是「`tools/bench` 把这些 H 行作为 §5 测量报告出来」**（这正是 `gating numbers produced: 0` 的含义）。
