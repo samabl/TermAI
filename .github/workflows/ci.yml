@@ -287,6 +287,11 @@ jobs:
       # reports G1: NOT_JUDGED until a real-corpus oracle is available.
       - name: conformance L0 (G1 corpus, gating lane)
         run: npm run conformance
+      # ADR-0014 decision 6 / spec 06 A-PM-12: the cost manifest must be complete and the month under
+      # the cap. The structural part of this check gates (schema, arithmetic), and it fails only when
+      # the cap is actually reached - a reading under the cap must not turn the build red.
+      - name: ci-cost check (manifest schema + monthly cap per A-PM-12)
+        run: node tools/ci-cost/check.mjs
 
   # ADR-0014 decision 2: Linux x64 is a first-class gate platform, so it gets a native
   # runner instead of a cross-check issued from Windows. See the platform-matrix block at the
@@ -330,6 +335,11 @@ jobs:
       # reports G1: NOT_JUDGED until a real-corpus oracle is available.
       - name: conformance L0 (G1 corpus, gating lane)
         run: npm run conformance
+      # ADR-0014 decision 6 / spec 06 A-PM-12: the cost manifest must be complete and the month under
+      # the cap. The structural part of this check gates (schema, arithmetic), and it fails only when
+      # the cap is actually reached - a reading under the cap must not turn the build red.
+      - name: ci-cost check (manifest schema + monthly cap per A-PM-12)
+        run: node tools/ci-cost/check.mjs
       - name: Regenerate tokens and fail on artifact drift
         run: |
           node tools/tokens/build.mjs
