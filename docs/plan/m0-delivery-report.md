@@ -146,6 +146,7 @@ M0 实现期间本工作区**不是 git 仓库**，因此当时的交付**无法
 - 已补齐忽略规则：设计门禁的比对产物（`*.current.png`）与本地排障捕获文件（`*.out.txt`、`zz_probe*`）不入库；`prototype/reference/`（第三方 GPL 截图）与 `target/` 保持排除。
 - **CI tokens 作业的漂移步骤如今可实际执行**：`node tools/tokens/build.mjs` 后 `git diff --exit-code` 通过（此前无 VCS，该步骤无法验证）。
 - **CI 作用域收窄为 Windows-only（有意为之，需追认）**：全部作业改跑 `windows-latest`，并新增 `windows-build` 作业产出 release 二进制（`termai` 534 KB / `sessiond` 130 KB / `pty_echo` 138 KB）。选 Windows 的理由是主平台（DC-16 / ConPTY）且入库的视觉基线是 win32-x64，设计门禁在此最强。**但这与 ADR-0014 的 v1 门禁架构（Win x64 + Linux x64 + macOS arm64）不一致**，属临时范围收窄，P0 出口前必须补齐。恢复 Linux 的代价已核实并写进 `ci.yml` 头注释：`cargo check --workspace --all-targets --target x86_64-unknown-linux-gnu` **当前通过（exit 0）**，但 K2 `clippy -D warnings` 会在 Linux 上失败（cfg(unix) 分支与 Windows-only 测试辅助代码有 warning），需先清理；macOS arm64 从未编译过。
+- **CI 成本与触发范围（待决策，未实现）**：当前每次 push 跑全部 5 个作业，Windows runner 按 2 倍计费，而文档类提交（如本行所在文件）也会触发含 K3/B4 的完整套件。直觉上的做法是给 workflow 加 `paths-ignore`，但**这会踩一个已知陷阱**：被跳过的必需检查永远不会上报，开启分支保护后 PR 会永久卡住。正确做法是把「必需检查」拆成独立 workflow 或用 job 级条件（且必须始终存在一个必然上报的检查）。我**没有**擅自实现，因为这会改变门禁拓扑，需与 spec 07 §3.4.2 的 PR 分级一起决定。
 - **运行期会话日志隔离**：CLI 默认把 Session Log 写到 `.termai/logs/`，其中含**原始 PTY 输出**；该目录此前未被忽略，一旦在仓库内运行就会把终端内容变成待提交文件。已加入 `.gitignore`（AR-11 / §6.3：命令输出属 L2 敏感数据，默认不出设备，更不得入库）。
 - **许可文件补齐**：AR-21 与 ADR-0013 §27 要求仓库根提供 `LICENSE-APACHE` 与 `LICENSE-MIT`（全栈 **Apache-2.0 OR MIT**），M0 期间缺失，现已补入（Apache-2.0 含 APPENDIX 的完整文本 + 标准 MIT 文本及本项目版权行）。
 - **CODEOWNERS 与 PR 模板已建立**：`.github/CODEOWNERS` 逐条对齐 docs/spec/07 §3.1.2 的团队映射（T1 core-kernel / T2 shell-ux / T5 devex），并覆盖全部受版本控制的顶层目录；`.github/pull_request_template.md` 编码 AGENTS §6 的编号追溯、§2 的八条不可协商自检、HARNESS §8.1 六件套门禁与 AR-20 诚实声明。
@@ -174,6 +175,8 @@ push 即构建已生效：run #35808461735（首次）与 run #35809183560（修
 - **B4 视觉回归：7 个基线全部 MISMATCH**，diff 0.044%–1.245%（门禁要求 ≤0.1%，AA 容差为逐通道 ±2 且不允许有超差像素），`bbox` 覆盖整块卡片区域，属**基线来源环境不一致**（字体光栅化/Chrome 版本/DPI 差异）。B4 的比对必须由**与验证同一环境**生成基线才成立，而当前基线是开发机产物。修法明确：在 runner 上跑一次 `npm run design:baseline` 生成并入库，但这需要把产物从 runner 取回——现有 workflow 契约只允许 `actions/checkout` 与 `actions/setup-node`，加 `actions/upload-artifact` 需要一次 ADR 决策。
 
 **产物输出（ADR-0021，对应发起人「后续构建需输出产物」）**：windows-build 作业现在以 `--locked` 构建、生成 SHA-256 校验和，并通过 actions/upload-artifact 上传产物，命名 `termai-0.1.0-win32-x64-<short sha>`、保留 14 天、缺产物即失败。产物白名单**仅含三个二进制 + SHA256SUMS.txt**：公开仓库的 Actions 产物对全世界可下载，故日志、门禁报告、会话日志与任何含绝对路径的文件一律不上传（AR-11 / HARNESS §6.3 把路径与命令输出列为 L2）。该约束由新增的静态门禁 **K8** 机器校验（上传步骤存在 + 设置 retention-days + path 不含 denylist + 未使用未准入 action），使「构建必须输出产物」成为门禁而不是一句约定。
+
+**产物输出的实测证据（run #35810016818）**：产物名 `termai-0.1.0-win32-x64-ab09e7a2`，**368,599 B**，过期时间 2026-10-07（14 天）。下载后目录内容**恰好**是白名单 4 项：`termai.exe` 534,016 B / `sessiond.exe` 130,048 B / `pty_echo.exe` 138,240 B / `SHA256SUMS.txt` 238 B——**没有日志、没有门禁报告、没有任何带路径的文件**。3 个 SHA-256 全部匹配（`verified_ok=3, mismatched=0`）。**K8 在 runner 上同样 PASS**，说明「构建必须输出产物」的门禁不是本地假绿。
 
 > **结论**：**"push 后自动构建"已达成**（构建作业稳定绿、配置缺陷已修并在 CI 中验证）。但按 HARNESS §8.1，**当前 pipeline 仍是红的**：K3 是产品缺陷、B4 是基线环境问题，两者都不得标注为「已通过」。
 
