@@ -4,9 +4,9 @@
 > Implementation set read from crates/termai-vt/src/grid.rs (set_private_mode / set_standard_mode):
 > private 1/6/7/25/47/1047/1049/2004, standard 4.
 
-- tests classified: 273
+- tests classified: 268
 - uses-unimplemented-mode: 78
-- no-extension-mode (core-defect candidates): 195 (of which 186 make no DECSET/DECRESET/DECRQM call at all)
+- no-extension-mode (core-defect candidates): 190 (of which 181 make no DECSET/DECRESET/DECRQM call at all)
 - unresolved: 0
 
 ## Top unimplemented modes among failing tests
@@ -114,8 +114,6 @@
 | DECICTests.test_DECIC_ScrollEntirelyOffRightEdge | - |
 | DECICTests.test_DECIC_ScrollOffRightEdge | - |
 | DECIDTests.test_DECID_Basic | - |
-| DECRCTests.test_SaveRestoreCursor_AltVsMain | - |
-| DECRCTests.test_SaveRestoreCursor_Reset | - |
 | DECRQMTests.test_DECRQM_ANSI_EBM | - |
 | DECRQMTests.test_DECRQM_ANSI_FEAM | - |
 | DECRQMTests.test_DECRQM_ANSI_FETM | - |
@@ -178,7 +176,6 @@
 | DECSETTiteInhibitTests.test_SaveRestoreCursor_Reset | - |
 | DECSETTiteInhibitTests.test_SaveRestoreCursor_ResetsOriginMode | - |
 | DECSETTiteInhibitTests.test_SaveRestoreCursor_WorksInLRM | - |
-| DECSTRTests.test_DECSTR_CursorStaysPut | - |
 | ECHTests.test_ECH_respectsISOProtection | - |
 | EDTests.test_ED_respectsISOProtection | - |
 | ELTests.test_EL_respectsISOProtection | - |
@@ -191,8 +188,6 @@
 | ResetSpecialColorTests.test_ResetSpecialColor_Multiple2 | - |
 | ResetSpecialColorTests.test_ResetSpecialColor_Single | - |
 | ResetSpecialColorTests.test_ResetSpecialColor_Single2 | - |
-| SCORCTests.test_SaveRestoreCursor_AltVsMain | - |
-| SCORCTests.test_SaveRestoreCursor_Reset | - |
 | SCORCTests.test_SaveRestoreCursor_WorksInLRM | - |
 | SMTests.test_SM_LNM | - |
 | TBCTests.test_TBC_0 | - |

@@ -4,9 +4,9 @@
 > the lead builds the index so a later workstream only does a pure transformation
 > (read the function body at the given file:line and extract the DECSET/DECRESET/DECRQM modes).
 
-- log: target/conformance/softreset/esctest.log
-- failing test names: 273 (deduplicated)
-- located in tests/*.py: 273 / 273
+- log: target/conformance/altfix/esctest.log
+- failing test names: 268 (deduplicated)
+- located in tests/*.py: 268 / 268
 
 | test | file:line |
 | --- | --- |
@@ -132,8 +132,6 @@
 | DECICTests.test_DECIC_ScrollOffRightEdge | decic.py:105 |
 | DECICTests.test_DECIC_ScrollOffRightMarginInScrollRegion | decic.py:147 |
 | DECIDTests.test_DECID_Basic | decid.py:12 |
-| DECRCTests.test_SaveRestoreCursor_AltVsMain | decset_tite_inhibit.py:34 |
-| DECRCTests.test_SaveRestoreCursor_Reset | save_restore_cursor.py:62 |
 | DECRQMTests.test_DECRQM_ANSI_EBM | decrqm.py:156 |
 | DECRQMTests.test_DECRQM_ANSI_FEAM | decrqm.py:120 |
 | DECRQMTests.test_DECRQM_ANSI_FETM | decrqm.py:126 |
@@ -213,7 +211,6 @@
 | DECSETTiteInhibitTests.test_SaveRestoreCursor_Reset | save_restore_cursor.py:62 |
 | DECSETTiteInhibitTests.test_SaveRestoreCursor_ResetsOriginMode | decset_tite_inhibit.py:26 |
 | DECSETTiteInhibitTests.test_SaveRestoreCursor_WorksInLRM | decrc.py:14 |
-| DECSTRTests.test_DECSTR_CursorStaysPut | decstr.py:214 |
 | DLTests.test_DL_ClearOutLeftRightAndTopBottomScrollRegion | dl.py:198 |
 | DLTests.test_DL_InLeftRightAndTopBottomScrollRegion | dl.py:178 |
 | DLTests.test_DL_InLeftRightScrollRegion | dl.py:142 |
@@ -243,8 +240,6 @@
 | ResetSpecialColorTests.test_ResetSpecialColor_Multiple2 | reset_special_color.py:69 |
 | ResetSpecialColorTests.test_ResetSpecialColor_Single | reset_special_color.py:11 |
 | ResetSpecialColorTests.test_ResetSpecialColor_Single2 | reset_special_color.py:28 |
-| SCORCTests.test_SaveRestoreCursor_AltVsMain | decset_tite_inhibit.py:34 |
-| SCORCTests.test_SaveRestoreCursor_Reset | save_restore_cursor.py:62 |
 | SCORCTests.test_SaveRestoreCursor_WorksInLRM | decrc.py:14 |
 | SDTests.test_SD_BigScrollLeftRightAndTopBottomScrollRegion | sd.py:178 |
 | SDTests.test_SD_LeftRightAndTopBottomScrollRegion | sd.py:158 |
