@@ -8,8 +8,10 @@
       "invocation": {
         "expected_terminal": "xterm",
         "xterm_checksum": 336,
-        "claimed_vt_level": 1
+        "claimed_vt_level": 1,
+        "xterm_reverse_wrap": 383
       },
+      "xterm_reverse_wrap_rule": "The terminal we pin is a modern xterm, so esctest must be told the reverse-wrap patch level (>= 383). With the default 0, esctest's ReverseWraparound() returns private mode 45 and judges us by pre-2023 semantics, which is a different ruler (ADR-0030 D-1). At >= 383 it returns 1045 (broad), while tests that set mode 45 directly keep testing the narrowed behaviour - matching xterm's cursor.c CursorBack.",
       "claimed_vt_level_rule": "ADR-0030 D-1: claimed_vt_level is the highest N whose xterm DA1 expected set is entirely implemented. Level 1 = [1,2] (VT100 + Advanced Video Option), which this implementation can claim; level 2 would require 6/9/15/22/29 and is not claimable.",
       "static_capability_exclusions": [
         {
@@ -46,6 +48,16 @@
           "reason": "DECCOLM (CSI ? 3 h, 80/132 columns) is not implemented in v1: the grid's column count is fixed and reflow writeback is frozen out by kernel/03 V-06. DA1 bit 1 keeps its DEC/ECMA meaning (VT100 + AVO) under the K-03 arbitration order, so it is not a promise of 132-column support. Static precondition; revoke with E-P0-2.",
           "excluded_case_count_measured": 2,
           "excluded_case_count_source": "docs/audit/esctest-level1-triage.md"
+        },
+        {
+          "capability": "c1-8bit-controls",
+          "test_prefixes": [
+            "DECIDTests.test_DECID_Basic"
+          ],
+          "citation": "ADR-0030 section 6; kernel/01 OQ-VT-14 (8-bit C1 is not recognised in UTF-8 mode); AR-20",
+          "reason": "DECID is the 8-bit C1 control 0x9A. OQ-VT-14 froze the rule that UTF-8 mode does not recognise 8-bit C1: the byte is counted as c1_8bit_in_utf8 and never dispatched as DECID, so this case cannot pass without inventing a non-default mode. Static capability precondition; revoke if a non-UTF-8 mode is ever exposed.",
+          "excluded_case_count_measured": 1,
+          "excluded_case_count_source": "target/conformance/lvl1-rev383/esctest.log (the last remaining failed_real case)"
         }
       ]
     }

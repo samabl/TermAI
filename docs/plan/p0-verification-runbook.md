@@ -39,10 +39,10 @@ npm run bench:selftest                       # 期望 PASS - every injection was
 ## 2. esctest（E-P0-1 的计数字段）
 
 ```powershell
-python tools/conformance/upstream/esctest_adapter.py --esctest <esctest2 检出> --out target/conformance/<name> -- --expected-terminal xterm --xterm-checksum 336 --max-vt-level 1
+python tools/conformance/upstream/esctest_adapter.py --esctest <esctest2 检出> --out target/conformance/<name> -- --expected-terminal xterm --xterm-checksum 336 --max-vt-level 1 --xterm-reverse-wrap 383
 ```
 
-期望（**级别 1**，第 257 轮 ADR-0030 起必须显式声明级别）：*** 99 tests passed, 378 known bugs, 90 TESTS FAILED *** 与 substitutions=0。
+期望（**级别 1 + `--xterm-reverse-wrap 383`**，第 257 轮 ADR-0030 起级别必须显式，第 270 轮起反绕 flag 也必须显式）：*** 124 tests passed, 376 known bugs, 67 TESTS FAILED *** 与 substitutions=0。**再经 `esctest-report` 判定后**：`excluded_by_capability 67`（47 color-query + 17 xterm-window-ops + 2 deccolm-132 + 1 c1-8bit-controls）、**`failed_real 0`**、eligible 124。**只报 `TESTS FAILED` 而不报 `failed_real` 与级别/flag，是不完整的口径。**
 
 **第 257 轮（ADR-0030）：esctest 的数字必须连「级别 + eligible 分母」一起报，缺级别的数字不得引用。**
 规则：声明的 VT 级别 = xterm DA1 在该级别的 expected 集合**全部为已实现能力**的最高级别（当前 = **1**）；**禁止**按失败数选级别。

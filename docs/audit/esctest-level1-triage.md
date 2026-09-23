@@ -120,3 +120,14 @@ for (;;) {
 
 **我方判断（待 owner/评审确认）**：**A**。理由：我们要声称的是「与钉定 xterm 一致」，而钉定版本是现代的（≥383）；用 flag 0 等于**故意让 esctest 按 2023 年以前的 xterm 评判我们**，这正是 ADR-0030 D-1「数字必须连级别一起报」要防的那类口径漂移。**A 的代价是重跑并重记一整套数字**，不是放宽门禁。
 
+
+## 第 270 轮结案：level 1 `failed_real = 0`
+
+- 反绕按 xterm `cursor.c` 的 `CursorBack` **忠实移植**：mode 45（收窄，要求目标行 `LINE_WRAPPED`，失败则行还原、列落左边距）与 mode 1045（广义，上边距时落 `bottom + 1`）分成两条路径；`wrap_pending` 吸收一步。
+- 调用口径补齐：`suites.json` 的 `invocation.xterm_reverse_wrap = 383`（现代钉定终端），命令随之加 `--xterm-reverse-wrap 383`。
+- **实测（level 1 + flag 383）**：passed **124** / known-bug 376 / failed_raw **67**；`excluded_by_capability` **67**（47 color-query + 17 xterm-window-ops + 2 deccolm-132 + 1 c1-8bit-controls）；**`failed_real` 0**；eligible 124。
+- 最后一条 `DECIDTests.test_DECID_Basic` 以 **`c1-8bit-controls`** 能力声明排除（OQ-VT-14：UTF-8 模式不识别 8-bit C1），**不是**被"修好"。
+- 门禁：kernel 8 PASS、`--selftest` 30/30、conformance L0 68/68 R=1.0、waivers PASS、check-claims 10 pairs、fmt/clippy 干净。
+
+> **不得据此声称 G1 通过**：这只是 **level 1** 的判定集，且其中 **67 条是声明的能力缺失**（可撤销的排除，不是通过），另有 **376 条因级别不足未运行**（`excluded_by_vt_level` 仍是 unknown）。V-02 的「100%」只在 `E − S_cap` 上说；E-P0-1 的对外状态仍是 **未判定**。
+

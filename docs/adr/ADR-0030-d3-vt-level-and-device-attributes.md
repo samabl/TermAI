@@ -48,6 +48,7 @@ ADR-0029 D-3 决定「`DA` / `DA2` / `DECID` 必须实现，且与钉定 oracle 
 4. 低级别下 known-bug 中混有大量**「因级别不足未运行」**的用例——报告必须把这一类**单列**为 `excluded_by_vt_level`，不得叙述成「已知缺陷」。
 5. E-P0-1 的口径由此**改写为**：「level 1 eligible 189 条，其中失败 90 条；另有 378 条因级别不足未运行」。**两个数字必须同时出现。**
    > **勘误（第 261 轮，D-3 落地后实测；只改数字，不改语义）**：level 1 = **103 passed / 378 known-bug / 86 failed**（raw eligible 仍 **189** = passed+failed）；应用 D-2 的 `color-query` 静态排除后，**gate-eligible = 189 − 47 = 142，failed_real = 39**。该换算由 `tools/conformance/esctest-report.mjs` 机械化（7/7 注入 + 对照），**不得手算**；`excluded_by_vt_level` 报为 `unknown`（log 无逐用例级别归属）。上表为 D-3 之前的快照，保留以记录尺子的变化。
+   > **勘误 2（第 270 轮，只加口径、不改语义）**：**调用还必须显式声明反绕 flag `--xterm-reverse-wrap 383`**。理由：不传时 esctest 默认 0，于是 `ReverseWraparound()` 返回 **mode 45** 并按 **2023 年以前**的 xterm 语义评判我们——**尺子换了而数字没换**。声明 383 后 esctest 返回 **1045**（广义），而**直接设置 mode 45 的用例仍测收窄语义**，与 xterm `cursor.c` 的 `CursorBack` 一致（45 要求目标行 `LineTstWrapped`，1045 无条件）。**ed 后本机 level 1 = 124 passed / 376 known-bug / 67 failed；经 `esctest-report` 判定 `excluded_by_capability 67`、`failed_real 0`。** **教训与 §6.3 规则 8 同源：数字必须连它的命令一起报。**
 
 ### D-2｜级别 1 的可执行应答
 

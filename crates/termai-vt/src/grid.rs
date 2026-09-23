@@ -621,12 +621,6 @@ impl Grid {
         self.modes & MODE_AUTOWRAP != 0
     }
 
-    /// Whether reverse wraparound is active: DECSET 45 (or the extended 1045) together
-    /// with DECAWM, matching xterm's `CursorBack` test for REVERSEWRAP|WRAPAROUND.
-    fn reverse_wrap(&self) -> bool {
-        self.autowrap() && self.modes & (MODE_REVERSE_WRAP | MODE_REVERSE_WRAP2) != 0
-    }
-
     fn linefeed_newline(&self) -> bool {
         self.modes & MODE_LINEFEED != 0
     }
@@ -1548,55 +1542,75 @@ impl Grid {
         self.mark_cursor();
     }
 
-    /// CUB / BS: move left `n` columns, reverse-wrapping when DECSET 45 (or 1045)
-    /// and DECAWM are both set.
+    /// CUB / BS: xterm's CursorBack (cursor.c), ported faithfully rather than approximated.
     ///
-    /// This is xterm's pre-380 `CursorBack`, which the conformance harness selects with
-    /// its default `--xterm-reverse-wrap 0`: a pending wrap (the cursor parked past the
-    /// last column) absorbs one step, and a wrap past the left margin leaves the cursor
-    /// at the right margin of the previous row. Starting on the top margin, it lands at
-    /// the right margin of the bottom margin instead (xterm's "wrap to the end of the
-    /// screen" case). Larger `n` moves a whole row at a time by computing the linear
-    /// cell offset, as xterm does.
+    /// Two reverse-wrap modes exist and they are NOT equivalent: private mode 45 crosses
+    /// only a boundary whose row carries LINE_WRAPPED and otherwise fails the wrap (the row
+    /// is restored and the column lands on the left margin), while mode 1045 wraps
+    /// unconditionally and, from the top margin, lands at bottom + 1. Both need DECAWM, and
+    /// a pending wrap absorbs one step. Left/right margins (DECLRMM) are not implemented, so
+    /// the left margin is always 0.
     fn cursor_left(&mut self, n: u16) {
-        const LEFT: i32 = 0;
+        let left: i32 = 0;
         let right = i32::from(self.cols.saturating_sub(1));
         let before = i32::from(self.cursor_col);
-        let top = self.scroll_top;
-        let bottom = self.scroll_bottom;
-        let rev = self.reverse_wrap();
+        let top = i32::from(self.scroll_top);
+        let bottom = i32::from(self.scroll_bottom);
+        let rev2 = self.autowrap() && self.modes & MODE_REVERSE_WRAP2 != 0;
+        let rev = self.autowrap() && self.modes & MODE_REVERSE_WRAP != 0;
 
-        // A pending wrap means the cursor is already past the last column, so the
-        // first leftward step only clears it (xterm: "if (rev && do_wrap) n--").
+        let mut col = before;
+        let mut row = i32::from(self.cursor_row);
         let mut count = i32::from(n);
-        if rev && self.wrap_pending {
-            count = count.saturating_sub(1);
-        }
-        let col = before - count;
-
-        if col < LEFT {
-            if rev {
-                let in_row = right - LEFT + 1;
-                let mut offset = in_row * i32::from(self.cursor_row) + col - LEFT;
-                if before == LEFT && self.cursor_row == top {
-                    // From the top margin, wrap to the right edge of the bottom margin.
-                    offset = (i32::from(bottom) + 1) * in_row - 1;
-                } else if offset < 0 {
-                    let length = in_row * i32::from(self.rows);
-                    if length > 0 {
-                        offset += ((-offset) / length + 1) * length;
-                    }
-                }
-                let row = offset.div_euclid(in_row);
-                let wrapped_col = offset.rem_euclid(in_row) + LEFT;
-                self.cursor_row = row.clamp(0, i32::from(self.rows.saturating_sub(1))) as u16;
-                self.cursor_col = wrapped_col.clamp(LEFT, right) as u16;
+        if count > 0 {
+            if (rev || rev2) && self.wrap_pending {
+                count -= 1;
             } else {
-                self.cursor_col = 0;
+                col -= 1;
             }
-        } else {
-            self.cursor_col = col as u16;
         }
+
+        let mut fetched = false;
+        let mut wrapped;
+        loop {
+            if col < left {
+                if rev2 {
+                    col = right;
+                    if row == top {
+                        row = bottom + 1;
+                    }
+                } else if !rev {
+                    col = left;
+                    break;
+                }
+                fetched = false;
+                row -= 1;
+            }
+            if !fetched {
+                wrapped = row >= 0
+                    && (row as u16) < self.rows
+                    && self.row_flags[usize::from(row as u16)] & LINE_WRAPPED != 0;
+                fetched = true;
+                if row != i32::from(self.cursor_row) {
+                    if !rev2 && !wrapped {
+                        if row < bottom {
+                            row += 1;
+                        }
+                        col = left;
+                        break;
+                    }
+                    col = right;
+                }
+            }
+            count -= 1;
+            if count <= 0 {
+                break;
+            }
+            col -= 1;
+        }
+
+        self.cursor_row = row.clamp(0, i32::from(self.rows.saturating_sub(1))) as u16;
+        self.cursor_col = col.clamp(left, right) as u16;
         self.wrap_pending = false;
         self.mark_cursor();
     }
