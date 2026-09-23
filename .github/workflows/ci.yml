@@ -2,11 +2,16 @@
 #
 # Contract: docs/spec/07-engineering-quality-and-release.md.
 # Admitted actions (ADR-0021): actions/checkout, actions/setup-node and
-# actions/upload-artifact. The upload action is the only addition and exists solely to
-# publish build outputs; any further action needs its own ADR. Enforced by K8, which also
-# checks that artifact uploads pin a retention policy and stay inside the content
-# whitelist (binaries + checksums only - artifacts of a public repo are world-downloadable,
-# so no logs, no gate reports, no paths; AR-11 / section 6.3).
+# actions/upload-artifact. The upload action is the only admitted action; any further action
+# needs its own ADR. Enforced by K8, which also checks that artifact uploads pin a retention
+# policy and stay inside the content whitelist.
+#
+# Two disjoint artifact scopes (both closed lists, enforced by review + K8):
+#   - windows-build   -> build outputs only: the three binaries + SHA256SUMS.txt (ADR-0021 D2).
+#   - design-baseline -> visual baselines + one provenance manifest (ADR-0022 D3). This job
+#                        runs on workflow_dispatch only, so ordinary pushes upload nothing.
+# Artifacts of a public repository are world-downloadable, so uploads never carry gate
+# reports, session data, terminal content or absolute paths (AR-11 / section 6.3).
 #
 # Toolchain: Rust is pinned by rust-toolchain.toml and Node by package.json engines
 # (>=22, because the design-gates CDP client needs a global WebSocket, which Node 20
@@ -32,6 +37,8 @@
 #   rust          - crates/termai-tokens is formatted and compiles (generated leaf crate, no dependencies)
 #   design        - tools/design-gates: static layer S1-S10 always, browser layer B1-B10
 #                   (Chrome/Edge are both detected; the win32-x64 baselines match this runner)
+#   design-baseline - regenerate prototype/baseline on this runner; workflow_dispatch ONLY
+#                   (ADR-0022: a pixel baseline is an environment fingerprint)
 #   kernel        - tools/kernel-gates: K1 fmt / K2 clippy / K3 test / K4 dep shape / K5 license /
 #                   K6 spec-defects / K7 CODEOWNERS coverage, plus the injection selftest
 #   windows-build - release build of the whole workspace (the artifact-producing job)
@@ -130,6 +137,90 @@ jobs:
           Write-Host 'B4 compares against prototype/baseline/<platform>-<arch>-*.png.'
           Write-Host 'The committed baselines are win32-x64, which is what this runner reports,'
           Write-Host 'so B4 is expected to be a real comparison here rather than a SKIP.'
+
+  # Visual-baseline generation (ADR-0022). This job runs ONLY on workflow_dispatch: the
+  # committed baselines are produced here, on the same runner image and browser build that
+  # the design job later verifies against. A pixel baseline is an environment fingerprint,
+  # not a portable asset - the developer-machine baselines failed B4 with 0.044%-1.245%
+  # against a <=0.1% gate, with the diff bbox over whole card regions (font rasterisation /
+  # browser build / DPI). The artifact is downloaded by a human and committed through a PR;
+  # this job never writes to main (AGENTS section 3 / spec 07 E4 double sign, ADR-0022 D6).
+  design-baseline:
+    name: design-baseline (workflow_dispatch only; publish prototype/baseline)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Browser prerequisite (Chrome / Edge) + version
+        run: |
+          $candidates = @(
+            "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+            "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe",
+            "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
+            "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+          )
+          $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $found) {
+            Write-Error 'no Chrome or Edge found; a visual baseline cannot be generated here'
+            exit 1
+          }
+          "CHROME_PATH=$found" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $vi = (Get-Item $found).VersionInfo
+          "BROWSER_NAME=$($vi.FileName | Split-Path -Leaf)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "BROWSER_VERSION=$($vi.ProductVersion)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "browser: $found version $($vi.ProductVersion)"
+      - name: Regenerate the visual baselines on this runner (ADR-0022 D1)
+        run: npm run design:baseline
+      - name: Write the baseline provenance manifest (ADR-0022 D3)
+        run: |
+          $png = Get-ChildItem prototype/baseline -Filter *.png -File |
+            Where-Object { $_.Name -notlike '*.current.png' } | Sort-Object Name
+          if (-not $png) { Write-Error 'design:baseline wrote no PNG'; exit 1 }
+          "SHORT_SHA=$($env:GITHUB_SHA.Substring(0, 8))" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $rustc = 'unavailable'
+          try { $rustc = (rustc --version) } catch { }
+          $platformTag = (node -e "process.stdout.write(process.platform + '-' + process.arch)")
+          $manifest = [ordered]@{
+            schema               = 'termai-baseline-manifest/v1'
+            adr                  = 'ADR-0022'
+            generator            = 'ci.yml:design-baseline (workflow_dispatch only)'
+            commit               = $env:GITHUB_SHA
+            short_commit         = $env:GITHUB_SHA.Substring(0, 8)
+            run_id               = $env:GITHUB_RUN_ID
+            repository           = $env:GITHUB_REPOSITORY
+            platform_tag         = $platformTag
+            runner_os            = $env:RUNNER_OS
+            runner_image         = $env:ImageOS
+            runner_image_version = $env:ImageVersion
+            node                 = (node --version)
+            rustc                = $rustc
+            browser_name         = $env:BROWSER_NAME
+            browser_version      = $env:BROWSER_VERSION
+            baseline_files       = @($png | ForEach-Object { $_.Name })
+          }
+          # ASCII output is deliberate: every value is ASCII and this avoids a UTF-8 BOM.
+          $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path prototype/baseline/BASELINE-MANIFEST.json -Encoding ascii
+          Get-Content prototype/baseline/BASELINE-MANIFEST.json
+      - name: Upload the visual baselines + provenance manifest (ADR-0022 D3 scope only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: termai-visual-baseline-win32-x64-${{ env.SHORT_SHA }}
+          # Closed scope: our own UI baseline PNGs (rendered from the committed prototype,
+          # never from a live session) plus the provenance manifest. No reports, no logs,
+          # no session data and no absolute paths (AR-11 / HARNESS section 6.3).
+          path: |
+            prototype/baseline/win32-x64-*.png
+            !prototype/baseline/*.current.png
+            prototype/baseline/BASELINE-MANIFEST.json
+          retention-days: 14
+          if-no-files-found: error
 
   kernel:
     name: kernel (K1-K7 fmt / clippy / test / dep-shape / license / defects / CODEOWNERS)
