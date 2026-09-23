@@ -140,6 +140,16 @@
 **⚠ 第 181 轮对本节的更正（自我更正第 18 次）**：**「已有实现」三行必须按门禁强度区别对待，不能一律说成「已实现」**——**读 `tools/tokens/check.mjs` 第 3 行的自述**：「`// Gates: (1) schema (2) AR-22 rulers (3) WCAG contrast (4) codegen drift (5) hex debt (**warn only**).`」**因此**：
 **✅ 第 193 轮：D-6 的可行性确认——步骤 ① 不需要改动任何被校验的 schema**。**已核实**：**`tools/bench/lib.mjs:290` 的 `BENCH_REPORT_SCHEMA`**（kernel/06 §3.7）**其 `metrics` 字段是 `S.arrayOf(METRIC_SCHEMA, 1)`**——**即报告本就承载**一个以上的指标条目**（`:305`）；并且 `:364–389` 保留了对**单指标扁平投影**（`metrics[0].*`）的兼容校验（`LEGACY_METRIC_FIELDS`）。
 
+**第 253 轮：步骤 ① 的**可取得值**已实测（本机）**——**这使该步不必从零开始**：
+
+| 行 | 值从哪来 | **本机实测结果** |
+| --- | --- | --- |
+| **H18 硬编码色值** | `tokens:check` 第 5 关 | **26 处硬编码色值（17 个不同）**，位于 `termai-ui-prototype.html`（**该关 warn-only，故 `result: PASS`**） |
+| **H19 双主题对比度** | `tokens:check` 第 3 关（真实 WCAG 公式） | **逐对给出比值**：`ghost-on-term-bg` 5.17／5.89、`text3-on-surface` 6.35、`text3-on-sunken` 5.47／6.66、`diff-ctx-on-sunken` 5.47／6.66——**均 `>=4.5`**；**H19 要记录的量应是**所有对中的最小值**，可从该关完整输出取得** |
+| **H17 视觉回归** | `tools/design-gates` 的 B4 | **本机取不到**（**浏览器层需要 Chrome**——第 250／252 轮实测：`--static` 下 10 关 SKIP，完整检查因无法比对而 FAIL） |
+
+**因此步骤 ① 在本机**可完成三分之二**：**H18 与 H19 的值可直接从 `tokens:check` 取得**（**且该工具已在 CI 中运行**），**H17 需 CI 的 design job 或一台有浏览器的机器**。
+
 **因此**：**为 H17/H18/H19 产出一份含五个指标条目的 `bench-report.json` 是**现成格式**，不需要动 schema**——**B1–B3 逐字校验的是 schema 与 HARNESS §5 的转录，而这份报告填的是 schema 已允许的字段**。**这也让任务边界更干净**：**不碰任何被门禁校验的东西，只新增一条读取路径。**
 
 **D-6 的可行性至此闭合**：
