@@ -20,13 +20,13 @@
 | A10 | **跨段重放未实现**（TAIL_REPLAY 只读当前 segment；旋转后只会 BelowWindow） | T1 | 段滚动/归档后必须仍能重放或明确要求全量快照 | ADR-0026 §5 负面 1 |
 | A11 | **TailReplay 事件只投影 5 类** → **不能替代 GRID_SNAPSHOT** | T1 | 新增 tag 须先出 ADR | ADR-0026 D5 |
 | A12 | **新 IPC 面无 fuzz 语料**；8 MiB 上限未端到端实跑；broker 的 FRAME_TOO_LARGE 分支未单测 | T1 | AGENTS §6；G6 = 24h 无 crash | §8.1-6、DC-37 |
-| A13 | **VRM（软换行/裁剪）未实现** | T1 | 前置 = SD-13（ADR-0025，进行中）；VRM 必须产生 **0 个 GridDelta** | AR-23 §6、kernel/03 K-10、RP-08 |
+| A13 | **VRM（软换行/裁剪）未实现**（前置 SD-13 已落地，不再阻塞） | T1 | VRM 必须产生 **0 个 GridDelta**；`row_flags` 已可用作输入 | AR-23 §6、kernel/03 K-10、RP-08 |
 
 ## B. 尚未闭合的契约 / 规格登记（SD 系列）
 
 | 编号 | 内容 | 状态 |
 | --- | --- | --- |
-| SD-13 | 逐行 LineFlags（ADR-0025） | **进行中**（WS-13） |
+| SD-13 | 逐行 LineFlags（ADR-0025） | **已实现并提交**（`67ee7f2`）：core 字段 + `canonical_bytes`、vt 置位/清除/滚屏搬移/alt 保存、ipc 承载、render 镜像应用；非零 flags 往返有用例 |
 | SD-14 | GridDelta 的 scroll 双承载 | 未处置（render 侧已取单一优先级） |
 | SD-15 | GridSnapshot 无 rev → 快照后基线未定义 | 未处置（镜像取「下一个 delta 的 rev 为基线」） |
 | SD-16 | kernel/04 §3.4 首个 Interactive attach 自动授予租约与 AR-03 冲突 | **已裁决**（显式授权优先）；分册待修订 |
