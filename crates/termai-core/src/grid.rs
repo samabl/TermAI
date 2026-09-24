@@ -1,9 +1,20 @@
-//! Grid DTO field set **v1** (kernel/03 section 3.3 recommended field set).
+//! Grid DTO field set (kernel/03 section 3.3 recommended field set).
+//!
+//! ADR-0025 D1/D2 added per-row LineFlags: minor 1 -> 2. Minor only adds fields
+//! (DC-40), so a minor-1 reader sees a superset it can ignore and a minor-2 reader
+//! of a minor-1 document treats the missing `row_flags` as all zero.
 #![allow(clippy::module_name_repetitions)]
 
 /// Grid DTO version (major.minor). minor only adds fields.
 pub const GRID_DTO_MAJOR: u16 = 0;
-pub const GRID_DTO_MINOR: u16 = 1;
+pub const GRID_DTO_MINOR: u16 = 2;
+
+/// Per-row `LineFlags` bit 0: this row was hard-wrapped by DECAWM, so it belongs to
+/// the same logical line as the row below it (kernel/03 section 3.3 / 3.8).
+///
+/// ADR-0025 D1: the remaining bits are reserved. Writers MUST write 0 there; readers
+/// must tolerate unknown bits (DC-40 N-2 forward compatibility) and never fail on them.
+pub const LINE_WRAPPED: u16 = 1 << 0;
 
 /// Color: default / 256-indexed / truecolor.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
@@ -127,6 +138,9 @@ pub struct GridSnapshot {
     pub rows: u16,
     /// Row-major; length must equal cols * rows.
     pub cells: Vec<Cell>,
+    /// Per-row `LineFlags` (ADR-0025 D1). Row-major; length must equal rows.
+    /// A document written before minor 2 has no such field and decodes to all zero.
+    pub row_flags: Vec<u16>,
     pub cursor: CursorState,
     pub alt: bool,
     pub wrap_pending: bool,
@@ -146,6 +160,7 @@ impl GridSnapshot {
             cols,
             rows,
             cells: vec![Cell::BLANK; usize::from(cols) * usize::from(rows)],
+            row_flags: vec![0; usize::from(rows)],
             ..Default::default()
         }
     }
@@ -211,6 +226,13 @@ impl GridSnapshot {
                 out.push(c.link.min(255) as u8);
             }
         }
+        // ADR-0025 D2: per-row LineFlags follow the cell block, row-major, u16 LE.
+        // Adding this block is a digest-semantics change, which is why GRID_DTO_MINOR
+        // moved 1 -> 2. A missing entry (defensive: a snapshot built by hand) reads 0.
+        for row in 0..self.rows {
+            let flags = self.row_flags.get(usize::from(row)).copied().unwrap_or(0);
+            out.extend_from_slice(&flags.to_le_bytes());
+        }
         out
     }
 }
@@ -230,6 +252,8 @@ pub const fn encode_color(c: Color) -> u32 {
 pub struct RowPayload {
     pub row: u16,
     pub cells: Vec<Cell>,
+    /// Per-row `LineFlags` for this row (ADR-0025 D1), e.g. `LINE_WRAPPED`.
+    pub flags: u16,
 }
 
 /// Incremental grid update. rev is monotonic; a gap forces a full resync.
@@ -271,6 +295,31 @@ mod tests {
         assert_eq!(a.canonical_bytes(), b.canonical_bytes());
         let text = String::from_utf8_lossy(&a.canonical_bytes()).to_string();
         assert!(text.starts_with("meta cols=4 rows=2"));
+    }
+
+    #[test]
+    fn new_grid_initialises_row_flags_to_the_row_count() {
+        let g = GridSnapshot::new(80, 24);
+        assert_eq!(g.row_flags.len(), 24);
+        assert!(g.row_flags.iter().all(|f| *f == 0));
+    }
+
+    #[test]
+    fn canonical_bytes_include_nonzero_row_flags() {
+        // ADR-0025 D2: the per-row flags are part of the digest input, so a
+        // wrapped line chain can no longer hash the same as two independent rows.
+        let all_zero = GridSnapshot::new(4, 2);
+        let mut wrapped = GridSnapshot::new(4, 2);
+        wrapped.row_flags[0] = LINE_WRAPPED;
+        assert_eq!(LINE_WRAPPED, 1);
+        assert_ne!(
+            all_zero.canonical_bytes(),
+            wrapped.canonical_bytes(),
+            "non-zero row_flags must change canonical bytes"
+        );
+        let mut same = GridSnapshot::new(4, 2);
+        same.row_flags[0] = LINE_WRAPPED;
+        assert_eq!(wrapped.canonical_bytes(), same.canonical_bytes());
     }
 
     #[test]

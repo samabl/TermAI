@@ -1,0 +1,3 @@
+KEY "\xffa"
+ASSERT ROW 0 = �a
+ASSERT COUNTER invalid_utf8 = 1

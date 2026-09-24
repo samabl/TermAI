@@ -1,0 +1,3 @@
+KEY "a"
+KEY "[3b"
+ASSERT ROW 0 = aaaa

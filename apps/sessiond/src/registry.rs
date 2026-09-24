@@ -17,6 +17,13 @@ pub trait TerminalEngine: Send {
     fn resize(&mut self, cols: u16, rows: u16);
     fn snapshot(&self) -> GridSnapshot;
     fn digest(&self) -> [u8; 32];
+    /// Drain the bytes the emulator owes the application (DSR/CPR today). A component that
+    /// owns a real pty must write these back or the application blocks on its own query
+    /// (kernel/02 section 3.1), which is what [`crate::daemon`] does; an engine double owes
+    /// nothing, so the default is empty and the protocol tests need no pty.
+    fn take_responses(&mut self) -> Vec<Vec<u8>> {
+        Vec::new()
+    }
 }
 
 /// Adapter that exposes a TerminalEngine as a recovery replay target.
@@ -243,6 +250,24 @@ impl Registry {
             .ok_or(RegistryError::NoSuchSession)
     }
 
+    /// Drain the bytes the engine owes the application (DSR/CPR). Unknown session -> nothing
+    /// owed, not an error: the only caller is the pty pump, which may race a closed session.
+    pub fn take_responses(&mut self, id: SessionId) -> Vec<Vec<u8>> {
+        self.sessions
+            .get_mut(&id.0)
+            .map_or_else(Vec::new, |e| e.engine.take_responses())
+    }
+
+    /// Current Log position as (segment_id, next seq). `seq` is the exclusive upper
+    /// bound of appended records, i.e. the watermark an attach snapshot is taken at:
+    /// a client whose `resume_from <= seq` already holds everything before it.
+    #[must_use]
+    pub fn log_position(&self, id: SessionId) -> Option<(u32, u64)> {
+        self.sessions
+            .get(&id.0)
+            .map(|e| (e.writer.segment_id(), e.writer.seq()))
+    }
+
     pub fn acquire_lease(
         &mut self,
         id: SessionId,
@@ -251,6 +276,25 @@ impl Registry {
     ) -> Result<LeaseId, LeaseError> {
         let e = self.sessions.get_mut(&id.0).ok_or(LeaseError::NoLease)?;
         e.lease.acquire(client, now)
+    }
+
+    /// Release a lease through the explicit revoke path (never a silent state edit).
+    /// Only the current holder may release, so the CAP-1 invariant holds for
+    /// DETACH_NOTICE just as it does for stdin writes. Works even after the deadline
+    /// passed, because the holder is still the one asking to let go.
+    pub fn release_lease(
+        &mut self,
+        id: SessionId,
+        lease: LeaseId,
+        client: ClientId,
+        now: MonoTime,
+    ) -> Result<(), LeaseError> {
+        let e = self.sessions.get_mut(&id.0).ok_or(LeaseError::NoLease)?;
+        if e.lease.holder() != Some(client) {
+            return Err(LeaseError::NotHolder);
+        }
+        e.lease
+            .revoke(lease, termai_session::state::Actor::system(), now)
     }
 
     pub fn flush(&mut self, id: SessionId) -> Result<(), RegistryError> {

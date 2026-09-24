@@ -199,6 +199,8 @@ pub enum StringTerm { Bel, St, Aborted, Overflow, Cancelled }
 | kitty graphics | **必须** | 直接传输（`t=d`）、分块（`m=1`）、PNG/RGB/RGBA、放置 `a=p`、删除 `a=d`、`z` 序、响应 `OK/ENOENT/EINVAL`、配额 | **不做** Unicode placeholder、动画（`a=f`）、相对放置、文件传输落盘 | E60、ADR-0014 T2 |
 | kitty keyboard | **必须** | 增强标志协商、`CSI > u` / `CSI = u` / `CSI ? u` 查询、`CSI < u` 弹出；**默认不开启，按应用探测启用**（OQ-06） | 不默认开启；不改变未协商应用的按键语义 | E60、ADR-0012 复议 3 |
 | iTerm2 内联图像 | **必须（受限子集）** | `OSC 1337;File=…[;inline=1]` 单块 base64、`width/height/name/preserveAspectRatio` | **不做** FilePart 分块文件落盘（v1）、`SetUserVar` 之外的 iTerm2 专有属性 | ADR-0014 T2 行、D-4 |
+| OSC 4 / 10 / 11 / 12 | **永不（v1）** | — | 颜色查询 / 设置**一律不应答**；**无颜色渲染前不得声明调色板**（AR-20）。能力缺失经 `suites.toml` 的**静态能力前置** `color-query` 排除（K-01 的 `S_cap`），**禁止运行时 / 人工 skip** | ADR-0029 D-2 |
+| DA / DA2 / DECID（`CSI c` / `CSI > c` / 8-bit C1 `0x9A`） | **必须** | 应答**满足钉定套件在声明级别下的断言**（DA1 集合包含、DA2 范围；ADR-0030 更正了 ADR-0029 D-3 的「逐字节一致」——后者要求声称未实现的能力）；当前声明 **VT 级别 1**，DA1=`CSI ? 1 ; 2 c`、DA2=`CSI > 0 ; 314 ; 0 c`（Pv 为本产品自报版本）；`DECID`（8-bit C1 `0x9A`）依 OQ-VT-14 仅非 UTF-8 模式，**当前未实现**；`TERM_PROGRAM=TermAI` 继续如实自报（K-10） | **声称集必须 ⊆ 实现集**：`DA1` 声称的每一位都要有对应实现，未实现的位不得声称（AR-20） | ADR-0029 D-3、K-10 |
 | 未知 DCS / APC / PM / SOS 原文 | **永不** | — | 一律丢弃并计数（§3.4） | K-06 |
 
 降级：T2/T3 后端由 capability manifest 声明 `graphics.* = false`，L0 用例以静态能力前置排除（非人工 skip）；该车道结果标 NON-GATING（ADR-0014），UI 必须明示「无 Sixel」等具体缺项（AR-20 诚实原则）。
@@ -373,7 +375,7 @@ V-01/V-02 为 **P0 出口**（§7）；V-04 的差异条目上限、V-07/V-08 �
 
 | # | 问题 | 影响面 | 建议值 | 决策阶段 |
 | --- | --- | --- | --- | --- |
-| OQ-VT-01 | 【新增】字符串态载荷上限：`osc_len_limit` / `dcs_len_limit`（决定内存上界与截断行为）（**已采纳默认值（AR-31 采纳分诊建议）**） | DoS 面、合法大载荷（长标题、图形分块）、§5 空闲 RSS ≤120MB | **已采纳默认值**：OSC 1 MiB；DCS/APC 16 MiB；SOS/PM 1 MiB；超限即 `Overflow` + 计数（返工范围：`termai-vt` 常量 + `corpus/unterminated/` 与 fuzz 种子重建 + §5 RSS 上界重估） | P0 |
+| OQ-VT-01 | 【新增】字符串态载荷上限：`osc_len_limit` / `dcs_len_limit`（决定内存上界与截断行为）（**已采纳默认值（AR-31 采纳分诊建议）**） | DoS 面、合法大载荷（长标题、图形分块）、§5 空闲 RSS ≤120MB | **已采纳默认值**：OSC 1 MiB；DCS/APC 16 MiB；SOS/PM 1 MiB；超限即 `Overflow` + 计数（返工范围：`termai-vt` 常量 + `corpus/unterminated/` 与 fuzz 种子重建 + §5 RSS 上界重估） | P0（**已冻结：ADR-0023 D2**） |
 | OQ-VT-02 | 【新增】图形配额与预算：单图大小、每屏张数、合成/解码头预算（**已采纳默认值（AR-31 采纳分诊建议）**） | 帧时门禁（4K@120Hz <8.3ms）、内存、用户体验 | **已采纳默认值**：单图 ≤16 MiB、每屏 ≤64 张（角色 04 §3.5）；单图解码头 ≤50ms P95、每帧图形合成 ≤4ms（返工范围：01 图形解码器配额 + V-09 用例 + RP-02 帧时归因复核） | P0 |
 | OQ-VT-03 | 【新增】xterm 兼容用例集基数与覆盖口径（ctlseqs 1:1？）（**已决：AR-31 第 1 条**） | V-04 的 ≥99% 是否可信、差异表规模 | **已决（AR-31 第 1 条）**：xterm 用例 ≥2000 条，ctlseqs 每条目 ≥1 用例，真实语料占比 ≥20%；G1 数字必须可复现、可解释 | **已决（AR-31）** |
 | OQ-VT-04 | 【新增】差异登记表条目上限与豁免率口径 | K-04 的可执行性、`spec 07` Q2 统计 | G1 全局 ≤25 项；单 minor 新增 ≤10；豁免率入季度审计 | P1 |

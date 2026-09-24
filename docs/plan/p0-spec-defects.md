@@ -1,0 +1,163 @@
+# TermAI P0 交付期规格缺陷登记（SD-09 起）
+
+> **性质**：本文件是实现期**发现**，不是设计权威。M0 期的登记见 [m0-spec-defects.md](m0-spec-defects.md)（SD-01…SD-08）。
+> **纪律**（AGENTS §5）：修正既有结论必须走 ADR；本文件只做**登记**，处置落在代码注释与本表，需要的追认动作单列。
+> **依据**：HARNESS §11.2（CR-14 / CR-15 / CR-16）、§5、§8.1；**AR-24 第 3 条**（kernel/06 是测量口径的唯一权威）；ADR-0014（平台矩阵与参考机）、ADR-0023（P0 契约 errata）。
+
+## SD-09｜spec 07 §3.8.2 的扁平 legacy 对象与 kernel/06 §3.7 的结构化字段同名冲突
+
+- **证据**：spec 07 §3.8.2 期望一个扁平对象 `{metric,value,unit,samples,runner,commit,toolchain,ts}`；而 kernel/06 §3.7 的 bench-report 顶层 `commit` / `toolchain` / `runner` **都是对象**。把扁平字段并入顶层会与**同一节**的 schema 直接冲突。
+- **本 P0 处置**：以 **kernel/06 §3.7 为唯一 schema 权威**（AR-24.3）；9 个 legacy 字段按 §3.7 原文落在 **metric 级 8 个 + 顶层 `commit`**；spec 07 §3.8.2 描述的扁平形态作为**加法字段 `flatProjection`** 承载（§3.7 允许加法字段向后兼容 1 minor），并由门禁 B2 每次运行打印该歧义。
+- **需要的动作**：spec 07 §3.8.2 补注「扁平对象是 legacy 摘要形态，权威 schema 见 kernel/06 §3.7」；已登记 **HARNESS CR-16**。
+
+## SD-10｜kernel/06 §4 的 FailKind 缺「绝对门禁越界」成员
+
+- **证据**：§3.1 的 `FAIL(v, gate)` 需要表达「未超回归阈值但**越过绝对门禁**」（例如空闲 RSS >120MB、帧时 ≥8.3ms），而 §4 的 `FailKind` 枚举没有对应成员。
+- **本 P0 处置**：`tools/bench` 以扩展项 **`GATE_BREACH`** 实现，标 `origin:'extension'`，**不冒充 spec 成员**。
+- **需要的动作**：kernel/06 §4 增列该成员（分册修订，不改 AR/DC）。
+
+## SD-11｜kernel/06 §3.2 未给 H3（PTY-LAT-1）的 Run 定义
+
+- **证据**：AR-30 第 1 条把 **PTY-LAT-1 升为 §5 门禁**（P99 ≤2ms），但 kernel/06 §3.2 的测量定义只写到 H2；H3 的 Run / 样本量口径缺失。
+- **本 P0 处置**：`tools/bench` 按「与 H2 共用注入流」读作 `isTail` / ≥1e5，标 `origin:'reading'`，并在 registry 与 README 显式登记为**读数而非引用**。
+- **需要的动作**：kernel/06 owner 确认或改判；若改判，H3 的判定实现必须同步（否则 H3 会以错误口径进入门禁）。
+
+## SD-12｜非 spec 原文的机器分类原因码
+
+- **证据**：`CLOUD_RUNNER` / `FLOOR_MACHINE_ONLY` / `NOT_MACHINE_GATE` 三个原因码不在 kernel/06 正文，是由 **ADR-0014 决策 1 / 铁律 5** 与 **AR-31 第 8 条**推导出来的。
+- **本 P0 处置**：标 `origin:'extension'` 并在 `tools/bench/README.md` 给出推导链。
+- **需要的动作**：若 kernel/06 owner 认可，并入 §6 / §3.4 的枚举登记；否则应改为 spec 已有的码。
+
+## SD-13｜GridSnapshot / RowPayload 缺逐行 LineFlags（WRAPPED），逻辑行无法重建
+
+- **证据**：`kernel/03` §3.8 定义「逻辑行 = 由 `LineFlags::WRAPPED` 串起来的网格行链」，§3.3 的 `LineRecord` 亦带 `LineFlags`；而 core DTO v1（`crates/termai-core/src/grid.rs`）的 `GridSnapshot` 只有全局 `wrap_pending`，`RowPayload` 只有 `row` + `cells`，**没有任何逐行标志**。
+- **影响**：软换行/裁剪（VisualRowMap，AR-23 §6 / kernel/03 K-10 / **RP-08**）无法实现——无法把网格行链成逻辑行；UX-G17「软换行开关下复制逐字节相同」因此不可判定。这是**对外契约级**缺口。
+- **本 P0 处置**：不实现近似替代（不许按列宽猜折行，那会破坏复制保真）；`termai-render` 先落地镜像切片，VRM 等字段补充后落地。归属见 **ADR-0024 D2**。
+- **需要的动作**：按 **ADR-0023 D3**（字段集以 `kernel/03` §3.3 为准）为 `GridSnapshot` / `RowPayload` 增加逐行 `flags`（至少 WRAPPED 位），并同步 `canonical_bytes` / golden / digest 的版本处理与 `kernel/01` 的 golden 规则。属**实现对齐已冻结设计**（minor 字段新增），须与 golden 哈希兼容性一并验证。 **已裁决：ADR-0025**——D1 定义字段与 `LINE_WRAPPED`；D2 把逐行 flags 纳入 `canonical_bytes` 并把 `GRID_DTO_MINOR` 升到 2（golden 保持 `TERMAI-GRID 1` 可解析、缺字段视为 0）；D3 由 `termai-vt` 产生、`termai-render` 消费。**实现待 W1-B 的 G1 语料收口后执行**，避免两边同时改 golden。
+
+## SD-14｜GridDelta 的 scroll 字段重复承载
+
+- **证据**：`crates/termai-core/src/grid.rs` 的 `GridDelta` 同时有 `scroll: Option<ScrollOp>` 与 `damage: Damage`（后者也带 `scroll`）；`kernel/03` §3.3 的伪代码同样两处并存。
+- **影响**：应用顺序与「哪个是真源」无定义，两个实现者会做出不同选择，且可能双应用或漏应用滚动。
+- **本 P0 处置**：`termai-render` 取 `delta.scroll.or(delta.damage.scroll)` 的**单一优先级**并加测试锁定，代码注释引用本条。
+- **需要的动作**：kernel/03 owner 二选一并删除另一处，或显式写明「两处必须一致，否则以 `GridDelta.scroll` 为准」。
+
+## SD-15｜GridSnapshot 不带 rev，快照替换后的 rev 基线未定义
+
+- **证据**：`kernel/03` §3.3 用单调 `rev` 检测缺口，但 core DTO 的 `GridSnapshot` **没有 rev 字段**；替换镜像后客户端的下一个 delta 落在哪个 rev 上无定义。
+- **影响**：镜像实现者会各自发明（拒绝第一个 delta / 无条件接受 / 从 0 起算），跨端 attach 与崩溃恢复的 rev 语义随之分叉。
+- **本 P0 处置**：`termai-render` 的镜像规定「快照后**接受下一个 delta 并将其 rev 作为新基线**」，加测试锁定，代码注释引用本条。
+- **需要的动作**：kernel/03 / 07 owner 决定是否给 `GridSnapshot` 增 `rev`（minor），或显式写明快照后的复位规则。
+
+## SD-16｜kernel/04 §3.4 的「首个 Interactive attach 自动授予租约」与 AR-03 的显式授权冲突
+
+- **证据**：`kernel/04` §3.4 的租约表规定首个 `Interactive` attach 在租约空闲时**自动授予**并写 `LeaseEvent{grant}`；而 **AR-03 契约层**规定「写 stdin **必须显式授权**」，AR-06 要求破坏性/写操作逐条批准。
+- **影响**：自动授予等于「attach 即获得写权」，与 AR-03 的显式授权直接冲突；也把「订阅」与「写入」两种意图混在一次握手里。
+- **裁决（总负责人）**：**以 AR-03 为准**。attach 只建立订阅；写权必须由显式 `LEASE_ACQUIRE` 获取。WS-05a 已按此实现：`Interactive` attach 的 `ATTACH_ACK.lease = null`，写 stdin 在显式取租约前仍 `CAP_DENIED`，且 CAP 闸门未被削弱。
+- **需要的动作**：kernel/04 §3.4 的租约表按本条修订（自动授予改为「必须显式 acquire」），或新增 ADR 追认；在修订前**以本条为准**。
+
+## SD-17｜AttachRequest 字段命名与 spec 不一致（proto_range vs proto_min/proto_max）
+
+- **证据**：`kernel/04` §3.4 写 `proto_range`；实现（WS-05a）用 `proto_min` / `proto_max`，理由是复用 `Hello` 的同一对字段与同一求交函数（`handshake::chosen_version`），避免第二套版本区间表示。
+- **影响**：纯命名，但属对外契约措辞；不统一会让跨端实现各自猜测字段名。
+- **本 P0 处置**：接受实现命名（与 `Hello` 同源是更强的一致性论据），登记本条。
+- **需要的动作**：kernel/04 §3.4 与 kernel/07 §3.3 把 `proto_range` 标注为「即 `proto_min` / `proto_max``」。另：`ATTACH_ACK` 无 `sub_id` 字段（订阅句柄仅存在于服务端，经 `Broker::attach_subscription()` 暴露），与 kernel/04 §3.4 一致，无需动作。
+
+## SD-18｜attach 族对外错误码在 kernel/07 §3.8 未登记即暴露
+
+- **证据**：kernel/07 §3.8 的登记规则要求「对外暴露前**先补入本表并冻结**，未登记即暴露视为契约事故」。M0 的 `on_snapshot_request` 与 WS-05a 的 attach 路径暴露了会话域字符串码 `NoSuchSession`；「未 attach / 状态非法」当前映射到已登记的 `IpcError::Corrupt`。
+- **影响**：`NoSuchSession` 属未登记即暴露；用 `Corrupt`（语义为帧/载荷损坏）表达「状态非法」是语义借用，会让 CLI/UI 的错误分支不可靠。
+- **本 P0 处置**：已在 **kernel/07 §3.8 补登** `NoSuchSession` 与 `AttachStateInvalid`（字符串码即契约，新增走 minor）；版本拒绝复用既有 `VerUnsupported`，不新增码。
+- **需要的动作**：WS-05b 把「未 attach / 状态非法」从 `Corrupt` 切到 `AttachStateInvalid`（或在 kernel/07 §3.8 明确写成 `Corrupt` 的合法用法并给出理由）。在此切换完成前，不得声称 attach 的错误分支已冻结。
+
+## SD-19｜`CSI Ps t`（XTWINOPS）窗口/文本区查询超出 kernel/01 §3.5 的扩展子集
+
+- **证据**：esctest2 的 `reset()` 在每个用例前查询 `CSI 11/13/18/19 t` 并**阻塞等待答复**；`kernel/01` §3.5 的扩展协议子集表**未登记 XTWINOPS**，M0 的实现是 `b't' => {}`（静默忽略），迫使 esctest 做 **687 次传输替换**（逐条公示于 `tools/conformance/upstream/README.md`）。
+- **影响**：不答复 → 真实应用（shell / 编辑器查询终端尺寸）会阻塞或退化；esctest 的通过率也无法在**无替换**前提下读取。
+- **本 P0 处置（已实现并测过，当前处于回滚状态）**：曾实现 `11 t` → `CSI 1 t`（normal）、`13 t` → `CSI 3 ; 0 ; 0 t`、`18 t` → `CSI 8 ; rows ; cols t`、`19 t` → `CSI 9 ; rows ; cols t`，并同步让适配器**不再代答**这四项。实测（esctest2 全量 567 条）：**替换次数 688 → 0**，**通过数 110 → 110（与替换无关，pass-neutral）**。
+- **回滚理由（已更正）**：我最初把「201 → 110」归因于这次改动，**该比较不成立**——同一条命令在当前工作区连跑两次都得到 **110**（见 **SD-20**），说明 201 是**另一个树状态**下的数字。因此这次改动**没有造成回归**（等通过、替换清零）；回滚只发生在我基于错误基线做保守判断的那一刻。
+- **需要的动作**：① `kernel/01` §3.5 扩展子集表补登 XTWINOPS 已实现子集与「像素类不答复」的边界；② 在 `termai-vt` 实现 11/13/18/19 t（terminal 侧已写过一次，可直接重做）；③ `esctest_adapter.py` 与 harness **只能有一端答复**（适配器当前既转发又注入，是重复答复的来源）；④ **先解决 SD-20**，再以「替换 = 0 且通过数不低于当时基线」为判据重跑。像素类（14/15/16 t）继续由适配器按固定 window model 代答并公示。
+
+## SD-20｜esctest-over-adapter：记录值 201 不可复现（**已二分定位 → 记录错误**）
+
+- **证据（同一 esctest2 检出、同一适配器、同一命令；只换 harness 二进制）**：
+
+  | harness | 通过 | known-bug | 失败 | feeds | substitutions |
+  | --- | --- | --- | --- | --- | --- |
+  | 提交 @@7fc89dd@@（W1-B 收口时的树，独立 worktree 重建） | **103** | 43 | **421** | 34022 | 688 |
+  | 当前树（含 VT 修复 @@e141127@@）第 1 次 | **110** | 43 | **414** | 34024 | 688 |
+  | 当前树第 2 次 | **110** | 43 | **414** | 34024 | 688 |
+
+- **结论（三条）**：① **W1-B 记录的 201 在它自己的提交上也不可复现**（该提交实测 103）——`201` 判为**错误记录**，任何报告不得再引用；② 其后的 VT 修复（DECALN/HPA/HPR/REP + intermediates 语义）使通过 **+7**（103 → 110）、失败 **−7**（421 → 414），是**改进而非回归**；③ **测量在每个提交内是确定性的**（同一状态连跑两次逐字段相同）。
+- **对 SD-19 的影响**：SD-19 的 window-op 实验是 **pass-neutral**（110 → 110）且把替换从 **688 清零**，回滚仅因我基于错误基线（201）做了保守判断；更正已写回 SD-19。
+- **本 P0 处置**：SD-20 从「测量不可信」改判为「一次记录错误 + 方法教训」：**跨提交比较 esctest 数字必须重测，禁止复用旧值**。
+- **剩余动作**：把 esctest 接入 CI（或任何门禁）前，必须① 固定 harness 二进制与 @@substitutions@@ 口径；② 在同一 commit 上跑两次做可复现性自证（AR-27）；③ 报告里同时给出 @@substitutions@@ 数与是否为零。
+
+## SD-21｜Context 事件的 `confidence` 单位未定义（线上 f32 与 Log u8 之间无映射规定）
+
+- **证据**：kernel/07 §3.6 把 `CommandBoundary.confidence` 定为 `f32`；kernel/04 §3.2.3 的 `CmdEnd` 记录只列字段名、**未写类型与单位**，而仓库实现（termai-session 的 Log 记录、termai-vt `shell.rs`）用的是 `u8`。
+- **影响**：线上与 Log 之间没有定义的换算（百分比 0–100？0–1？0–255？）。投影时若猜错，该字段会**静默失真**；而 AI 侧的提示符启发式置信度（kernel/01 §3.6 的 `confidence = Low` 语义）直接依赖它。
+- **本 P0 处置**：**线上保持 `f32`**（ADR-0026 D6；§3.6 是 Context 事件 schema owner）；`u8 → f32` 的换算必须在投影点**显式写出并注释**，禁止隐式 `as` 转换；单位确认前**不得声称该字段已冻结**。
+- **需要的动作**：kernel/04 owner 在 §3.2.3 写明 `CmdEnd.confidence` 的类型、单位与取值范围；若确为百分比，换算固定为 `f32 = u8 as f32 / 100.0`，并同步 kernel/07 §3.6 的注释。
+
+## SD-22｜DECRQM 对「未实现的 ANSI 模式」应回 Pm=0 还是 Pm=4（oracle 分歧，26 条 esctest 失败）
+
+- **证据**：`esctest2` 的 `DECRQMTests`（本次实测 **26 条失败，是单一最大簇**）用 `doPermanentlyResetAnsiTest` 断言 `${T}requestAnsiMode(mode) == [mode, 4]${T}`，即「**永久复位**」；涉及 EBM/FEAM/FETM 等 ECMA-48 ANSI 模式。本仓库按 xterm ctlseqs 的 DECRQM 语义，对**未跟踪**的模式统一回 **Pm=0（未识别）**。
+- **为什么不能直接改成 4**：Pm=4 的含义是「本终端**永久复位**该模式」。对一批我们既未实现、也未打算实现为可设置的模式回 4，等于**对外声明一种能力状态**；而回 0 是「我不认识」。在拿到 xterm 实现或 ctlseqs 条款之前，**改哪一边都是猜**。
+- **本 P0 处置**：**保持 Pm=0**，并把 26 条失败登记为**oracle 分歧**而不是就地改绿。依据 K-03 的仲裁顺序（ECMA-48 > ctlseqs 文档 > xterm 实现 > esctest 期望），**esctest 是优先级最低的一档**，不足以单独推翻我们对 DECRQM 语义的读法。
+- **需要的动作**：取到 xterm 实现（或 ctlseqs 中 DECRQM 的原文条款）后判定：① 若 xterm 对未实现 ANSI 模式确实回 4，则按 K-03「实现行为」档**修改我方实现**并回归；② 若 xterm 回 0，则按 K-04 把这 26 条**登记为差异**（附最小复现 + 条款/行为引用 + 豁免期限），并在报告里显式扣减。**在此之前不得声称这 26 条已解决。**
+
+## SD-23｜HARNESS §7 的「esctest 全通过」与 kernel/01 §3.5 的「扩展子集」互相冲突（决定 40+ 条失败是缺陷还是偏差）
+
+- **背景**：HARNESS §7 的 P0 出口写「**vttest + esctest 全通过**」；而 `kernel/01` §3.5 只声明了一个**扩展协议子集**，登记的是 OSC **133 / 633 / 7 / 0 / 2 / 8 / 9 / 777 / 52（仅写）**。第 40 轮的簇归因显示，`esctest` 里最大的可修簇 **40 条（颜色三族）** 测的是 **`OSC 4 / 10 / 11 / 12` 颜色查询**——**这四个根本不在子集里**，我们一律不答复，于是适配器超时。
+- **为什么这不可能是「缺陷」**：`kernel/01` §3.5 明文写 **OSC 52 读取「永不实现」**（与 AR-29.5 一致），若把「esctest 全通过」按字面理解为「每一条 xterm 序列都通过」，则**我方自己冻结的子集就已经让 P0 在构造上不可能达成**。因此两种读法必有一错。
+- **两种读法及其后果**：
+  - **读法 A（字面）**：esctest 每条都必须通过 → 必须实现 OSC 4/10/11/12（以及 esctest 覆盖的其余全部 xterm 扩展），**P0 范围显著扩大**，且与 §3.5「永不实现 OSC 52 读」直接矛盾。
+  - **读法 B（子集 + 差异）**：**「全通过」判定在已声明子集上**；子集外的序列按 **K-04** 进**差异登记表**（附最小复现 + 依据 + 豁免期限），**不计入**通过率的分母之外，也不假装通过。
+- **本 P0 处置**：**采读法 B 作为工作口径**（否则 P0 自相矛盾），但把它登记为**待 owner 追认**的冲突，而不是我单方面改判出口标准——**E-P0-1 的对外状态在追认前保持「未判定」**。
+- **需要的动作**：① `kernel/01` owner 明确「esctest 全通过」的判定域（是全集还是子集），并在 §5 V-04 写清；② 若是子集，则必须给出**子集外序列的差异登记流程**（K-04 已有双签与期限机制）与**通过率的分母口径**；③ 在第 41 轮之后的账里，把 40 条颜色失败**按颜色族单独列账**，标注「子集外，待读法 B 追认」，**不得混入产品缺陷数**。
+
+## SD-24｜H17 / H19 的「测量机器」与「判定机器」：registry 写 `machine: none`，kernel/06 §3.4 把测量绑到 RM-C
+
+- **证据**：`tools/bench/registry.mjs` 的 H17 / H19 两行写 `machine: 'none'`（注释理由：它们的**门禁判定**归 `tools/design-gates`，`evaluate()` 返回 `SKIP(NOT_MACHINE_GATE)`）；而 `docs/spec/kernel/06-performance-methodology.md` §3.4 把**测量**机器写死为「显示与延迟类（帧时、key-to-photon、**网格对齐**、**视觉 golden**）→ **RM-C**」，§3 的过渡句也把「网格对齐 ≤0.5px」列为「RM-C 上 100%/125%/150%/200% DPI 渲染用例」。
+- **影响**：同一个 H 行在两处得到两种机器分类。它直接决定「没有参考机时这一行是 `NON_GATING` 还是 `SKIP`」，也决定 H19 是否属于 D-6 所说的「machine-free 行」。第 255 轮的 `tools/bench/values.mjs` 按 **registry**（`machine === 'none'`）把 H17/H18/H19 列为「不需要参考机即可给出值」的行——**而 H19 的测量在 RM-C 上，因此本机不可能给出它的值**；工具对此的表述是如实的 `NOT REPORTED`，**不声称「与机器无关」**。
+- **本 P0 处置**：**跟随 registry**（它是被 B1/B3 每次从文档重新校验的转录），并让缺席显式化；**不自行改判**机器归属。
+- **需要的动作**：kernel/06 owner 区分并写明两个概念——① **测量机器**（§3.4：H17 / H19 的像素测量在 RM-C 上做）；② **门禁判定归属**（§3.9：判定载体是 `tools/design-gates`）。若维持 registry 的 `machine: none`，应在 §3.9 的 H17 / H19 行明文写出「`machine: none` 指判定归属，测量仍在 RM-C」；否则应把 registry 改为 `RM-C` 并同步 `evaluate()` 的读法。
+
+## SD-25｜kernel/01 §3.9 写 esctest 的「版本与 SHA-256 记入 `suites.toml`」，而仓库里既没有该文件，也没有那个 SHA-256
+
+- **证据**：`docs/spec/kernel/01-vt-conformance.md:279`（§3.9「运行方式」）写「esctest 以钉定 revision 运行（Python 驱动 + pyte 参考解释器），**版本与 SHA-256 记入 `suites.toml`**」。而实现是 `tools/conformance/suites.json`（`schema: termai-conformance-suites/1`；`suites[0].pinned_revision = 2798f12149a19c3295e9b4853ab2da4b2eff1b2b`），由 `tools/conformance/check-suites.mjs` 逐字段校验、由 `tools/conformance/esctest-report.mjs` 读取并按其 `invocation` 重构运行命令。仓库内 **`suites.toml` 零命中**（`git ls-files "*suites.toml*"` 为空、工作树按名检索也为空），唯一命中的清单是 `tools/conformance/suites.json`（`git ls-files "*suites.json*"` 只有这一条）。
+- **同一句话还有第二个、更实的缺口**：该清单**没有 SHA-256 字段**——它记的是 **40 位 git revision**（`pinned_revision`，`check-suites.mjs:50` 强制其为 40 位小写 sha）。全仓库与 esctest 相关的 sha256 记录**只有 vttest tarball 那一条**（`tools/conformance/upstream/README.md:54-55`，与 esctest 无关）。即 §3.9 要求的「版本与 SHA-256」里，**SHA-256 这一半在当前实现中没有落点**。
+- **影响**：一处文档命名漂移 + 一处**未落地的证据要求**，两者都会让读者按 §3.9 去用不存在的产物。命名层面：读者会去找一个不存在的文件，或另建一份 `suites.toml`——**一旦出现第二份钉定表，两次运行钉的 revision 可能分叉，而分叉之后的 esctest 数字不可比**（§6.3 规则 8；SD-20 的「记录值不可复现」正是同一族事故）。证据层面：`pinned_revision` 只钉 **commit**，不钉**本地检出是否被改过**；§3.9 承诺的 SHA-256 才是那一层。当前实现只钉到 revision。
+- **本 P0 处置**：**采纳实现命名**（`suites.json`），按 **SD-17 先例**（`proto_range` vs `proto_min` / `proto_max`：接受实现命名、登记本条、由 spec owner 补注）处置，**不改实现**——`suites.json` 是 `check-suites.mjs` 与 `esctest-report.mjs` 共同读取的唯一真源，改名或分表会牵动两个已接线的工具而无收益。**SHA-256 那一半不冒充已落地**：登记为「spec 要求尚未实现」，由 owner 决定是**删去该措辞**还是**补一个新的、机器校验的落点**；本 P0 **不自行新增字段**（那会改动 `suites.json` 的 schema 与 CI 契约，超出登记范围）。
+- **需要的动作**：**要改的是 spec 文本，不是实现**。`kernel/01` §3.9 owner 按下列原文替换该句并补注（这段脚注即本条要求的全部修正）：
+
+  > 脚注（SD-25）：esctest 的钉定 revision 记入 `tools/conformance/suites.json`（`schema: termai-conformance-suites/1`，`suites[].pinned_revision`，40 位 git sha，由 `node tools/conformance/check-suites.mjs` 校验）；本分册早期版本写作 `suites.toml`，仓库内从无该文件。命名以实现为准（同 SD-17 的处置）。检出内容的 SHA-256 **当前未记录在任何清单中**，因此不得按本条声称本地检出已被逐字节钉住。
+
+  若 owner 选择保留「SHA-256」这一要求，则须先决定它的**载体与校验者**（新增字段？新工具？仅记录在证据目录？），再回填该脚注；**在载体确定前不得声称检出内容可校验**。
+
+## SD-26｜kernel/05 §3.2 的「功能键」行写「kitty 下 `CSI {code};{mod}u`」，而 §3.3 的键盘表对 `Enter` 给 `CR`、对 `Left` 给 `CSI 1;1D`
+
+- **证据**：`docs/spec/kernel/05-input-ime-clipboard.md` §3.2 表格的「功能键」行（`:90`）在末列写「kitty 下 `CSI {code};{mod}u`」，语气是**整类功能键一律**如此；同一分册 §3.3 的键盘表（`:108-116`）却**逐键给单元格**：`Esc` Kitty 列 = `CSI 27u`、`Enter` = `CR`、`Left` = `CSI 1;1D`——即 `Enter` / `Left` 走的是功能序列，不是 `CSI {code};{mod}u`。同一个按键在两节得到两种字节，而 §3.2 既**没有指向 §3.3 的指针**，也**没有范围声明**说它不管功能键的 Kitty 列。
+- **实现跟随了哪一边（已发生）**：commit `a555a77` 让 `crates/termai-core/src/input/encoder.rs` 按 **§3.3** 的三列编码，依据 **K-03**（规范 > 文档 > 实现）——§3.3 是**专门的键盘模式表**，也是 **H12 语料逐条引用**的那张表；**AR-29 第 3 条**（S3 是唯一编码点）使这一读法成为**全部五个输入源**的按键行为，不只是键盘路径。修复前 `H12 = 93.3333%`（70/75）的 5 处分歧（MOK(2) 的 `Ctrl+Shift+A` / `Alt+x` / `Esc`、Kitty 的 `Enter` / `Left`）全部消失，现为 **100%（75/75）、`[B8] PASS`**（见 `tools/bench/README.md` 的 H12 节与 `docs/audit/debt-p0.md` A28）。
+- **§3.3 没有单元格的键（同一类规则）**：`Home` / `End` / `Insert` / `Delete` / `PgUp` / `PgDn` / `F1–F12` 在 §3.3 的表里**没有行**。实现按「功能序列」这一类规则处理它们（与 `Enter` / 方向键同路：功能序列 + 修饰参数），并在代码注释里写明这是**读法**而非被引条款。**这一读法没有任何一段正文可以引用**，因此它与上面那处冲突一样需要 owner 定音。
+- **影响**：§3.2 的那句「kitty 下 `CSI {code};{mod}u`」**不能**再被读作覆盖 `Enter` / 方向键——照它实现，会同时与 §3.3 的表和已入库的编码器冲突；照 §3.3 实现，§3.2 那句话对**没有单元格的键**仍是唯一可引的文字，而它给出的形式恰好是错的。两种读法各有一处正文支持、一处正文反对。
+- **本 P0 处置**：**要改的是 spec 文本，不是实现**（同 SD-25 / SD-17 的处理方式）。`a555a77` 已按 K-03 落在 §3.3 一侧，本 P0 **不回改实现**；**今天没有任何语料或门禁能区分这两种读法**——H12 语料只对**有 §3.3 单元格**的按键设期望（无单元格者进 `omitted`，且 `omitted` 的 `why` 明写「无法引用权威」），所以这个分歧**不产生任何可判定的红/绿差异**，改代码无从验证。登记本条，把措辞修正交给 owner。
+- **需要的动作**：`kernel/05` owner 修 §3.2 的「功能键」行——给它**一个指向 §3.3 键盘表的指针**和**一句范围声明**（例：功能键在 kitty 模式下的字节**以 §3.3 键盘表为准**；表中无单元格的键按功能序列（含修饰参数）编码，不取 `CSI {code};{mod}u`），并按 **AR-28** 判断是否属对外契约措辞变更。**在措辞修正之前，以 §3.3 的表为准**（与本条登记和 `a555a77` 一致）。
+
+## 处置总表
+
+| 编号 | 落点 | 类型 | 本 P0 处置 | 需要动作 |
+| --- | --- | --- | --- | --- |
+| SD-09 | spec 07 §3.8.2 与 kernel/06 §3.7 | schema 冲突 | kernel/06 §3.7 为权威；扁平形态入加法字段 `flatProjection` | spec 07 §3.8.2 补注；**CR-16 已登记** |
+| SD-10 | kernel/06 §4 | 枚举缺成员 | `GATE_BREACH` 扩展项 + `origin:'extension'` | kernel/06 §4 增列 |
+| SD-11 | kernel/06 §3.2 | 定义缺失 | 按与 H2 共用注入流读作 `isTail`/≥1e5，标为**读数** | kernel/06 owner 确认或改判 |
+| SD-12 | kernel/06 §3.4/§6 | 原因码越界 | 标 `origin:'extension'` 并写明推导链 | owner 认可后并入枚举 |
+| SD-24 | kernel/06 §3.4 vs registry H17/H19 | 机器归属两义 | 跟随 registry；缺席显式 `NOT REPORTED`；不自行改判 | kernel/06 owner 区分「测量机器」与「判定归属」并写明 |
+| SD-25 | kernel/01 §3.9 vs `tools/conformance/suites.json` | 命名漂移 + 证据要求未落地 | 采纳实现命名（SD-17 先例），**不改实现**；SHA-256 不冒充已落地 | kernel/01 §3.9 owner 把 `suites.toml` 改为 `suites.json` 并补 SD-25 脚注（检出 SHA-256 无载体，须先定载体） |
+| SD-26 | kernel/05 §3.2「功能键」行 vs §3.3 键盘表 | 正文自相矛盾（同一按键两种字节） | 跟随 §3.3（**K-03**；已由 `a555a77` 落地，H12 **100%（75/75）/`[B8] PASS`**），**不回改实现** | kernel/05 §3.2 owner 补「指向 §3.3 + 范围声明」，并为 §3.3 无单元格的键（Home/End/Insert/Delete/PgUp/PgDn/F1–F12）定音；按 AR-28 判断是否契约措辞变更 |
+
+## 与前序登记的关系
+
+- SD-01…SD-08 的处置见 [m0-spec-defects.md](m0-spec-defects.md)；本文件**不重复**其内容。
+- SD-07 / SD-08.1 / SD-08.2 已由 **ADR-0023** 处置（见该 ADR 与 m0-spec-defects 处置总表）。

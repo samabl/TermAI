@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
+description = "TermAI session daemon: session state machine, append-only Session Log, TAIL_REPLAY transport, stdin lease, IPC broker (kernel/04, ADR-0026)."
 
 [lib]
 name = "sessiond"

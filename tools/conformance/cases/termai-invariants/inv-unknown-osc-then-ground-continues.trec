@@ -1,0 +1,3 @@
+KEY "]999;x\x07ok"
+ASSERT ROW 0 = ok
+ASSERT COUNTER osc_unknown[999] = 1

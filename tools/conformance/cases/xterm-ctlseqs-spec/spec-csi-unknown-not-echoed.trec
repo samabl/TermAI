@@ -1,0 +1,4 @@
+KEY "[99z"
+KEY "x"
+ASSERT ROW 0 = x
+ASSERT COUNTER csi_unknown = 1

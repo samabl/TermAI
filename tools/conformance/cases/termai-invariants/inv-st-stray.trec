@@ -1,0 +1,3 @@
+KEY "\x1b\\q"
+ASSERT ROW 0 = q
+ASSERT COUNTER st_stray = 1

@@ -1,0 +1,3 @@
+KEY "hello"
+KEY "[1;2H[2X"
+ASSERT ROW 0 = h  lo

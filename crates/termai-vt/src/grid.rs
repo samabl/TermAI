@@ -2,8 +2,9 @@
 //!
 //! The grid owns the cell matrix, cursor, SGR state, modes, scroll region, the main
 //! and alternate screens, OSC 8 link spans and the damage/rev bookkeeping used for
-//! GridDelta production. It deliberately keeps exactly one wcwidth source
-//! (unicode-width) so no second width table can drift in (kernel/03 K-04).
+//! GridDelta production. It deliberately owns no width table: every column decision goes
+//! through `crate::width` (kernel/03 K-04), the same public API `termai-render` reads, so no
+//! second width authority can drift in.
 //!
 //! Canonicalization note: Grid::digest hashes termai-core
 //! GridSnapshot::canonical_bytes, while golden::golden_hash hashes the TERMAI-GRID
@@ -14,11 +15,13 @@ use std::collections::BTreeMap;
 use termai_core::grid::{
     Cell, CellPos, Color, CursorState, Damage, GridDelta, GridSnapshot, LinkSpan, RowPayload,
     ScrollOp, ATTR_BLINK, ATTR_BOLD, ATTR_DIM, ATTR_DOUBLE_UNDERLINE, ATTR_HIDDEN, ATTR_ITALIC,
-    ATTR_OVERLINE, ATTR_REVERSE, ATTR_STRIKETHROUGH, ATTR_UNDERLINE,
+    ATTR_OVERLINE, ATTR_REVERSE, ATTR_STRIKETHROUGH, ATTR_UNDERLINE, LINE_WRAPPED,
 };
-use unicode_width::UnicodeWidthChar;
 
 use crate::backend::Params;
+// kernel/03 K-04: the grid owns no width table of its own - it asks the one authority
+// (crate::width) so `termai-render` can read the identical rule.
+use crate::width::measure_scalar;
 
 /// DEC private mode 25: cursor visible.
 pub const MODE_CURSOR_VISIBLE: u64 = 1 << 0;
@@ -36,6 +39,13 @@ pub const MODE_APP_CURSOR: u64 = 1 << 5;
 pub const MODE_INSERT: u64 = 1 << 6;
 /// ESC = / ESC >: application keypad.
 pub const MODE_APP_KEYPAD: u64 = 1 << 7;
+/// ANSI mode 20: linefeed/newline mode (LNM). When set, LF, VT and FF also do a CR.
+pub const MODE_LINEFEED: u64 = 1 << 8;
+/// DEC private mode 45: reverse wraparound. xterm's `CursorBack` also requires DECAWM.
+pub const MODE_REVERSE_WRAP: u64 = 1 << 9;
+/// DEC private mode 1045: extended reverse wraparound (xterm since patch 383). Also
+/// requires DECAWM; at this level both modes move the cursor the same way.
+pub const MODE_REVERSE_WRAP2: u64 = 1 << 10;
 
 const FLAG_NAMES: [(u16, &str); 10] = [
     (ATTR_BOLD, "bold"),
@@ -173,6 +183,10 @@ pub struct Grid {
     rows: u16,
     cells: Vec<Cell>,
     saved_cells: Vec<Cell>,
+    /// Per-row `LineFlags` (ADR-0025 D1), in lockstep with `cells`.
+    row_flags: Vec<u16>,
+    /// Flags belonging to the inactive main/alt buffer, swapped with `saved_cells`.
+    saved_row_flags: Vec<u16>,
     alt: bool,
     cursor_row: u16,
     cursor_col: u16,
@@ -181,13 +195,24 @@ pub struct Grid {
     sgr: Sgr,
     saved: SavedCursor,
     alt_saved: SavedCursor,
+    /// DECSC's saved cursor for the alternate screen; separate from `alt_saved`, which belongs
+    /// to `set_alt` (mode 1049's cursor across the switch).
+    alt_decsc: SavedCursor,
     modes: u64,
+    /// One saved on/off slot per DEC private mode, as `CSI ? Pm s` / `CSI ? Pm r` (xterm's
+    /// `save_modes`). Sparse: a mode is present only after it has been saved at least once.
+    saved_private_modes: BTreeMap<u16, bool>,
     wrap_pending: bool,
+    /// Last graphic character printed, which REP (CSI Ps b) repeats.
+    last_graphic: char,
     scroll_top: u16,
     scroll_bottom: u16,
     tab_stops: Vec<bool>,
     charset_g1: bool,
     title: String,
+    /// Icon (tab) title. xterm keeps this separate from the window title because OSC 1
+    /// and OSC 2 address them independently; OSC 0 sets both.
+    icon_title: String,
     cwd: Option<String>,
     cwd_remote: bool,
     links: Vec<LinkSpan>,
@@ -225,6 +250,8 @@ impl Grid {
             rows,
             cells: vec![Cell::BLANK; size],
             saved_cells: vec![Cell::BLANK; size],
+            row_flags: vec![0; usize::from(rows)],
+            saved_row_flags: vec![0; usize::from(rows)],
             alt: false,
             cursor_row: 0,
             cursor_col: 0,
@@ -233,13 +260,17 @@ impl Grid {
             sgr: Sgr::default(),
             saved: SavedCursor::default(),
             alt_saved: SavedCursor::default(),
+            alt_decsc: SavedCursor::default(),
             modes: MODE_AUTOWRAP | MODE_CURSOR_VISIBLE,
+            saved_private_modes: BTreeMap::new(),
             wrap_pending: false,
+            last_graphic: ' ',
             scroll_top: 0,
             scroll_bottom: rows.saturating_sub(1),
             tab_stops: default_tab_stops(cols),
             charset_g1: false,
             title: String::new(),
+            icon_title: String::new(),
             cwd: None,
             cwd_remote: false,
             links: Vec::new(),
@@ -352,6 +383,12 @@ impl Grid {
     #[must_use]
     pub fn title(&self) -> &str {
         &self.title
+    }
+
+    /// Set the icon (tab) title (already stripped by the caller). Kept in-crate: the
+    /// snapshot DTO carries only the window title, and no external caller needs it.
+    pub(crate) fn set_icon_title(&mut self, title: &str) {
+        self.icon_title = title.to_string();
     }
 
     /// Set the working directory reported by OSC 7 / OSC 633.
@@ -477,6 +514,59 @@ impl Grid {
         }
     }
 
+    /// DA1 (`CSI c` / `CSI 0 c`) and DA2 (`CSI > c` / `CSI > 0 c`) device attributes
+    /// (ADR-0030 D-2).
+    ///
+    /// DA1 reports `?1;2` only: VT100 plus the Advanced Video Option, which is exactly the
+    /// capability set this layer implements at the declared VT level 1. It deliberately does
+    /// not advertise selective erase, locator, colour, or the other options a higher xterm
+    /// DA1 would claim. DA2's `314` is TermAI's own self-reported version, chosen as the
+    /// lower bound of the range esctest accepts (314..=999) so that it is never mistaken for
+    /// an xterm version number.
+    fn device_attributes(&mut self, secondary: bool) {
+        if secondary {
+            self.responses.push(b"\x1b[>0;314;0c".to_vec());
+        } else {
+            self.responses.push(b"\x1b[?1;2c".to_vec());
+        }
+    }
+
+    /// XTWINOPS (`CSI Ps t`) window/text-area report subset (SD-19).
+    ///
+    /// Only the character-cell reports are answered. `14 t` / `15 t` / `16 t` are
+    /// deliberately left unanswered: they report **pixel** dimensions, and this layer
+    /// holds no font metrics — AR-14 keeps pixels out of the VT layer, so fabricating
+    /// an answer here would be a lie. The esctest adapter still synthesises those three
+    /// from its fixed window model and records each one as a substitution.
+    fn window_op(&mut self, params: &Params) {
+        match params.get(0) {
+            // 11 t: window state. 1 = normal (never iconified or minimised).
+            11 => self.responses.push(b"\x1b[1t".to_vec()),
+            // 13 t: window position in pixels. There is no window, so report 0;0.
+            13 => self.responses.push(b"\x1b[3;0;0t".to_vec()),
+            // 18 t: text-area size in characters -> CSI 8 ; rows ; cols t.
+            18 => {
+                let rows = self.rows;
+                let cols = self.cols;
+                self.responses
+                    .push(format!("\x1b[8;{rows};{cols}t").into_bytes());
+            }
+            // 19 t: screen size in characters -> CSI 9 ; rows ; cols t.
+            19 => {
+                let rows = self.rows;
+                let cols = self.cols;
+                self.responses
+                    .push(format!("\x1b[9;{rows};{cols}t").into_bytes());
+            }
+            // 20 t / 21 t: report the icon label / window title as OSC L / OSC l. Both are
+            // pure state reports, like the character-cell reports above; xterm answers them
+            // from the title it already holds.
+            20 => self.responses.push(osc_report(b'L', &self.icon_title)),
+            21 => self.responses.push(osc_report(b'l', &self.title)),
+            _ => {}
+        }
+    }
+
     pub fn rejected_links(&self) -> u64 {
         self.rejected_links
     }
@@ -501,6 +591,7 @@ impl Grid {
             cols: self.cols,
             rows: self.rows,
             cells: self.cells.clone(),
+            row_flags: self.row_flags.clone(),
             cursor: self.cursor_state(),
             alt: self.alt,
             wrap_pending: self.wrap_pending,
@@ -533,6 +624,10 @@ impl Grid {
         self.modes & MODE_AUTOWRAP != 0
     }
 
+    fn linefeed_newline(&self) -> bool {
+        self.modes & MODE_LINEFEED != 0
+    }
+
     fn insert_mode(&self) -> bool {
         self.modes & MODE_INSERT != 0
     }
@@ -560,6 +655,77 @@ impl Grid {
     fn mark_full(&mut self) {
         self.rev = self.rev.wrapping_add(1);
         self.damage.full = true;
+    }
+
+    /// Set `LINE_WRAPPED` on the row that DECAWM just left behind (ADR-0025 D1).
+    ///
+    /// A flag-only change still has to damage the row: otherwise the wrap link never
+    /// reaches a mirror that is following GridDelta (only a full resync would carry it).
+    fn mark_line_wrapped(&mut self, row: u16) {
+        let changed = match self.row_flags.get_mut(usize::from(row)) {
+            Some(flags) if *flags & LINE_WRAPPED == 0 => {
+                *flags |= LINE_WRAPPED;
+                true
+            }
+            _ => false,
+        };
+        if changed {
+            self.mark_row(row);
+        }
+    }
+
+    /// Clear a row's LineFlags: it is no longer a wrapped continuation.
+    fn clear_line_flags(&mut self, row: u16) {
+        let changed = match self.row_flags.get_mut(usize::from(row)) {
+            Some(flags) if *flags != 0 => {
+                *flags = 0;
+                true
+            }
+            _ => false,
+        };
+        if changed {
+            self.mark_row(row);
+        }
+    }
+
+    fn clear_all_line_flags(&mut self) {
+        for flags in &mut self.row_flags {
+            *flags = 0;
+        }
+    }
+
+    /// Move row flags in lockstep with the cell rows inside one row-shifting
+    /// primitive (scroll / insert_lines / delete_lines). `down` moves content
+    /// towards higher row numbers; the rows the move exposes are cleared.
+    ///
+    /// This lives next to the cell move on purpose: ADR-0025 section 5 negative
+    /// item 2 warns that any shifting path missing this call degrades silently to
+    /// "all-zero or misaligned flags".
+    fn rotate_row_flags(&mut self, top: u16, bottom: u16, n: u16, down: bool) {
+        let top = usize::from(top);
+        let bottom = usize::from(bottom);
+        let n = usize::from(n);
+        if n == 0 || top > bottom || bottom >= self.row_flags.len() {
+            return;
+        }
+        let region = bottom - top + 1;
+        if n >= region {
+            for flags in &mut self.row_flags[top..=bottom] {
+                *flags = 0;
+            }
+            return;
+        }
+        if down {
+            self.row_flags.copy_within(top..=bottom - n, top + n);
+            for flags in &mut self.row_flags[top..top + n] {
+                *flags = 0;
+            }
+        } else {
+            self.row_flags.copy_within(top + n..=bottom, top);
+            for flags in &mut self.row_flags[bottom - n + 1..=bottom] {
+                *flags = 0;
+            }
+        }
     }
 
     fn set_bit(&mut self, bit: u64, on: bool) {
@@ -612,11 +778,17 @@ impl Grid {
                 .get(base..end)
                 .map(<[Cell]>::to_vec)
                 .unwrap_or_default(),
+            flags: self.row_flags.get(usize::from(row)).copied().unwrap_or(0),
         }
     }
 
     /// Resize the grid, preserving the overlapping top-left region.
     pub fn resize(&mut self, cols: u16, rows: u16) {
+        // A resize to the same dimensions is a no-op. It must not disturb the scrolling region,
+        // saved cursor or alt buffer; the conformance adapter issues RESIZE after every feed.
+        if cols == self.cols && rows == self.rows {
+            return;
+        }
         let old_cols = self.cols;
         let old_rows = self.rows;
         let mut next = vec![Cell::BLANK; usize::from(cols) * usize::from(rows)];
@@ -630,8 +802,20 @@ impl Grid {
                 }
             }
         }
+        // Flags follow the rows that survive the resize; new rows start zeroed.
+        let mut next_flags = vec![0u16; usize::from(rows)];
+        for row in 0..old_rows.min(rows) {
+            if let (Some(flag), Some(slot)) = (
+                self.row_flags.get(usize::from(row)).copied(),
+                next_flags.get_mut(usize::from(row)),
+            ) {
+                *slot = flag;
+            }
+        }
         self.cells = next;
+        self.row_flags = next_flags;
         self.saved_cells = vec![Cell::BLANK; usize::from(cols) * usize::from(rows)];
+        self.saved_row_flags = vec![0; usize::from(rows)];
         self.cols = cols;
         self.rows = rows;
         self.cursor_row = self.cursor_row.min(rows.saturating_sub(1));
@@ -640,6 +824,32 @@ impl Grid {
         self.scroll_bottom = rows.saturating_sub(1);
         self.tab_stops = default_tab_stops(cols);
         self.combining.clear();
+        self.mark_full();
+    }
+
+    /// Soft reset (DECSTR / CSI ! p): state only, never the screen contents.
+    ///
+    /// xterm's DECSTR returns the scrolling region to the full screen, homes the cursor and
+    /// clears saved state. It deliberately does NOT erase the screen - which is why it cannot
+    /// reuse `reset()` below, since that rebuilds the grid via `Grid::new`.
+    fn soft_reset(&mut self) {
+        self.scroll_top = 0;
+        self.scroll_bottom = self.rows.saturating_sub(1);
+        // DECSTR resets the SAVED position to home but does not move the cursor itself (esctest's
+        // test_SaveRestoreCursor_Reset writes after DECSTR and expects that write to land where the
+        // cursor already was).
+        self.wrap_pending = false;
+        // State that xterm's DECSTR also returns to defaults and that would otherwise leak from one
+        // esctest case into the next: character attributes, the saved cursor, the character set,
+        // and the modes DECSTR resets (origin mode and insert mode off, autowrap on, cursor shown).
+        self.sgr = Sgr::default();
+        self.saved = SavedCursor::default();
+        self.alt_saved = SavedCursor::default();
+        self.alt_decsc = SavedCursor::default();
+        self.charset_g1 = false;
+        self.last_graphic = ' ';
+        self.cursor_visible = true;
+        self.modes = MODE_AUTOWRAP | MODE_CURSOR_VISIBLE;
         self.mark_full();
     }
 
@@ -701,13 +911,14 @@ impl Grid {
 
     /// Print one character.
     pub fn print(&mut self, ch: char) {
-        let width = UnicodeWidthChar::width(ch).unwrap_or(0);
+        let width = measure_scalar(ch);
         if width == 0 {
             self.append_combining(ch);
             return;
         }
+        self.last_graphic = ch;
         if self.wrap_pending && self.autowrap() {
-            self.line_feed();
+            self.line_feed_wrapped();
             self.cursor_col = 0;
         }
         self.wrap_pending = false;
@@ -741,7 +952,7 @@ impl Grid {
     fn print_wide(&mut self, ch: char) {
         if self.cursor_col + 2 > self.cols {
             if self.autowrap() {
-                self.line_feed();
+                self.line_feed_wrapped();
                 self.cursor_col = 0;
             } else {
                 self.cursor_col = self.cols.saturating_sub(2);
@@ -808,17 +1019,20 @@ impl Grid {
         match byte {
             0x07 => {}
             0x08 => {
-                if self.cursor_col > 0 {
-                    self.cursor_col -= 1;
-                }
-                self.wrap_pending = false;
-                self.mark_cursor();
+                self.cursor_left(1);
             }
             0x09 => {
                 self.tab();
             }
             0x0A..=0x0C => {
-                self.line_feed();
+                // LF/VT/FF. With LNM set (SM 20) the line feed also returns to
+                // column 1; without it the column is left where it was.
+                self.line_feed_explicit();
+                if self.linefeed_newline() {
+                    self.cursor_col = 0;
+                    self.wrap_pending = false;
+                    self.mark_cursor();
+                }
             }
             0x0D => {
                 self.cursor_col = 0;
@@ -842,18 +1056,33 @@ impl Grid {
     }
 
     /// ESC dispatch.
-    pub fn esc_dispatch(&mut self, _intermediates: &[u8], ignore: bool, byte: u8) {
+    pub fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8) {
         if ignore {
+            return;
+        }
+        // Intermediates are part of the sequence identity, not decoration: dispatching
+        // on the final byte alone turned ESC # 8 (DECALN) into ESC 8 (DECRC) and moved
+        // the cursor (G1 finding inv-esc-intermediate-has-no-side-effect).
+        if intermediates == [b'#'] {
+            if byte == b'8' {
+                self.decaln();
+            }
+            return;
+        }
+        if !intermediates.is_empty() {
             return;
         }
         match byte {
             b'7' => self.save_cursor(),
             b'8' => self.restore_cursor(),
-            b'D' => self.line_feed(),
+            b'D' => self.line_feed_explicit(),
             b'E' => {
                 self.cursor_col = 0;
-                self.line_feed();
+                self.line_feed_explicit();
             }
+            // HTS (ESC H): set a tab stop at the cursor. Its absence left the escape ignored, so
+            // a test that set a custom stop and then tabbed landed on a default one.
+            b'H' => self.set_tab_stop(),
             b'M' => self.reverse_index(),
             b'c' => self.reset(),
             b'=' => self.set_bit(MODE_APP_KEYPAD, true),
@@ -884,6 +1113,25 @@ impl Grid {
         self.mark_cursor();
     }
 
+    /// CBT stepping: move to the previous tab stop, stopping at column 1.
+    fn tab_back(&mut self) {
+        let mut col = self.cursor_col;
+        while col > 0 {
+            col -= 1;
+            if self
+                .tab_stops
+                .get(usize::from(col))
+                .copied()
+                .unwrap_or(false)
+            {
+                break;
+            }
+        }
+        self.cursor_col = col;
+        self.wrap_pending = false;
+        self.mark_cursor();
+    }
+
     fn line_feed(&mut self) {
         self.wrap_pending = false;
         if self.cursor_row == self.scroll_bottom {
@@ -892,6 +1140,21 @@ impl Grid {
             self.cursor_row += 1;
         }
         self.mark_cursor();
+    }
+
+    /// LF / IND / NEL: an explicit hard line break. The row we leave is not a
+    /// continuation of the row below, so its WRAPPED bit (if any) is cleared
+    /// before the row slots move (ADR-0025 D1).
+    fn line_feed_explicit(&mut self) {
+        self.clear_line_flags(self.cursor_row);
+        self.line_feed();
+    }
+
+    /// DECAWM autowrap: the row we leave continues on the row below, so mark it
+    /// WRAPPED before the row slots move (ADR-0025 D1/D3).
+    fn line_feed_wrapped(&mut self) {
+        self.mark_line_wrapped(self.cursor_row);
+        self.line_feed();
     }
 
     fn reverse_index(&mut self) {
@@ -939,6 +1202,7 @@ impl Grid {
                 }
             }
         }
+        self.rotate_row_flags(top, bottom, n, false);
         if top == 0 {
             self.scrollback_len = self.scrollback_len.saturating_add(u32::from(n));
         }
@@ -990,6 +1254,7 @@ impl Grid {
                 }
             }
         }
+        self.rotate_row_flags(top, bottom, n, true);
         self.damage.scroll = Some(ScrollOp {
             top,
             bottom,
@@ -1041,6 +1306,7 @@ impl Grid {
                 }
             }
         }
+        self.rotate_row_flags(top, bottom, n, true);
         let mut row = top;
         while row <= bottom {
             self.mark_row(row);
@@ -1087,6 +1353,7 @@ impl Grid {
                 }
             }
         }
+        self.rotate_row_flags(top, bottom, n, false);
         let mut row = top;
         while row <= bottom {
             self.mark_row(row);
@@ -1107,6 +1374,13 @@ impl Grid {
                 break;
             }
             col += 1;
+        }
+        // Erasing through the right edge removes the content that a wrap link
+        // would have continued on the next row, so the row stops being a wrapped
+        // continuation (ADR-0025 D1). Partial erases that keep the edge intact
+        // deliberately leave the flag alone.
+        if self.cols > 0 && to >= self.cols - 1 {
+            self.clear_line_flags(row);
         }
     }
 
@@ -1186,6 +1460,8 @@ impl Grid {
                 *slot = Cell::BLANK;
             }
         }
+        // ICH drops the cells pushed past the right edge, so the wrap link is stale.
+        self.clear_line_flags(row);
         self.mark_row(row);
     }
 
@@ -1215,6 +1491,8 @@ impl Grid {
                 *slot = Cell::BLANK;
             }
         }
+        // DCH blanks the right edge, so the wrap link is stale.
+        self.clear_line_flags(row);
         self.mark_row(row);
     }
 
@@ -1239,7 +1517,8 @@ impl Grid {
     }
 
     fn cursor_up(&mut self, n: u16) {
-        let floor = if self.origin() { self.scroll_top } else { 0 };
+        let inside = self.cursor_row >= self.scroll_top && self.cursor_row <= self.scroll_bottom;
+        let floor = if inside { self.scroll_top } else { 0 };
         let target = self.cursor_row.saturating_sub(n);
         self.cursor_row = target.max(floor);
         self.wrap_pending = false;
@@ -1247,7 +1526,8 @@ impl Grid {
     }
 
     fn cursor_down(&mut self, n: u16) {
-        let ceil = if self.origin() {
+        let inside = self.cursor_row >= self.scroll_top && self.cursor_row <= self.scroll_bottom;
+        let ceil = if inside {
             self.scroll_bottom
         } else {
             self.rows.saturating_sub(1)
@@ -1265,8 +1545,75 @@ impl Grid {
         self.mark_cursor();
     }
 
+    /// CUB / BS: xterm's CursorBack (cursor.c), ported faithfully rather than approximated.
+    ///
+    /// Two reverse-wrap modes exist and they are NOT equivalent: private mode 45 crosses
+    /// only a boundary whose row carries LINE_WRAPPED and otherwise fails the wrap (the row
+    /// is restored and the column lands on the left margin), while mode 1045 wraps
+    /// unconditionally and, from the top margin, lands at bottom + 1. Both need DECAWM, and
+    /// a pending wrap absorbs one step. Left/right margins (DECLRMM) are not implemented, so
+    /// the left margin is always 0.
     fn cursor_left(&mut self, n: u16) {
-        self.cursor_col = self.cursor_col.saturating_sub(n);
+        let left: i32 = 0;
+        let right = i32::from(self.cols.saturating_sub(1));
+        let before = i32::from(self.cursor_col);
+        let top = i32::from(self.scroll_top);
+        let bottom = i32::from(self.scroll_bottom);
+        let rev2 = self.autowrap() && self.modes & MODE_REVERSE_WRAP2 != 0;
+        let rev = self.autowrap() && self.modes & MODE_REVERSE_WRAP != 0;
+
+        let mut col = before;
+        let mut row = i32::from(self.cursor_row);
+        let mut count = i32::from(n);
+        if count > 0 {
+            if (rev || rev2) && self.wrap_pending {
+                count -= 1;
+            } else {
+                col -= 1;
+            }
+        }
+
+        let mut fetched = false;
+        let mut wrapped;
+        loop {
+            if col < left {
+                if rev2 {
+                    col = right;
+                    if row == top {
+                        row = bottom + 1;
+                    }
+                } else if !rev {
+                    col = left;
+                    break;
+                }
+                fetched = false;
+                row -= 1;
+            }
+            if !fetched {
+                wrapped = row >= 0
+                    && (row as u16) < self.rows
+                    && self.row_flags[usize::from(row as u16)] & LINE_WRAPPED != 0;
+                fetched = true;
+                if row != i32::from(self.cursor_row) {
+                    if !rev2 && !wrapped {
+                        if row < bottom {
+                            row += 1;
+                        }
+                        col = left;
+                        break;
+                    }
+                    col = right;
+                }
+            }
+            count -= 1;
+            if count <= 0 {
+                break;
+            }
+            col -= 1;
+        }
+
+        self.cursor_row = row.clamp(0, i32::from(self.rows.saturating_sub(1))) as u16;
+        self.cursor_col = col.clamp(left, right) as u16;
         self.wrap_pending = false;
         self.mark_cursor();
     }
@@ -1288,23 +1635,83 @@ impl Grid {
         self.cup(0, 0);
     }
 
+    /// DECALN (ESC # 8): fill the screen with E, reset the margins and home the cursor.
+    fn decaln(&mut self) {
+        let cell = self.styled('E');
+        for row in 0..self.rows {
+            for col in 0..self.cols {
+                self.put(row, col, cell);
+            }
+        }
+        self.combining.clear();
+        self.clear_all_line_flags();
+        self.scroll_top = 0;
+        self.scroll_bottom = self.rows.saturating_sub(1);
+        self.cursor_row = 0;
+        self.cursor_col = 0;
+        self.wrap_pending = false;
+        self.mark_cursor();
+    }
     fn save_cursor(&mut self) {
-        self.saved = SavedCursor {
+        // xterm keeps DECSC's saved cursor separately for the main and alternate screens, so that
+        // switching back restores the position that screen had.
+        let saved = SavedCursor {
             row: self.cursor_row,
             col: self.cursor_col,
             sgr: self.sgr,
             origin: self.origin(),
         };
+        if self.alt {
+            self.alt_decsc = saved;
+        } else {
+            self.saved = saved;
+        }
     }
 
     fn restore_cursor(&mut self) {
-        let saved = self.saved;
+        let saved = if self.alt { self.alt_decsc } else { self.saved };
         self.cursor_row = saved.row.min(self.rows.saturating_sub(1));
         self.cursor_col = saved.col.min(self.cols.saturating_sub(1));
         self.sgr = saved.sgr;
         self.set_bit(MODE_ORIGIN, saved.origin);
         self.wrap_pending = false;
         self.mark_cursor();
+    }
+    /// `CSI ? Pm s` (xterm XTERM_SAVE): remember the current on/off state of each listed
+    /// DEC private mode. xterm keeps one saved slot per mode, so a later `CSI ? Pm r`
+    /// restores only the modes it names.
+    fn save_private_modes(&mut self, params: &Params) {
+        for i in 0..params.len() {
+            let mode = params.get(i);
+            if let Some(on) = self.savable_private_mode(mode) {
+                self.saved_private_modes.insert(mode, on);
+            }
+        }
+    }
+
+    /// `CSI ? Pm r` (xterm XTERM_RESTORE): restore the modes named, using the value saved
+    /// for each. A mode that was never saved is left alone.
+    fn restore_private_modes(&mut self, params: &Params) {
+        for i in 0..params.len() {
+            let mode = params.get(i);
+            if let Some(on) = self.saved_private_modes.get(&mode).copied() {
+                self.set_private_mode(mode, on);
+            }
+        }
+    }
+
+    /// The DEC private modes whose state `CSI ? Pm s` / `CSI ? Pm r` save and restore.
+    /// Restricted to plain on/off modes: the alternate-screen modes (47/1047/1049) are
+    /// excluded because restoring them would swap the visible buffer, which xterm does
+    /// but which nothing here needs yet.
+    fn savable_private_mode(&self, mode: u16) -> Option<bool> {
+        match mode {
+            1 => Some(self.modes & MODE_APP_CURSOR != 0),
+            6 => Some(self.modes & MODE_ORIGIN != 0),
+            7 => Some(self.modes & MODE_AUTOWRAP != 0),
+            25 => Some(self.cursor_visible),
+            _ => None,
+        }
     }
 
     fn set_modes(&mut self, params: &Params, private: bool, enable: bool) {
@@ -1329,6 +1736,16 @@ impl Grid {
                 self.cup(0, 0);
             }
             7 => self.set_bit(MODE_AUTOWRAP, enable),
+            45 => self.set_bit(MODE_REVERSE_WRAP, enable),
+            1045 => self.set_bit(MODE_REVERSE_WRAP2, enable),
+            // 1048: save (h) / restore (l) the cursor, like DECSC/DECRC.
+            1048 => {
+                if enable {
+                    self.save_cursor();
+                } else {
+                    self.restore_cursor();
+                }
+            }
             25 => {
                 self.cursor_visible = enable;
                 self.set_bit(MODE_CURSOR_VISIBLE, enable);
@@ -1342,9 +1759,51 @@ impl Grid {
         }
     }
 
+    /// DECRQM (`CSI Ps $ p` / `CSI ? Ps $ p`): report one mode's state as
+    /// `CSI Ps ; Pm $ y`, where Pm is 0 not recognised, 1 set, 2 reset
+    /// (xterm ctlseqs; oracle = xterm). Reporting 0 for modes we do not track is the
+    /// honest answer - claiming a state we do not maintain would be worse than unknown.
+    fn decrqm(&mut self, params: &Params, private: bool) {
+        let mode = params.get(0);
+        let state = self.mode_state(mode, private);
+        let prefix = if private { "?" } else { "" };
+        self.responses
+            .push(format!("\x1b[{prefix}{mode};{state}$y").into_bytes());
+    }
+
+    fn mode_state(&self, mode: u16, private: bool) -> u8 {
+        fn pm(on: bool) -> u8 {
+            if on {
+                1
+            } else {
+                2
+            }
+        }
+        if private {
+            return match mode {
+                1 => pm(self.modes & MODE_APP_CURSOR != 0),
+                6 => pm(self.modes & MODE_ORIGIN != 0),
+                7 => pm(self.modes & MODE_AUTOWRAP != 0),
+                45 => pm(self.modes & MODE_REVERSE_WRAP != 0),
+                1045 => pm(self.modes & MODE_REVERSE_WRAP2 != 0),
+                25 => pm(self.cursor_visible),
+                47 | 1047 | 1049 => pm(self.alt),
+                2004 => pm(self.modes & MODE_BRACKETED_PASTE != 0),
+                _ => 0,
+            };
+        }
+        match mode {
+            4 => pm(self.modes & MODE_INSERT != 0),
+            20 => pm(self.modes & MODE_LINEFEED != 0),
+            _ => 0,
+        }
+    }
+
     fn set_standard_mode(&mut self, mode: u16, enable: bool) {
-        if mode == 4 {
-            self.set_bit(MODE_INSERT, enable);
+        match mode {
+            4 => self.set_bit(MODE_INSERT, enable),
+            20 => self.set_bit(MODE_LINEFEED, enable),
+            _ => {}
         }
     }
 
@@ -1360,10 +1819,12 @@ impl Grid {
                     };
                 }
                 std::mem::swap(&mut self.cells, &mut self.saved_cells);
+                std::mem::swap(&mut self.row_flags, &mut self.saved_row_flags);
                 if clear {
                     for cell in &mut self.cells {
                         *cell = Cell::BLANK;
                     }
+                    self.clear_all_line_flags();
                 }
                 self.alt = true;
                 self.set_bit(MODE_ALT_SCREEN, true);
@@ -1372,10 +1833,12 @@ impl Grid {
                 for cell in &mut self.cells {
                     *cell = Cell::BLANK;
                 }
+                self.clear_all_line_flags();
                 self.mark_full();
             }
         } else if self.alt {
             std::mem::swap(&mut self.cells, &mut self.saved_cells);
+            std::mem::swap(&mut self.row_flags, &mut self.saved_row_flags);
             self.alt = false;
             self.set_bit(MODE_ALT_SCREEN, false);
             if save_cursor {
@@ -1499,6 +1962,18 @@ impl Grid {
                 let col = params.get(1).saturating_sub(1);
                 self.cup(row, col);
             }
+            b'I' => {
+                // CHT: cursor forward tabulation (ECMA-48). Ps defaults to 1.
+                for _ in 0..def(params.get(0)) {
+                    self.tab();
+                }
+            }
+            b'Z' => {
+                // CBT: cursor backward tabulation (ECMA-48). Ps defaults to 1.
+                for _ in 0..def(params.get(0)) {
+                    self.tab_back();
+                }
+            }
             b'J' => self.erase_display(params.get(0)),
             b'K' => self.erase_line(params.get(0)),
             b'L' => self.insert_lines(def(params.get(0))),
@@ -1523,16 +1998,59 @@ impl Grid {
                 self.mark_cursor();
             }
             b'e' => self.cursor_down(def(params.get(0))),
+            b'\x60' => {
+                // HPA: horizontal position absolute (1-based; 0 or absent means column 1).
+                let col = params.get(0).saturating_sub(1);
+                self.cursor_col = col.min(self.cols.saturating_sub(1));
+                self.wrap_pending = false;
+                self.mark_cursor();
+            }
+            b'a' => {
+                // HPR: horizontal position relative.
+                let col = self.cursor_col.saturating_add(def(params.get(0)));
+                self.cursor_col = col.min(self.cols.saturating_sub(1));
+                self.wrap_pending = false;
+                self.mark_cursor();
+            }
+            b'b' => {
+                // REP: repeat the preceding graphic character, bounded by the screen.
+                let ch = self.last_graphic;
+                let cap = def(params.get(0)).min(self.cols.saturating_mul(self.rows));
+                for _ in 0..cap {
+                    self.print(ch);
+                }
+            }
+            // DA1: CSI c / CSI 0 c (ADR-0030 D-2).
+            b'c' if intermediates.is_empty() => self.device_attributes(false),
+            // DA2: CSI > c / CSI > 0 c (intermediate '>').
+            b'c' if intermediates == [b'>'] => self.device_attributes(true),
+            // DECSTR (soft reset). esctest issues this before every case, and with no handler
+            // the scrolling region leaked from one case into the next.
+            b'p' if intermediates == [b'!'] => self.soft_reset(),
+            b'p' if intermediates == [b'$'] || intermediates == [b'?', b'$'] => {
+                self.decrqm(params, private);
+            }
             b'g' => self.clear_tab(params.get(0)),
             b'h' => self.set_modes(params, private, true),
             b'l' => self.set_modes(params, private, false),
             b'm' if intermediates.is_empty() => self.sgr(params),
             b'n' => self.device_status(params, private, ignore),
             b'r' if intermediates.is_empty() => self.set_scroll_region(params),
+            // XTERM_SAVE / XTERM_RESTORE: `CSI ? Pm s` / `CSI ? Pm r`, the DEC private-mode
+            // counterparts of save/restore cursor (xterm's savemodes/restoremodes).
+            b'r' if intermediates == [b'?'] => self.restore_private_modes(params),
             b's' if intermediates.is_empty() => self.save_cursor(),
+            b's' if intermediates == [b'?'] => self.save_private_modes(params),
             b'u' if intermediates.is_empty() => self.restore_cursor(),
-            b't' => {}
+            b't' if intermediates.is_empty() => self.window_op(params),
             _ => {}
+        }
+    }
+
+    /// HTS (`ESC H`): set a tab stop at the current column.
+    fn set_tab_stop(&mut self) {
+        if let Some(slot) = self.tab_stops.get_mut(usize::from(self.cursor_col)) {
+            *slot = true;
         }
     }
 
@@ -1650,6 +2168,14 @@ fn def(value: u16) -> u16 {
     } else {
         value
     }
+}
+
+/// `ESC ] Ps Pt ESC \\`: the OSC form xterm uses to report a title (Ps = L icon, l window).
+fn osc_report(code: u8, text: &str) -> Vec<u8> {
+    let mut out = vec![0x1b, b']', code];
+    out.extend_from_slice(text.as_bytes());
+    out.extend_from_slice(b"\x1b\\");
+    out
 }
 
 fn default_tab_stops(cols: u16) -> Vec<bool> {

@@ -99,7 +99,10 @@ fn decode(buf) -> Result<Frame, IpcError>:
 | | ContextEvent / ContextDropNotice | 0x0202/0x0203 | 事件 | CBOR |
 | 0x03xx 能力 | CapRefPresent / CapRefSealed / CapDenied / LeaseAcquire / LeaseGrant / LeaseRevoke / LeaseTransfer | 0x0300…0x0302、0x0304…0x0307 | 控制 | POD |
 | 0x04xx 审计 | AuditRecord / AuditBackpressure | 0x0400/0x0401 | 审计 | CBOR |
+| 0x05xx 会话接入 | AttachRequest / AttachAck / TailReplay / DetachNotice | 0x0500…0x0503（0x0504–0x05FF 保留） | 控制/数据 | CBOR（**DetachNotice** 为 POD） |
 | 0xF0xx | Experimental（默认关闭，需 capability `ipc.experimental`） | 0xF000… | 任意 | 任意 |
+
+> **0x05xx 会话接入段由 ADR-0023 D1 分配并冻结**：0x0500 AttachRequest / 0x0501 AttachAck / 0x0502 TailReplay / 0x0503 DetachNotice；0x0504–0x05FF 保留，新分配须新 ADR。
 
 **拒绝规则**：未知 `msg_type` 落在**已知区段**内 → 回 `Error{code: UnsupportedMsg}` 并继续（不断连）；落在保留区段 → 回 `Error{code: ReservedMsgType}`；仅帧层错误（`rsv` 非 0、CRC 失配、超长）才断连。
 
@@ -295,6 +298,7 @@ consumer.consume():
 | kernel/07 | `AuthzError` → `code` | `TERMAI-E-AUTHZ-{MISSING\|EXPIRED\|REVOKED\|SCOPE\|TAINT\|APPROVAL\|POLICY\|MALFORMED}` | capability 校验失败 | 对外契约；每次决策恰好一条 `AuditRecord` |
 | kernel/07 | `IpcError` | `ReservedNonZero` / `FrameTooLarge` / `CrcMismatch` / `EncodingMismatch` / `Corrupt` / `NeedMore` / `UnsupportedMsg` / `ReservedMsgType` | 帧层与消息层错误 | 帧层错误断连，消息层错误不断连（§3.2） |
 | kernel/07 | 握手 `reason` | `VerUnsupported` / `CapUnknown` / `PeerDenied` / `HandshakeReplay` / `HandshakeTimeout` | 握手失败分类（CLI 退出码见 §3.3） | 数值即契约；新增走 minor |
+| kernel/04 | `Error{code}` 会话域字符串码（经 IPC 暴露） | `NoSuchSession` / `AttachStateInvalid` | attach 与快照请求的会话域拒绝（会话不存在；未 attach 或 attach 状态非法） | **字符串码即契约**：新增走 minor，改语义 = major（§3.7）；attach 的版本拒绝**复用** kernel/07 握手 `VerUnsupported`，不新增码。实现见 ADR-0023 D1 与 `docs/plan/p0-spec-defects.md` SD-18 |
 | kernel/07 | JSON-RPC 错误码 | `-32030` | Local API capability 拒绝 | 对外契约（`code` 字段结构化 + 可操作提示） |
 
 **缺口说明（kernel/03 / 05 / 06：显式「暂不登记」+ 理由 + 触发条件，L-18）**

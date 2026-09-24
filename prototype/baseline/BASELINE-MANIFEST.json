@@ -1,0 +1,26 @@
+{
+  "schema": "termai-baseline-manifest/v1",
+  "adr": "ADR-0022",
+  "generator": "ci.yml:design-baseline (workflow_dispatch only)",
+  "commit": "d42cdf4491c0f530a05698686ff7eb2ea2edca97",
+  "short_commit": "d42cdf44",
+  "run_id": "35815882277",
+  "repository": "samabl/TermAI",
+  "platform_tag": "win32-x64",
+  "runner_os": "Windows",
+  "runner_image": "win25-vs2026",
+  "runner_image_version": "20260907.229.1",
+  "node": "v22.23.2",
+  "rustc": "rustc 1.94.0 (4a4ef493e 2026-03-02)",
+  "browser_name": "chrome.exe",
+  "browser_version": "152.0.7977.83",
+  "baseline_files": [
+    "win32-x64-dark-agent-1600x1000.png",
+    "win32-x64-dark-collapsed-1600x1000.png",
+    "win32-x64-dark-nowrap-1600x1000.png",
+    "win32-x64-dark-settings-1600x1000.png",
+    "win32-x64-dark-workspaces-1280x800.png",
+    "win32-x64-dark-workspaces-1600x1000.png",
+    "win32-x64-light-workspaces-1600x1000.png"
+  ]
+}

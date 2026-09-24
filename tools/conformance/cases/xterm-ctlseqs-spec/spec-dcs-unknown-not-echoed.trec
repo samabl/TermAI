@@ -1,0 +1,3 @@
+KEY "Pzpayload\x1b\\z"
+ASSERT ROW 0 = z
+ASSERT COUNTER dcs_unknown = 1

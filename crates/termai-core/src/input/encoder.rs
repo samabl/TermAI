@@ -2,6 +2,9 @@
 //!
 //! This is the single producer of PTY bytes (AR-29.3). It never touches the PTY,
 //! never reads the clipboard, and never performs I/O.
+//!
+//! The three protocol columns are kernel/05 §3.3's keyboard table (Legacy / ModifyOtherKeys(2) /
+//! Kitty(disambiguate + report_all)); every branch below cites the row(s) it implements.
 
 use super::paste::{paste_gate, PasteCtx, PastePolicy};
 use super::{
@@ -153,50 +156,98 @@ pub fn ctrl_byte(c: char) -> Option<u8> {
     }
 }
 
-fn tilde(code: u8, m: Option<u8>) -> Vec<u8> {
+/// kernel/05 §3.3, ModifyOtherKeys(2) column: `CSI 27;{1+shift+2*alt+4*ctrl};{codepoint}~`.
+fn mok_form(code: u32, mods: Modifiers) -> Vec<u8> {
+    let m = mods.xterm_param().unwrap_or(1);
+    format!("\x1b[27;{m};{code}~").into_bytes()
+}
+
+/// kernel/05 §3.3, ModifyOtherKeys(2) column: does the Legacy encoding of this key + modifier
+/// combination drop a modifier bit, so that [`mok_form`] must replace it?
+///
+/// The §3.3 rows this is read from, verbatim (Legacy column -> ModifyOtherKeys(2) column):
+///
+/// ```text
+/// | Ctrl+a       | `0x01`              | `0x01`         |
+/// | Ctrl+Shift+A | `0x01`（丢 Shift）   | `CSI 27;6;65~` |
+/// | Alt+x        | `ESC x`             | `ESC x`        |
+/// ```
+///
+/// Legacy carries Alt in the `ESC` prefix (§3.2「Alt + 可打印」row) and Ctrl in the C0 byte
+/// (§3.2「Ctrl + 字母」row), but once Ctrl has consumed the key it can no longer carry Shift
+/// (`Ctrl+Shift+A`), and for a character with no C0 mapping it cannot carry Ctrl at all
+/// (`Ctrl+1` -> `CSI 27;5;49~`, corpus case M02). `Ctrl+a` and `Alt+x` keep their Legacy bytes.
+fn mok_replaces_legacy(c: char, mods: Modifiers) -> bool {
+    mods.ctrl && (ctrl_byte(c).is_none() || mods.shift)
+}
+
+/// kitty's `:{event}` event-type suffix (2 = repeat, 3 = release) — §3.1 `KittyFlags.report_events`,
+/// corpus cases K09/K10 — or nothing when the event type is not reported.
+fn event_suffix(event: Option<u8>) -> String {
+    event.map_or_else(String::new, |e| format!(":{e}"))
+}
+
+/// `CSI {code}[;{m}{event}]~`. The caller prints the parameter even when it is 1 by passing
+/// `Some(1)` (kitty `report_all` / a reported event type).
+fn tilde(code: u8, m: Option<u8>, event: &str) -> Vec<u8> {
     match m {
-        Some(v) => format!("\x1b[{code};{v}~").into_bytes(),
+        Some(v) => format!("\x1b[{code};{v}{event}~").into_bytes(),
         None => format!("\x1b[{code}~").into_bytes(),
     }
 }
 
-fn cursor_like(final_byte: u8, m: Option<u8>, app_cursor: bool) -> Vec<u8> {
+/// `CSI 1[;{m}{event}]{final}` / `SS3 {final}` / `CSI {final}` (DECCKM, xterm table).
+fn cursor_like(final_byte: u8, m: Option<u8>, app_cursor: bool, event: &str) -> Vec<u8> {
     match m {
-        Some(v) => format!("\x1b[1;{v}{}", final_byte as char).into_bytes(),
+        Some(v) => format!("\x1b[1;{v}{event}{}", final_byte as char).into_bytes(),
         None if app_cursor => vec![0x1B, b'O', final_byte],
         None => vec![0x1B, b'[', final_byte],
     }
 }
 
-fn legacy_named(key: NamedKey, mods: Modifiers, app_cursor: bool) -> Option<Vec<u8>> {
-    let m = mods.xterm_param();
+/// The legacy / functional sequence of a named key: the Legacy and ModifyOtherKeys columns of
+/// kernel/05 §3.3, plus the *functional* cells of its Kitty column. §3.3's `Left` row is
+/// `CSI D` / `SS3 D`（DECCKM） in Legacy, 同 Legacy in ModifyOtherKeys(2) and `CSI 1;1D` in Kitty —
+/// i.e. in kitty mode the functional sequence is still used, printed *with* its modifier parameter
+/// (1 when no modifier is held) under `report_all`, instead of being replaced by `CSI 57354u`.
+///
+/// `m` is the calling protocol's modifier parameter (`None` = print no parameter); `event` is
+/// kitty's `:{event}` suffix. A reported event type can only travel in the parameter list, so the
+/// parameter is printed whenever `event` is set (kitty's `CSI 1;1:3D`).
+fn functional_named(
+    key: NamedKey,
+    m: Option<u8>,
+    app_cursor: bool,
+    event: Option<u8>,
+) -> Option<Vec<u8>> {
+    let m = if event.is_some() {
+        Some(m.unwrap_or(1))
+    } else {
+        m
+    };
+    let suffix = event_suffix(event);
+    let suffix = suffix.as_str();
     Some(match key {
         NamedKey::Enter => b"\r".to_vec(),
-        NamedKey::Tab => {
-            if mods.shift {
-                b"\x1b[Z".to_vec()
-            } else {
-                b"\t".to_vec()
-            }
-        }
+        NamedKey::Tab => b"\t".to_vec(),
         NamedKey::Backspace => vec![0x7F],
         NamedKey::Escape => vec![0x1B],
         NamedKey::Space => b" ".to_vec(),
-        NamedKey::Up => cursor_like(b'A', m, app_cursor),
-        NamedKey::Down => cursor_like(b'B', m, app_cursor),
-        NamedKey::Right => cursor_like(b'C', m, app_cursor),
-        NamedKey::Left => cursor_like(b'D', m, app_cursor),
-        NamedKey::Home => cursor_like(b'H', m, app_cursor),
-        NamedKey::End => cursor_like(b'F', m, app_cursor),
-        NamedKey::Insert => tilde(2, m),
-        NamedKey::Delete => tilde(3, m),
-        NamedKey::PageUp => tilde(5, m),
-        NamedKey::PageDown => tilde(6, m),
+        NamedKey::Up => cursor_like(b'A', m, app_cursor, suffix),
+        NamedKey::Down => cursor_like(b'B', m, app_cursor, suffix),
+        NamedKey::Right => cursor_like(b'C', m, app_cursor, suffix),
+        NamedKey::Left => cursor_like(b'D', m, app_cursor, suffix),
+        NamedKey::Home => cursor_like(b'H', m, app_cursor, suffix),
+        NamedKey::End => cursor_like(b'F', m, app_cursor, suffix),
+        NamedKey::Insert => tilde(2, m, suffix),
+        NamedKey::Delete => tilde(3, m, suffix),
+        NamedKey::PageUp => tilde(5, m, suffix),
+        NamedKey::PageDown => tilde(6, m, suffix),
         NamedKey::F(n) => match n {
             1..=4 => {
                 let f = b"PQRS"[usize::from(n - 1)];
                 match m {
-                    Some(v) => format!("\x1b[1;{v}{}", f as char).into_bytes(),
+                    Some(v) => format!("\x1b[1;{v}{suffix}{}", f as char).into_bytes(),
                     None => vec![0x1B, b'O', f],
                 }
             }
@@ -211,7 +262,7 @@ fn legacy_named(key: NamedKey, mods: Modifiers, app_cursor: bool) -> Option<Vec<
                     11 => 23,
                     _ => 24,
                 };
-                tilde(code, m)
+                tilde(code, m, suffix)
             }
             _ => return None,
         },
@@ -228,8 +279,28 @@ fn legacy_key(ev: &KeyEvent, app_cursor: bool, mok_level: u8) -> Option<Vec<u8>>
     }
     match ev.code {
         KeyCode::Dead(_) => None,
-        KeyCode::Named(n) => legacy_named(n, ev.mods, app_cursor),
+        KeyCode::Named(n) => {
+            // §3.3「Esc」row, ModifyOtherKeys(2) column = `CSI 27;1;27~`: the bare `0x1B` byte is
+            // ambiguous with the start of a sequence, so the modifier-reporting mode replaces it —
+            // the same reason that row's Kitty column is `CSI 27u`. `Enter` keeps `CR` and the
+            // functional keys keep the Legacy encoding (§3.3「Enter」/「Left」rows, ModifyOtherKeys(2)
+            // column = `CR` / 同 Legacy).
+            if mok_level >= 2 && n == NamedKey::Escape {
+                return Some(mok_form(27, ev.mods));
+            }
+            // §3.3 has no cell restating `Shift+Tab = CSI Z`, so the Legacy cell (xterm ctlseqs,
+            // case L19) is kept in every mode whose table column is 同 Legacy.
+            if n == NamedKey::Tab && ev.mods.shift {
+                return Some(b"\x1b[Z".to_vec());
+            }
+            functional_named(n, ev.mods.xterm_param(), app_cursor, None)
+        }
         KeyCode::Char(c) => {
+            // §3.3, ModifyOtherKeys(2) column: `mok_form` replaces the Legacy encoding exactly when
+            // the Legacy encoding would drop a modifier bit (see `mok_replaces_legacy`).
+            if mok_level >= 2 && mok_replaces_legacy(c, ev.mods) {
+                return Some(mok_form(u32::from(c), ev.mods));
+            }
             if ev.mods.ctrl {
                 if let Some(byte) = ctrl_byte(c) {
                     let mut v = Vec::with_capacity(2);
@@ -239,11 +310,6 @@ fn legacy_key(ev: &KeyEvent, app_cursor: bool, mok_level: u8) -> Option<Vec<u8>>
                     v.push(byte);
                     return Some(v);
                 }
-            }
-            if mok_level >= 2 && (ev.mods.ctrl || ev.mods.alt) {
-                let cp = u32::from(c);
-                let m = u32::from(ev.mods.xterm_param().unwrap_or(1));
-                return Some(format!("\x1b[27;{m};{cp}~").into_bytes());
             }
             let text = ev
                 .text
@@ -261,9 +327,74 @@ fn legacy_key(ev: &KeyEvent, app_cursor: bool, mok_level: u8) -> Option<Vec<u8>>
     }
 }
 
+fn kitty_event_type(ty: KeyEventType) -> u8 {
+    match ty {
+        KeyEventType::Press => 1,
+        KeyEventType::Repeat => 2,
+        KeyEventType::Release => 3,
+    }
+}
+
+/// The kernel/05 §3.3 Kitty-column encoding of a named key, or `None` when that key takes the
+/// `CSI {code};{mod}u` form (or when the functional table has no sequence for it, e.g. `F13..F24`).
+///
+/// Verbatim §3.3 rows:
+///
+/// ```text
+/// | Esc   | `0x1B`                     | `CSI 27;1;27~` | `CSI 27u`  |
+/// | Enter | `CR`                       | `CR`           | `CR`       |
+/// | Left  | `CSI D` / `SS3 D`（DECCKM） | 同 Legacy      | `CSI 1;1D` |
+/// ```
+fn kitty_functional(n: NamedKey, ev: &KeyEvent, flags: &super::KittyFlags) -> Option<Vec<u8>> {
+    match n {
+        // §3.3「Esc」row, Kitty column = `CSI 27u`: removing that ambiguity is exactly what
+        // `disambiguate` exists for, so Escape never keeps its legacy byte in kitty mode.
+        NamedKey::Escape => None,
+        // §3.3「Enter」row, Kitty column = `CR`. A C0 byte carries neither a modifier parameter nor
+        // an event type, so it is kept for an unmodified press only; a combination it cannot express
+        // takes the `CSI {code};{mod}u` form (the rule the character cells of the table follow).
+        // Tab = `HT` and Backspace = `DEL` are that same class of C0 key (xterm ctlseqs, L18/L20).
+        NamedKey::Enter | NamedKey::Tab | NamedKey::Backspace
+            if !(ev.mods.is_plain() && ev.ty == KeyEventType::Press) =>
+        {
+            None
+        }
+        // `NamedKey::Space` has no §3.3 cell at all (corpus `omitted`): its existing `CSI 32u` form
+        // is kept rather than inventing a cell for it.
+        NamedKey::Space => None,
+        _ => {
+            let event = if flags.report_events && ev.ty != KeyEventType::Press {
+                Some(kitty_event_type(ev.ty))
+            } else {
+                None
+            };
+            // §3.3「Left」row, Kitty column = `CSI 1;1D`: under `report_all` the functional sequence
+            // is printed with its parameter even when it is 1, which is what distinguishes that cell
+            // from the Legacy `CSI D`.
+            let kp = ev.mods.kitty_param();
+            let m = if kp == 1 && !flags.report_all && event.is_none() {
+                None
+            } else {
+                Some(kp)
+            };
+            // DECCKM (`SS3 D`) is a Legacy-column alternative, not a Kitty-column one: §3.3's Kitty
+            // cell for that row is the CSI form.
+            functional_named(n, m, false, event)
+        }
+    }
+}
+
 fn kitty_key(ev: &KeyEvent, flags: &super::KittyFlags) -> Option<Vec<u8>> {
     if !flags.report_events && matches!(ev.ty, KeyEventType::Release | KeyEventType::Repeat) {
         return None;
+    }
+    // §3.3's Kitty column keeps a legacy / functional sequence for the cells that say so (Enter ->
+    // `CR`, arrows -> `CSI 1;1D`); `CSI {code};{mod}u` is reserved for the cells §3.3 spells that
+    // way (`Esc` -> `CSI 27u`, and the character cells -> `CSI 97;5u`, ...).
+    if let KeyCode::Named(n) = ev.code {
+        if let Some(bytes) = kitty_functional(n, ev, flags) {
+            return Some(bytes);
+        }
     }
     let code = match ev.code {
         KeyCode::Char(c) => u32::from(c),
@@ -271,11 +402,7 @@ fn kitty_key(ev: &KeyEvent, flags: &super::KittyFlags) -> Option<Vec<u8>> {
         KeyCode::Dead(_) => return None,
     };
     let m = ev.mods.kitty_param();
-    let event_type = match ev.ty {
-        KeyEventType::Press => 1,
-        KeyEventType::Repeat => 2,
-        KeyEventType::Release => 3,
-    };
+    let event_type = kitty_event_type(ev.ty);
     let mut params = code.to_string();
     if m != 1 || event_type != 1 || flags.report_text {
         params.push(';');
@@ -475,9 +602,109 @@ mod tests {
         mods.ctrl = true;
         let mode = KeyboardMode::Kitty(crate::input::KittyFlags::default());
         assert_eq!(enc(&key(KeyCode::Char('c'), mods), &mode), b"\x1b[99;5u");
+    }
+
+    /// kernel/05 §3.3 keyboard table, quoted verbatim (Legacy / ModifyOtherKeys(2) / Kitty
+    /// columns; the Kitty column is headed Kitty(disambiguate + report_all)):
+    ///
+    /// ```text
+    /// | Ctrl+a       | `0x01`                     | `0x01`         | `CSI 97;5u` |
+    /// | Ctrl+Shift+A | `0x01`（丢 Shift）          | `CSI 27;6;65~` | `CSI 65;6u` |
+    /// | Alt+x        | `ESC x`                    | `ESC x`        | `CSI 120;3u`|
+    /// | Esc          | `0x1B`                     | `CSI 27;1;27~` | `CSI 27u`   |
+    /// | Enter        | `CR`                       | `CR`           | `CR`        |
+    /// | Left         | `CSI D` / `SS3 D`（DECCKM） | 同 Legacy      | `CSI 1;1D`  |
+    /// ```
+    #[test]
+    fn modify_other_keys_level2_follows_the_section_3_3_table() {
+        let mode = KeyboardMode::ModifyOtherKeys(2);
+        let ctrl = Modifiers {
+            ctrl: true,
+            ..Modifiers::NONE
+        };
+        let ctrl_shift = Modifiers {
+            shift: true,
+            ..ctrl
+        };
+        let alt = Modifiers {
+            alt: true,
+            ..Modifiers::NONE
+        };
+        // Ctrl+a: the C0 byte carries Ctrl and nothing else is held -> still `0x01`.
+        assert_eq!(enc(&key(KeyCode::Char('a'), ctrl), &mode), vec![0x01]);
+        // Ctrl+Shift+A: the C0 byte would drop Shift -> `CSI 27;6;65~`.
         assert_eq!(
-            enc(&key(KeyCode::Named(NamedKey::Up), Modifiers::NONE), &mode),
-            b"\x1b[57352u"
+            enc(&key(KeyCode::Char('A'), ctrl_shift), &mode),
+            b"\x1b[27;6;65~"
+        );
+        // Alt+x: Alt is carried by the ESC prefix -> still `ESC x`.
+        assert_eq!(enc(&key(KeyCode::Char('x'), alt), &mode), b"\x1bx");
+        // Esc: the bare byte is ambiguous -> `CSI 27;1;27~`.
+        assert_eq!(
+            enc(
+                &key(KeyCode::Named(NamedKey::Escape), Modifiers::NONE),
+                &mode
+            ),
+            b"\x1b[27;1;27~"
+        );
+        // Enter keeps `CR` and Left stays on the Legacy cell (同 Legacy).
+        assert_eq!(
+            enc(
+                &key(KeyCode::Named(NamedKey::Enter), Modifiers::NONE),
+                &mode
+            ),
+            b"\r"
+        );
+        assert_eq!(
+            enc(&key(KeyCode::Named(NamedKey::Left), Modifiers::NONE), &mode),
+            b"\x1b[D"
+        );
+    }
+
+    /// Same §3.3 table, Kitty(disambiguate + report_all) column: the functional cells are kept
+    /// (`Enter` -> `CR`, arrows -> `CSI 1;1D`) and only the cells the table spells `CSI {code};{mod}u`
+    /// (here `Esc` -> `CSI 27u`) use the CSI-u form.
+    #[test]
+    fn kitty_functional_cells_keep_their_section_3_3_sequences() {
+        let table = KeyboardMode::Kitty(crate::input::KittyFlags {
+            disambiguate: true,
+            report_all: true,
+            ..crate::input::KittyFlags::default()
+        });
+        assert_eq!(
+            enc(
+                &key(KeyCode::Named(NamedKey::Escape), Modifiers::NONE),
+                &table
+            ),
+            b"\x1b[27u"
+        );
+        assert_eq!(
+            enc(
+                &key(KeyCode::Named(NamedKey::Enter), Modifiers::NONE),
+                &table
+            ),
+            b"\r"
+        );
+        assert_eq!(
+            enc(
+                &key(KeyCode::Named(NamedKey::Left), Modifiers::NONE),
+                &table
+            ),
+            b"\x1b[1;1D"
+        );
+        // Without `report_all` there is no `CSI 1;1D` cell to match: the same functional sequence is
+        // printed without its parameter, i.e. the Legacy `CSI D` shape.
+        let plain = KeyboardMode::Kitty(crate::input::KittyFlags::default());
+        assert_eq!(
+            enc(&key(KeyCode::Named(NamedKey::Up), Modifiers::NONE), &plain),
+            b"\x1b[A"
+        );
+        assert_eq!(
+            enc(
+                &key(KeyCode::Named(NamedKey::Left), Modifiers::NONE),
+                &plain
+            ),
+            b"\x1b[D"
         );
     }
 

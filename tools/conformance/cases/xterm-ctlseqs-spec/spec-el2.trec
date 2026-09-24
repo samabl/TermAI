@@ -1,0 +1,3 @@
+KEY "hello"
+KEY "[2K"
+ASSERT ROW 0 =

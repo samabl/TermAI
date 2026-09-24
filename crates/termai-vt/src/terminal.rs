@@ -194,10 +194,14 @@ fn route_osc(grid: &mut Grid, shell: &mut ShellIntegration, params: &[&[u8]], te
         None => return,
     };
     match num {
-        0 | 2 => {
-            let title = join_params(params, 1);
-            grid.set_title(&sanitize_title(&title));
+        0 => {
+            // OSC 0 sets the icon name and the window title together.
+            let title = sanitize_title(&join_params(params, 1));
+            grid.set_title(&title);
+            grid.set_icon_title(&title);
         }
+        1 => grid.set_icon_title(&sanitize_title(&join_params(params, 1))),
+        2 => grid.set_title(&sanitize_title(&join_params(params, 1))),
         7 => {
             let payload = join_params(params, 1);
             if let Some((path, remote)) = parse_file_uri(&payload) {

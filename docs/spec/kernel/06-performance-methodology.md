@@ -307,7 +307,7 @@ tests/bench/
 | H9 | 未聚焦 / 被遮挡时的出帧数 = 0 帧/10s | kernel/06 | §5 A-PM-14（判据）；§3.8「电源 / 能效」行 | G4；A-PM-14 | 是 |
 | H10 | 24h RSS 斜率 <1MB/h | kernel/06 | §3.2（第 6 行：Theil–Sen + 1h 步进）+ K-12；不可进 CI 的替代护栏 §3.8 | G4 / L8；A-PM-09 | 是 |
 | H11 | 插件宿主空载 ≤80MB（仅启用插件时计入） | kernel/06 | §3.2（第 7 行「插件宿主空载」分支）+ K-11 + §3.2 补充 6 | G4；A-PM-08 | 是 |
-| H12 | 输入字节等价（键盘 / 粘贴 / IME commit 全语料回放，逐字节比对）= 100% | **语料 kernel/05；方法 kernel/06** | 方法：§3.6（D0 字节相等自检：同一场景连跑两次逐帧指纹必须完全相等，不等即 INVALID）+ §3.2 补充 5（「冻结 + 自检先于比对」同一契约）；语料：kernel/05 §5 IN-AC | G1 / G2 | 方法在本文件（语料归 05） |
+| H12 | 输入字节等价（键盘 / 粘贴 / IME commit 全语料回放，逐字节比对）= 100% | **语料 kernel/05；方法 kernel/06** | 方法：§3.6（D0 字节相等自检：同一场景连跑两次逐帧指纹必须完全相等，不等即 INVALID）+ §3.2 补充 5（「冻结 + 自检先于比对」同一契约）；语料：kernel/05 §5 IN-AC | G1 / G2 | 方法在本文件（语料归 05）；**ADR-0029 D-6：`governed: partial` 即此拆分——方法在本文件、语料与判定车道归 kernel/05 + G1/G2（L0 parser 车道），故它不是「机器无关、可直接取值」的行** |
 | H13 | 安装包 <60MB | kernel/06 | §3.2（第 8 行：压缩 / 公证后产物字节）；artifact 口径见 §8 OQ-PM-01（已决：AR-31 第 7 条） | 构建 job；A-PM-10 | 是 |
 | H14 | AI 网关附加延迟 p95 <120ms / p99 <300ms | 服务端 SLO（T6） | 本文件只登记为「不能进 CI」项与替代护栏：§3.8 | 服务端埋点 + 滚动 7 天看板；非机器门禁 | **否**（服务端） |
 | H15 | 诊断首 token P95 <3s | 服务端埋点（T6） | 同 H14：§3.8 | 在线埋点；非机器门禁 | **否**（服务端） |
@@ -318,6 +318,26 @@ tests/bench/
 | C1 | **〔非 §5 表行〕**双主题对比度：正文 ≥4.5:1；官方主题目标 ≥7:1 | tools/tokens | `tokens:check` [3]（WCAG 2.x 实算 × 深 / 浅两主题）；DC-13、AR-23 §7（深 / 浅双主题均进门禁）。**不属 kernel/06 管辖** | `tokens:check`、DC-13；G7 辅助 | **否** |
 
 **漏项检查（本文件自证）**：HARNESS §5 表当前 **19 行**（冷启动到可输入 … 网格对齐误差）逐行登记为 H1…H19，**无缺号、无重复、无漏项**；C1 为表外对照，不计入 19 行。
+
+### 3.10 §8.2 可靠性时序测量（sessiond 重建 P95 / P99）
+
+> **效力**：AR-26 第 4 条（sessiond 重建 **P95 ≤2s / P99 ≤5s**）出自 HARNESS §8.2 可靠性，本文件此前未承载它；本节按 **ADR-0029 D-4** 落地其测量定义、机器绑定、自检与报告口径。**它不属于 §5 的十九行**，因此：
+> 1. **不得**进入 §3.9 的 §5 映射表，也**不得**进入 `tools/bench/registry.mjs` 的 `SECTION5_MAPPING`——该表是 HARNESS §5 的逐字转录，由门禁 B1/B3 每次从文档重新解析比对，**加一行即是假转录**。
+> 2. 它使用**同一套**契约：`bench-report.json` schema（§3.7）、机器指纹（§3.4）、§3.1 判定状态机、§3.5 回归流程、AR-27 可复现性自证与 NON_GATING 语义（ADR-0014）。实现落点是 `tools/bench` 的**独立登记** `RELIABILITY_MAPPING`（容器同一、登记分离）。
+
+| 项 | 定义 |
+| --- | --- |
+| 指标 | `reliability.sessiond_rebuild.p95` / `.p99`（单位 ms）；**两行都要报，不得只报 P95** |
+| 门禁 | P95 ≤ **2000**ms / P99 ≤ **5000**ms（AR-26 第 4 条 / HARNESS §8.2） |
+| 指标族 | `frame`（尾部指标；OQ-PM-07 分级 5%，§3.6 `eps_self` 5%） |
+| Run 定义 | **一次 sessiond 重建**：从客户端发出重连 / attach 请求起，到收到可用的 `GRID_SNAPSHOT` 或覆盖窗口的 `TAIL_REPLAY` 且网格可交互为止（时间链与 §3.3 同源，只取服务端可观测段）。Run 内样本数 ≥ 1e4 才报 P99，否则 `INVALID(INSUFFICIENT_SAMPLES)`（§3.1 第 7 步同规则）。**读数**：§3.2 未给本行 Run 定义，本条按同一尾部规则推导，标 `origin:'reading'` |
+| 机器绑定 | 与 §5 相同：**RM-A**（重建是 CPU / IO 时序）。无 RM-A → `NON_GATING` / `INCONCLUSIVE`，**不得**成为门禁 |
+| 自检 | §3.6 的 D0（场景冻结）与 D1（双跑一致，`eps_self` 5%）**先于**门禁与基线比较；`assertReproducible()` 同样适用 |
+| 报告口径 | 走 §3.7 的 `bench-report.json`；`metric` 以 `reliability.` 前缀与 §5 指标区分；顶层 `verdict` 四态不变 |
+
+**登记分离的机器保证（已实现：`tools/bench` 的门禁 `B9` + `reliability.mjs`）**：`tools/bench` 的 `B3` 只校验 `SECTION5_MAPPING` 与 §3.9；`RELIABILITY_MAPPING` 由**它自己的**完整性检查（无缺号、无重复、每条有 owner / carrier）校验，**不得**复用 `MAPPING_ROW_COUNT` / `OUT_OF_TABLE_IDS` 的口径。
+
+**本机状态**：无 RM-A → 本节任何数值一律 `INCONCLUSIVE`；判定人待 TSC（OQ-19 / C1）。
 
 ## 4. 接口与依赖
 ```rust

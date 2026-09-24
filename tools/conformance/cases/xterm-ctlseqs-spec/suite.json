@@ -1,0 +1,5 @@
+{
+  "oracle": "xterm-ctlseqs",
+  "suite": "xterm-ctlseqs-spec",
+  "suite_version": "xterm ctlseqs (patch #411) + ECMA-48, curated expectations"
+}

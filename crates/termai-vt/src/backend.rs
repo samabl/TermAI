@@ -7,12 +7,15 @@
 
 #![allow(clippy::module_name_repetitions)]
 
-/// Default OSC payload limit (bytes). Conservative M0 value; the divergence from
-/// kernel/01 OQ-VT-01 (1 MiB) is registered in docs/plan/m0-spec-defects.md SD-08.1.
-pub const OSC_LEN_LIMIT_DEFAULT: u32 = 64 * 1024;
-/// Default DCS/APC payload limit (bytes). SOS/PM/APC strings share this cap.
-/// Conservative M0 value; see docs/plan/m0-spec-defects.md SD-08.1.
-pub const DCS_LEN_LIMIT_DEFAULT: u32 = 1024 * 1024;
+/// Default OSC payload limit (bytes). Frozen by ADR-0023 D2 to the AR-31 adopted
+/// value (kernel/01 section 8, OQ-VT-01).
+pub const OSC_LEN_LIMIT_DEFAULT: u32 = 1024 * 1024;
+/// Default DCS/APC payload limit (bytes). Frozen by ADR-0023 D2 (AR-31 adopted value).
+pub const DCS_LEN_LIMIT_DEFAULT: u32 = 16 * 1024 * 1024;
+/// Default SOS/PM payload limit (bytes). ADR-0023 D2 keeps SOS/PM at 1 MiB while
+/// DCS/APC get 16 MiB, so the pre-scanner carries a third limit instead of reusing
+/// the DCS cap as M0 did.
+pub const SOS_PM_LEN_LIMIT_DEFAULT: u32 = 1024 * 1024;
 /// Maximum number of parameters/subparameters carried by Params.
 pub const MAX_PARAMS: usize = 16;
 
@@ -216,7 +219,7 @@ pub struct BackendCaps {
     pub byte_offsets: bool,
     /// OSC payload cap in bytes.
     pub osc_len_limit: u32,
-    /// DCS/APC/SOS/PM payload cap in bytes.
+    /// DCS/APC payload cap in bytes (SOS/PM use SOS_PM_LEN_LIMIT_DEFAULT).
     pub dcs_len_limit: u32,
 }
 

@@ -154,6 +154,7 @@
                 }
                 match rec.ty {
                     PtyOut => grid.feed_raw(rec.payload),      // 纯 VT 回放
+                    Resize { cols, rows, .. } => grid.resize(cols, rows),  // 几何变更：按 Log 位置生效
                     PtyIn  => { /* 仅入审计索引，永不执行 */ }
                     _      => meta.apply(rec),
                 }
@@ -161,6 +162,8 @@
         }
         Ok(RecoverOutcome { grid, meta, tail_truncated: false, last_valid_seq: seg.head_seq })
     }
+
+**`Resize` 在它所在的位置生效**（`GridReplay::resize`；实现 `crates/termai-session/src/checkpoint.rs`，commit `db838a5`）：几何变更**不是**只在回放末尾套用一次最终尺寸，也**不是**只套用最后一条——`Resize` **之后**的记录必须在**改变后的几何**下回放，否则中途 resize 过的会话会按最终尺寸重放整段前缀，重建出的屏幕与它实际结束时的屏幕不同（**AR-26 第 4 条**「screen 可恢复」）。`meta` 索引不持有几何，所以该分支不需要 `meta.apply`（`MetaIndex::apply` 对 `Resize` 本就是 no-op）。`docs/audit/debt-p0.md` A24 第 2 条已由该 commit 闭合，A24 第 1 条（`CheckpointRef` / CAS 保真）仍开放。
 
 **AR-13 诚实边界的实现落点**：① 恢复后 `SessionState = detached` 且 `resumed_from = ckpt.ckpt_id`，UI 状态栏与 Sessions 分区必须显示「屏幕已恢复（checkpoint + 尾部 N 段）· 进程未恢复 · 退出码：未知/已知」；② 文案契约遵循 02-spec C4：允许「恢复布局 / 恢复工作目录 / 恢复滚动历史 / 重新连接屏幕」，**禁止**「恢复进程 / 重启会话 / 恢复运行中的任务」；③ `tail_truncated=true` 时额外显示缺口标记与「缺失区间」条数；④ 恢复流程中不存在任何 `spawn` / `exec` 调用（可静态断言，见 §5 AC-S4）。
 

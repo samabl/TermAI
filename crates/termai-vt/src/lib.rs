@@ -13,11 +13,12 @@ pub mod replay;
 pub mod shell;
 pub mod terminal;
 mod vte_adapter;
+pub mod width;
 
 pub use backend::{
     AdvanceReport, BackendCaps, BackendId, EscapeSink, Params, ParseError, ParseErrorKind,
     ParserState, StringKind, StringTerm, VtBackend, DCS_LEN_LIMIT_DEFAULT, MAX_PARAMS,
-    OSC_LEN_LIMIT_DEFAULT,
+    OSC_LEN_LIMIT_DEFAULT, SOS_PM_LEN_LIMIT_DEFAULT,
 };
 pub use counters::VtCounters;
 pub use golden::{golden_hash, parse_golden, write_golden, GoldenDoc, GoldenError};
@@ -27,3 +28,6 @@ pub use replay::{parse_trec, run, ReplayError, ReplayReport, ReplayScript, Step}
 pub use shell::{CommandBlock, ShellIntegration};
 pub use terminal::Terminal;
 pub use vte_adapter::VteBackend;
+// kernel/03 K-04: the single column-width authority, re-exported so callers can reach it without
+// knowing the module path. `termai-vt::width::measure` stays the canonical spelling.
+pub use width::{measure, measure_scalar};

@@ -1,0 +1,3 @@
+KEY "\x9bm"
+ASSERT ROW 0 = �m
+ASSERT COUNTER c1_8bit_in_utf8 = 1

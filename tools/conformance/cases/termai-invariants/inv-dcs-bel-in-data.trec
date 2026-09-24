@@ -1,0 +1,3 @@
+KEY "Pab\x07cd\x1b\\ok"
+ASSERT ROW 0 = ok
+ASSERT COUNTER dcs_bel_in_data = 1

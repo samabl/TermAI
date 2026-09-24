@@ -15,7 +15,7 @@
 use crate::backend::{
     AdvanceReport, BackendCaps, BackendId, EscapeSink, Params, ParseError, ParseErrorKind,
     ParserState, StringKind, StringTerm, VtBackend, DCS_LEN_LIMIT_DEFAULT, MAX_PARAMS,
-    OSC_LEN_LIMIT_DEFAULT,
+    OSC_LEN_LIMIT_DEFAULT, SOS_PM_LEN_LIMIT_DEFAULT,
 };
 use crate::counters::VtCounters;
 
@@ -26,6 +26,7 @@ pub struct VteBackend {
     eight_bit_c1: bool,
     osc_limit: u32,
     dcs_limit: u32,
+    sos_pm_limit: u32,
 }
 
 impl Default for VteBackend {
@@ -44,6 +45,7 @@ impl VteBackend {
             eight_bit_c1: false,
             osc_limit: OSC_LEN_LIMIT_DEFAULT,
             dcs_limit: DCS_LEN_LIMIT_DEFAULT,
+            sos_pm_limit: SOS_PM_LEN_LIMIT_DEFAULT,
         }
     }
 
@@ -69,9 +71,12 @@ impl VtBackend for VteBackend {
         let mut ctx = AdvCtx::default();
         let osc_limit = self.osc_limit;
         let dcs_limit = self.dcs_limit;
+        let sos_pm_limit = self.sos_pm_limit;
         for (i, &byte) in bytes.iter().enumerate() {
             ctx.current_offset = i as u32;
-            let step = self.pre.step(byte, osc_limit, dcs_limit, &mut ctx);
+            let step = self
+                .pre
+                .step(byte, osc_limit, dcs_limit, sos_pm_limit, &mut ctx);
             if let Some(emit) = step.emit {
                 apply_emit(emit, &mut *sink, &mut ctx);
             }
@@ -205,9 +210,16 @@ enum Emit {
 }
 
 impl PreState {
-    fn step(&mut self, byte: u8, osc_limit: u32, dcs_limit: u32, ctx: &mut AdvCtx) -> PreStep {
+    fn step(
+        &mut self,
+        byte: u8,
+        osc_limit: u32,
+        dcs_limit: u32,
+        sos_pm_limit: u32,
+        ctx: &mut AdvCtx,
+    ) -> PreStep {
         if self.string.is_some() {
-            return self.string_step(byte, osc_limit, dcs_limit, ctx);
+            return self.string_step(byte, osc_limit, dcs_limit, sos_pm_limit, ctx);
         }
         if self.csi.is_some() {
             return self.csi_step(byte, ctx);
@@ -330,6 +342,7 @@ impl PreState {
         byte: u8,
         osc_limit: u32,
         dcs_limit: u32,
+        sos_pm_limit: u32,
         ctx: &mut AdvCtx,
     ) -> PreStep {
         let kind = match self.string.as_ref() {
@@ -401,10 +414,11 @@ impl PreState {
         if kind == StrKind::Dcs && byte == 0x07 {
             ctx.counters.bump(ParseErrorKind::DcsBelInData);
         }
-        let limit = if kind == StrKind::Osc {
-            osc_limit
-        } else {
-            dcs_limit
+        let limit = match kind {
+            StrKind::Osc => osc_limit,
+            // ADR-0023 D2: SOS/PM stay at 1 MiB; DCS/APC get 16 MiB.
+            StrKind::Sos | StrKind::Pm => sos_pm_limit,
+            StrKind::Dcs | StrKind::Apc => dcs_limit,
         };
         let store = kind != StrKind::Dcs;
         let overflow = match self.string.as_mut() {
@@ -552,10 +566,18 @@ fn parse_u32(bytes: &[u8]) -> Option<u32> {
 }
 
 fn osc_known(num: u32) -> bool {
-    matches!(num, 0 | 2 | 7 | 8 | 9 | 52 | 133 | 633 | 777)
+    // 0 = icon + window title, 1 = icon title, 2 = window title.
+    matches!(num, 0 | 1 | 2 | 7 | 8 | 9 | 52 | 133 | 633 | 777)
 }
 
 fn csi_known(intermediates: &[u8], action: char) -> bool {
+    // Device attributes (ADR-0030 D-2): DA1 is `CSI c` / `CSI 0 c` and DA2 is
+    // `CSI > c` / `CSI > 0 c`. grid::csi_dispatch answers both forms, so the
+    // unknown-CSI counter must treat both as known. Historically 'c' sat in the
+    // empty-intermediates list below while the dispatcher had no 'c' arm at all.
+    if action == 'c' {
+        return intermediates.is_empty() || intermediates == [b'>'];
+    }
     if intermediates.is_empty() {
         return matches!(
             action,
@@ -566,6 +588,8 @@ fn csi_known(intermediates: &[u8], action: char) -> bool {
                 | 'F'
                 | 'G'
                 | 'H'
+                | 'I'
+                | 'Z'
                 | 'f'
                 | 'J'
                 | 'K'
@@ -587,17 +611,27 @@ fn csi_known(intermediates: &[u8], action: char) -> bool {
                 | 't'
                 | 'u'
                 | '@'
-                | 'c'
+                | '\''
+                | 'a'
+                | 'b'
         );
     }
     match action {
         'h' | 'l' => intermediates == [b'?'],
+        'p' => intermediates == [b'$'] || intermediates == [b'?', b'$'],
+        // XTERM_SAVE / XTERM_RESTORE (`CSI ? Pm s` / `CSI ? Pm r`).
+        's' | 'r' => intermediates == [b'?'],
         'u' => intermediates == [b'>'] || intermediates == [b'='] || intermediates == [b'<'],
         _ => false,
     }
 }
 
 fn esc_known(intermediates: &[u8], byte: u8) -> bool {
+    // DECALN (ESC # 8) shares its final byte with DECRC (ESC 8): the intermediate is
+    // what tells them apart (kernel/01 section 3.2).
+    if intermediates == [b'#'] {
+        return byte == b'8';
+    }
     intermediates.is_empty()
         && matches!(byte, b'7' | b'8' | b'D' | b'E' | b'M' | b'c' | b'=' | b'>')
 }

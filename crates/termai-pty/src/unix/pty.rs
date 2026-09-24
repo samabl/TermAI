@@ -6,6 +6,13 @@
 //! foreground process group with kill(-pgid, sig). Children are reaped with
 //! waitpid(WNOHANG) so no zombie accumulates.
 //!
+//! PTY-READY-1: spawn is a *handshake*, not a bare forkpty. forkpty returns in the parent
+//! before the child has necessarily run login_tty (setsid), so a signal sent immediately
+//! after spawn would miss the child's process group; the child therefore reports readiness
+//! over a CLOEXEC pipe and `spawn` returns only once it has (see `await_child_ready`).
+//! PTY-KILL-1: the kill path signals the group and falls back to the pid, so a missing group
+//! can never leave the child alive.
+//!
 //! NOTE: this module is compiled only on cfg(unix); the WS-C development host is
 //! Windows, so it is written conservatively and is not compile-verified here.
 
@@ -105,9 +112,145 @@ fn kill_group(pid: libc::pid_t, number: libc::c_int) -> bool {
     unsafe { libc::kill(-pid, number) == 0 }
 }
 
+/// Send a signal to the child's process group, falling back to the child's own pid when no
+/// such group exists (PTY-KILL-1).
+///
+/// `kill(-pid, sig)` only reaches a process group whose id is `pid`, and such a group exists
+/// only once the child has run `setsid` (inside `forkpty`'s `login_tty`). A signal sent in the
+/// first instants of a session therefore fails with ESRCH and, on the group-only path, the
+/// child silently survived. The pid fallback makes that impossible: it delivers the same
+/// signal to the one process this tree owns.
+///
+/// It cannot hit a recycled pid: every caller runs while `reaped` is still unset, i.e. while
+/// the pid is still held by our own unreaped child - the kernel does not reuse a pid until its
+/// parent has collected it (`UnixTree::kill` returns the recorded `ExitInfo` before it ever
+/// signals once `reaped` is set).
+fn kill_group_or_pid(pid: libc::pid_t, number: libc::c_int) -> bool {
+    // SAFETY: negative pid means "process group"; the call only delivers a signal.
+    if unsafe { libc::kill(-pid, number) } == 0 {
+        return true;
+    }
+    // SAFETY: positive pid means "that process"; the call only delivers a signal.
+    unsafe { libc::kill(pid, number) == 0 }
+}
+
 fn group_alive(pid: libc::pid_t) -> bool {
     // SAFETY: signal 0 only probes existence.
     unsafe { libc::kill(-pid, 0) == 0 }
+}
+
+/// How long `spawn` waits for the child's readiness report before refusing the spawn.
+///
+/// The report is written immediately before `exec`, so in practice this is microseconds; the
+/// bound exists only so a child that never reports (killed, stopped, wedged in a pre-exec
+/// syscall) fails the spawn instead of hanging the daemon (no unbounded blocking read).
+const READY_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// What the parent learned from the child's readiness handshake (PTY-READY-1).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ChildReady {
+    /// The handshake pipe reached EOF: the child closed its (FD_CLOEXEC) write end, which
+    /// only `exec` does, so the child is past `login_tty` and owns its own process group.
+    Executed,
+    /// `exec` failed; the byte the child wrote before `_exit(127)` is its errno.
+    ExecFailed(i32),
+}
+
+/// `poll` takes a `c_int` millisecond timeout; the remaining readiness budget fits in it.
+fn poll_timeout_ms(remaining: Duration) -> libc::c_int {
+    remaining.as_millis().min(i32::MAX as u128) as libc::c_int
+}
+
+/// Wait, bounded by [`READY_TIMEOUT`], for the child's readiness report on the handshake pipe.
+///
+/// Protocol, one byte wide, child side async-signal-safe only (PTY-READY-1):
+/// * the child writes **nothing** on the success path, so the pipe's write end closing is the
+///   success signal. That end is `FD_CLOEXEC`, so only `exec` closes it - and the child-side
+///   code that reaches `exec` in `spawn_forkpty` runs *after* `forkpty` returned 0 in the
+///   child, i.e. after `login_tty` (setsid / TIOCSCTTY / dup2 / close) inside `forkpty`. EOF
+///   therefore proves the child had already established its own session and process group.
+/// * on an `exec*` failure the child writes the errno (always < 256 on every unix) and `_exit`s.
+///
+/// EOF also covers a `login_tty` failure inside `forkpty` (which `_exit(1)`s the child): that
+/// child is already gone, so a timeout/refusal is not needed and nothing can leak - its exit is
+/// reported by the tree handle exactly as before.
+///
+/// The statement "reaching the child-side code implies `login_tty` already ran" is an assumption
+/// about `forkpty`, and it is not left unchecked: if some libc returned 0 in the child *before*
+/// its `setsid`, the child would never own a process group and
+/// `crates/termai-pty/tests/interface_invariants.rs::spawn_returns_only_when_the_child_owns_its_process_group`
+/// fails loudly on that platform instead of the backend silently leaking a child.
+fn await_child_ready(fd: libc::c_int) -> Result<ChildReady, PtyError> {
+    let deadline = Instant::now() + READY_TIMEOUT;
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(PtyError::Spawn {
+                errno: libc::ETIMEDOUT,
+                stage: SpawnStage::Spawn,
+            });
+        }
+        let mut poll_fd = libc::pollfd {
+            fd,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: poll_fd is a valid one-element pollfd array and fd is a live pipe end owned
+        // by this call; poll only waits on it.
+        let ready = unsafe { libc::poll(&mut poll_fd, 1, poll_timeout_ms(remaining)) };
+        if ready > 0 {
+            break;
+        }
+        if ready == 0 {
+            return Err(PtyError::Spawn {
+                errno: libc::ETIMEDOUT,
+                stage: SpawnStage::Spawn,
+            });
+        }
+        // EINTR: a signal arrived first; retry against the remaining budget, do not fail.
+        let err = IoError::last_os_error();
+        if err.kind() != ErrorKind::Interrupted {
+            return Err(PtyError::Io(err));
+        }
+    }
+    let mut report: [libc::c_uchar; 1] = [0];
+    loop {
+        // SAFETY: fd is the handshake pipe's read end and report is a valid 1-byte buffer.
+        let read = unsafe { libc::read(fd, report.as_mut_ptr().cast::<libc::c_void>(), 1) };
+        if read == 1 {
+            return Ok(ChildReady::ExecFailed(i32::from(report[0])));
+        }
+        if read == 0 {
+            return Ok(ChildReady::Executed);
+        }
+        let err = IoError::last_os_error();
+        if err.kind() != ErrorKind::Interrupted {
+            return Err(PtyError::Io(err));
+        }
+    }
+}
+
+/// Tear a failed spawn down: neither the child nor the pty fd may outlive a `spawn` that
+/// returned `Err` (kernel/02 section 3.1 invariant 5, AR-30 item 2 / PTY-ORPHAN-1).
+///
+/// The child is signalled through the same group-or-pid path the kill face uses and then
+/// reaped with bounded `waitpid(WNOHANG)` polls. SIGKILL cannot be caught or blocked and the
+/// child is either gone or on its way out, but a child wedged in an uninterruptible syscall is
+/// a kernel-level wait this function must not join.
+fn discard_failed_child(pid: libc::pid_t, master: libc::c_int) {
+    kill_group_or_pid(pid, libc::SIGKILL);
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while Instant::now() < deadline {
+        match waitpid_nohang(pid) {
+            Ok(WaitState::Running) => std::thread::sleep(Duration::from_millis(1)),
+            // Exited, Gone, or an unexpected waitpid error: nothing further is actionable.
+            _ => break,
+        }
+    }
+    // SAFETY: master is the pty master this failed spawn created and is closed exactly once.
+    unsafe {
+        libc::close(master);
+    }
 }
 
 /// forkpty backend.
@@ -187,7 +330,7 @@ fn spawn_forkpty(cmd: &Command, sz: WinSize, o: SpawnOpts) -> Result<PtyHandle, 
             Some(list)
         }
     };
-    let mut envp: Vec<*const libc::c_char> = match &env_owned {
+    let envp: Vec<*const libc::c_char> = match &env_owned {
         Some(list) => {
             let mut pointers: Vec<*const libc::c_char> =
                 list.iter().map(|value| value.as_ptr()).collect();
@@ -205,7 +348,35 @@ fn spawn_forkpty(cmd: &Command, sz: WinSize, o: SpawnOpts) -> Result<PtyHandle, 
         None => None,
     };
 
+    // Readiness handshake (PTY-READY-1, AR-30 item 2 / PTY-ORPHAN-1).
+    //
+    // forkpty returns to the parent as soon as the fork is done, *before* the child has
+    // necessarily run login_tty (setsid + TIOCSCTTY + dup2) inside it. In that window the
+    // child is still in this process's group, so kill(-pid, SIGKILL) fails with ESRCH and a
+    // session closed immediately after open leaks its child. The pipe below is created before
+    // the fork so the child can report from a point that is provably *after* its session
+    // setup; spawn does not return Ok until it has.
+    let mut ready_pipe: [libc::c_int; 2] = [-1, -1];
+    // SAFETY: ready_pipe is a valid two-element out-array for pipe(2).
+    if unsafe { libc::pipe(ready_pipe.as_mut_ptr()) } != 0 {
+        return Err(PtyError::Io(IoError::last_os_error()));
+    }
+    let (ready_read, ready_write) = (ready_pipe[0], ready_pipe[1]);
+    for fd in ready_pipe {
+        // FD_CLOEXEC on both ends: the reported pipe must not be inherited by whatever the
+        // child execs, and that auto-close is exactly the success signal the parent reads.
+        // SAFETY: fd is one end of the pipe created above, owned by this call.
+        unsafe {
+            libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC);
+        }
+    }
+
     let mut master: libc::c_int = -1;
+    // forkpty takes winp as *mut winsize on Apple but *const winsize on Linux (libc
+    // 0.2.189: bsd/apple vs linux_like). A raw mutable pointer is the one form that
+    // coerces to both, and addr_of_mut! reaches the same place without forming a
+    // reference, so a single call compiles on every unix target. forkpty only reads
+    // the size, but the macro still needs a mutable place, hence the mut.
     let mut winsize = libc::winsize {
         ws_row: sz.rows,
         ws_col: sz.cols,
@@ -213,27 +384,84 @@ fn spawn_forkpty(cmd: &Command, sz: WinSize, o: SpawnOpts) -> Result<PtyHandle, 
         ws_ypixel: sz.px_h,
     };
     // SAFETY: forkpty is called with valid out-pointers. In the child only
-    // async-signal-safe calls (chdir / execve / execvp / _exit) are made.
-    let pid = unsafe { libc::forkpty(&mut master, ptr::null_mut(), ptr::null_mut(), &mut winsize) };
+    // async-signal-safe calls (close / chdir / execve / execvp / write / _exit) are made.
+    let pid = unsafe {
+        libc::forkpty(
+            &mut master,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::addr_of_mut!(winsize),
+        )
+    };
     if pid < 0 {
-        return Err(PtyError::Io(IoError::last_os_error()));
+        let err = IoError::last_os_error();
+        // SAFETY: both fds are the ends of the pipe created above; each is closed once here.
+        unsafe {
+            libc::close(ready_read);
+            libc::close(ready_write);
+        }
+        return Err(PtyError::Io(err));
     }
     if pid == 0 {
-        if let Some(dir) = &cwd {
-            // SAFETY: dir is a valid NUL-terminated path.
-            unsafe {
+        // Child. From here to exec/_exit only async-signal-safe calls - no allocation, no
+        // locks, no Rust formatting: close, chdir, execve/execvp, write, _exit.
+        //
+        // SAFETY: every pointer below was built before the fork and stays valid, and the
+        // calls used are async-signal-safe - the only thing a forked child of a threaded
+        // process may rely on.
+        unsafe {
+            // The parent's read end must not stay open in this process: we would keep the
+            // handshake pipe alive and the parent could never see EOF.
+            libc::close(ready_read);
+            if let Some(dir) = &cwd {
                 libc::chdir(dir.as_ptr());
             }
-        }
-        // SAFETY: argv and envp are valid NUL-terminated pointer arrays that outlive
-        // the exec call either way.
-        unsafe {
             if env_owned.is_some() {
                 libc::execve(program.as_ptr(), argv.as_ptr(), envp.as_ptr());
             } else {
                 libc::execvp(program.as_ptr(), argv.as_ptr());
             }
+            // Only reached when exec failed. IoError::last_os_error() reads this thread's
+            // errno slot and builds a plain enum - no allocation, no lock - so it is safe
+            // here, and it must be the first statement after the failed call.
+            let errno = IoError::last_os_error().raw_os_error().unwrap_or(libc::EIO);
+            // One byte: errno is < 256 on every unix this backend supports. A single-byte
+            // pipe write is atomic, so it cannot be partial and its result does not matter -
+            // this process is on its way out either way.
+            let report: [libc::c_uchar; 1] = [(errno & 0xff) as libc::c_uchar];
+            libc::write(
+                ready_write,
+                report.as_ptr().cast::<libc::c_void>(),
+                report.len(),
+            );
             libc::_exit(127);
+        }
+    }
+
+    // Parent. Close our copy of the write end first: while we hold it the EOF that means "the
+    // child reached exec" can never arrive, and the bounded wait below would time out.
+    // SAFETY: ready_write is this process's copy of the handshake pipe's write end.
+    unsafe {
+        libc::close(ready_write);
+    }
+    let ready = await_child_ready(ready_read);
+    // SAFETY: ready_read is the handshake pipe's read end; it is closed exactly once here.
+    unsafe {
+        libc::close(ready_read);
+    }
+    match ready {
+        // The child reached exec, so its session and process group exist: spawn may return.
+        Ok(ChildReady::Executed) => {}
+        Ok(ChildReady::ExecFailed(errno)) => {
+            discard_failed_child(pid, master);
+            return Err(PtyError::Spawn {
+                errno,
+                stage: SpawnStage::Spawn,
+            });
+        }
+        Err(err) => {
+            discard_failed_child(pid, master);
+            return Err(err);
         }
     }
 
@@ -440,7 +668,7 @@ impl TreeOps for UnixTree {
         }
         match mode {
             KillMode::Graceful(grace) => {
-                kill_group(self.pid, libc::SIGTERM);
+                kill_group_or_pid(self.pid, libc::SIGTERM);
                 let deadline = Instant::now() + grace;
                 loop {
                     if let WaitState::Exited(status) = waitpid_nohang(self.pid)? {
@@ -451,13 +679,14 @@ impl TreeOps for UnixTree {
                     }
                     std::thread::sleep(Duration::from_millis(10));
                 }
-                kill_group(self.pid, libc::SIGKILL);
+                kill_group_or_pid(self.pid, libc::SIGKILL);
             }
             KillMode::Force => {
-                kill_group(self.pid, libc::SIGKILL);
+                kill_group_or_pid(self.pid, libc::SIGKILL);
             }
         }
-        // Reap the root; the process group was signalled above.
+        // Reap the root; the process group (or, if it did not exist yet, the pid) was
+        // signalled above.
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
             match waitpid_nohang(self.pid)? {
@@ -468,7 +697,9 @@ impl TreeOps for UnixTree {
                     return Ok(info);
                 }
                 WaitState::Gone => {
-                    let (code, signal) = *lock(&self.last_code);
+                    // Kill reports Sig::Kill below by contract; the recorded signal is
+                    // deliberately not reused here, so only the code is unpacked.
+                    let (code, _) = *lock(&self.last_code);
                     let info = ExitInfo {
                         code,
                         signal: Some(Sig::Kill),

@@ -16,7 +16,7 @@
 //                   refused dependencies (portable-pty, AR-28.3)
 //   K5 license      every package.license == "Apache-2.0 OR MIT" (or license.workspace = true),
 //                   and [workspace.package].license == that SPDX expression (AR-21)
-//   K6 spec-defects docs/plan/m0-spec-defects.md exists and registers SD-01..SD-05
+//   K6 spec-defects the M0 (SD-01..SD-08) and P0 (SD-09..SD-26) registers stay complete
 //   K7 codeowners   .github/CODEOWNERS names every tracked top-level directory and every
 //                   rule names an owner; spec 07 section 3.1.2 requires 100% coverage and
 //                   "no directory without an owner may merge"
@@ -37,7 +37,19 @@ const DEFAULT_ROOT = path.resolve(HERE, '..', '..');
 
 const STATUS = { PASS: 'PASS', FAIL: 'FAIL', SKIP: 'SKIP' };
 const LICENSE_EXPR = 'Apache-2.0 OR MIT';
-const SPEC_DEFECTS = ['SD-01', 'SD-02', 'SD-03', 'SD-04', 'SD-05'];
+// K6 registry: every implementation-period defect register must exist and keep its ids.
+// The M0 register keeps SD-01..SD-08; the P0 register keeps SD-09..SD-26 (AGENTS section 5).
+// Adding an SD entry means adding it here too, or the gate silently stops covering it.
+const SPEC_DEFECT_REGISTERS = [
+  {
+    rel: 'docs/plan/m0-spec-defects.md',
+    ids: ['SD-01', 'SD-02', 'SD-03', 'SD-04', 'SD-05', 'SD-06', 'SD-07', 'SD-08'],
+  },
+  {
+    rel: 'docs/plan/p0-spec-defects.md',
+    ids: ['SD-09', 'SD-10', 'SD-11', 'SD-12', 'SD-13', 'SD-14', 'SD-15', 'SD-16', 'SD-17', 'SD-18', 'SD-19', 'SD-20', 'SD-21', 'SD-22', 'SD-23', 'SD-24', 'SD-25', 'SD-26'],
+  },
+];
 
 // ADR-0019 D1: admitted library -> library edges. Anything else (including an edge into an
 // app or an unregistered crate) is merge-blocking. Fail-closed by design.
@@ -48,6 +60,18 @@ const ALLOWED_LIB_EDGES = {
   'termai-vt': ['termai-core'],
   'termai-pty': ['termai-core'],
   'termai-session': ['termai-core', 'termai-ipc'],
+  // ADR-0024 D1 + ADR-0027 D2 (Accepted, which registers the position and direction of the
+  // edges termai-render -> [termai-core, termai-vt, termai-gpu]): kernel/03 K-04 makes
+  // termai-vt's width table the only column-width authority, and kernel/03 section 3.5.1
+  // step 1 spells the shaper's source as termai-vt::width::measure(scalars), so the shaping
+  // slice reads that API instead of carrying a second wcwidth table.
+  // The termai-render -> termai-gpu edge is deliberately still absent: it is admitted when
+  // termai-render actually declares it (no fake dependency).
+  'termai-render': ['termai-core', 'termai-vt'],
+  // ADR-0027 D2 registers the GPU crate as the T0-T3 decision point. Its only admitted
+  // termai edge in this slice is downward to termai-core; the termai-render -> termai-gpu
+  // edge is added when termai-render actually declares it (no fake dependency).
+  'termai-gpu': ['termai-core'],
 };
 
 // AR-21 / ADR-0015 D4: strong copyleft + field-of-use licenses are forbidden in the link
@@ -55,6 +79,13 @@ const ALLOWED_LIB_EDGES = {
 // build dependencies are out of boundary per ADR-0015 LB-02/LB-03 and are intentionally not
 // matched by the name denylist.
 const GPL_DENY_TOKENS = ['agpl', 'gpl', 'sspl'];
+
+// The crates AR-03 binds: kernel only. termai-render and termai-gpu are deliberately absent:
+// they are the UI-side render/GPU pair, and admitting wgpu / winit / rustybuzz / swash into
+// them is a separate dependency-admission decision (ADR-0024 D3, ADR-0027 D2), not a kernel
+// violation. See the comment in gateK4.
+const KERNEL_CRATES = ['termai-tokens', 'termai-core', 'termai-ipc', 'termai-vt', 'termai-pty', 'termai-session'];
+const NETWORK_AI_UI_TOKENS = ['reqwest', 'hyper', 'tokio', 'ureq', 'curl', 'isahc', 'openai', 'anthropic', 'winit', 'wgpu', 'tao', 'egui', 'gtk', 'webkit', 'webview', 'fontdb', 'rustybuzz', 'swash'];
 
 // ADR-0019 D2: dependencies that are explicitly refused even though they are not GPL.
 const REFUSED_DEP_NAMES = ['portable-pty'];
@@ -232,7 +263,28 @@ function gateK4(ctx) {
   const appNames = {};
   apps.forEach(function (m) { appNames[m.name] = true; });
 
+  // Declared before the AR-03 loop below: round 160 placed that loop above this point and shipped a check
+  // whose violation branch threw a temporal-dead-zone ReferenceError instead of failing. The selftest
+  // injection near the bottom of this file exercises that branch now, so the mistake cannot return silently.
   const failures = [];
+
+  // AR-03 / AGENTS section 2 item 1: the kernel must not depend on AI, network or UI libraries. The
+  // crate list is explicit rather than inferred, and termai-render and termai-gpu are deliberately
+  // absent from it - they are the UI-side pipeline and its GPU decision point (ADR-0024 D3, ADR-0027
+  // D2), and admitting wgpu, winit, rustybuzz or swash there is a separate decision under those ADRs,
+  // not a violation of this rule.
+  for (const m of manifests) {
+    if (KERNEL_CRATES.indexOf(m.name) < 0) continue;
+    for (const d of m.deps) {
+      const dn = d.name.toLowerCase();
+      for (const t of NETWORK_AI_UI_TOKENS) {
+        if (dn.indexOf(t) >= 0) {
+          failures.push(m.rel + ': kernel dependency "' + d.name + '" is a network/AI/UI library (AR-03)');
+        }
+      }
+    }
+  }
+
   const edges = [];
 
   for (const m of manifests) {
@@ -320,18 +372,21 @@ function gateK5(ctx) {
 }
 
 function gateK6(ctx) {
-  const TITLE = 'spec-defects registry: docs/plan/m0-spec-defects.md (AGENTS section 5)';
-  const rel = 'docs/plan/m0-spec-defects.md';
-  const abs = path.join(ctx.root, rel);
-  if (!fs.existsSync(abs)) {
-    return gate('K6', TITLE, STATUS.FAIL, rel + ' is missing');
+  const TITLE = 'spec-defect registers: m0 SD-01..SD-08 and p0 SD-09..SD-26 (AGENTS section 5)';
+  const notes = [];
+  for (const reg of SPEC_DEFECT_REGISTERS) {
+    const abs = path.join(ctx.root, reg.rel);
+    if (!fs.existsSync(abs)) {
+      return gate('K6', TITLE, STATUS.FAIL, reg.rel + ' is missing', notes);
+    }
+    const text = fs.readFileSync(abs, 'utf8');
+    const missing = reg.ids.filter(function (id) { return text.indexOf(id) < 0; });
+    if (missing.length) {
+      return gate('K6', TITLE, STATUS.FAIL, reg.rel + ' does not register: ' + missing.join(', '), notes);
+    }
+    notes.push(reg.rel + ' registers ' + reg.ids[0] + '..' + reg.ids[reg.ids.length - 1]);
   }
-  const text = fs.readFileSync(abs, 'utf8');
-  const missing = SPEC_DEFECTS.filter(function (id) { return text.indexOf(id) < 0; });
-  if (missing.length) {
-    return gate('K6', TITLE, STATUS.FAIL, rel + ' does not register: ' + missing.join(', '));
-  }
-  return gate('K6', TITLE, STATUS.PASS, rel + ' registers ' + SPEC_DEFECTS[0] + '..' + SPEC_DEFECTS[SPEC_DEFECTS.length - 1]);
+  return gate('K6', TITLE, STATUS.PASS, SPEC_DEFECT_REGISTERS.length + ' register(s) complete', notes);
 }
 
 // Top-level directories excluded from the ownership check: build output, VCS metadata
@@ -399,7 +454,7 @@ const ADMITTED_ACTIONS = ['actions/checkout', 'actions/setup-node', 'actions/upl
 const ARTIFACT_PATH_DENY = ['target/debug', '.termai', '*.log', 'target/**', 'path: .', '**/*'];
 
 function gateK8(ctx) {
-  const TITLE = 'build artifacts: a build job publishes artifacts with a retention policy (ADR-0021)';
+  const TITLE = 'workflow policy: artifacts with retention (ADR-0021) + every check paired with a selftest';
   const rel = '.github/workflows/ci.yml';
   const abs = path.join(ctx.root, rel);
   if (!fs.existsSync(abs)) {
@@ -417,6 +472,47 @@ function gateK8(ctx) {
   const unadmitted = used.filter(function (u) { return ADMITTED_ACTIONS.indexOf(u.split('@')[0]) < 0; });
   if (unadmitted.length) {
     return gate('K8', TITLE, STATUS.FAIL, 'action(s) not admitted by ADR-0021: ' + unadmitted.join(', '), unadmitted);
+  }
+
+  // Every CI check must carry a matching selftest, or its green is output rather than evidence: a gate
+  // whose failure path has never been exercised is not known to work. tokens, design and kernel
+  // established the convention; rounds 132-137 restored it for bench, conformance and ci-cost after a
+  // wiring change lost it. Round 140 tried to infer gate-ness from step names and raised thirteen false
+  // alarms (cargo check, Set up Node 20), so the pairings are listed explicitly. Adding a gate to CI
+  // means adding its row here in the same change.
+  const GATE_PAIRS = [
+    ['tokens', 'tokens:check', 'tokens:selftest'],
+    ['design', 'design:check', 'design:selftest'],
+    ['kernel', 'kernel:check', 'kernel:selftest'],
+    ['bench', 'bench:check', 'bench:selftest'],
+    ['conformance', 'conformance L0', 'conformance selftest'],
+    ['conformance-verify', 'conformance verify', 'conformance verify selftest'],
+    ['conformance-suites', 'conformance suites', 'conformance suites selftest'],
+    ['ci-cost', 'ci-cost check', 'ci-cost selftest'],
+    ['audit-claims', 'audit-claims check', 'audit-claims selftest'],
+    ['waivers', 'waivers check', 'waivers selftest'],
+  ];
+  const stepNames = [];
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (t.indexOf('- name:') !== 0) continue;
+    let v = t.slice('- name:'.length).trim();
+    if (v.length > 1 && v[0] === '"' && v[v.length - 1] === '"') v = v.slice(1, -1);
+    stepNames.push(v);
+  }
+  const hasStepStartingWith = function (prefix) {
+    for (const n of stepNames) if (n.indexOf(prefix) === 0) return true;
+    return false;
+  };
+  const pairing = [];
+  for (const pair of GATE_PAIRS) {
+    const hasCheck = hasStepStartingWith(pair[1]);
+    const hasSelf = hasStepStartingWith(pair[2]);
+    if (hasCheck && !hasSelf) pairing.push(pair[0] + ': has a check step but no selftest');
+    if (!hasCheck && hasSelf) pairing.push(pair[0] + ': has a selftest but no check step');
+  }
+  if (pairing.length) {
+    return gate('K8', TITLE, STATUS.FAIL, pairing.length + ' check/selftest pairing violation(s)', pairing);
   }
 
   const uploads = [];
@@ -550,9 +646,11 @@ function makeManifestRoot() {
       fs.copyFileSync(src, path.join(d, 'Cargo.toml'));
     }
   }
-  const sd = path.join(DEFAULT_ROOT, 'docs', 'plan', 'm0-spec-defects.md');
   fs.mkdirSync(path.join(dest, 'docs', 'plan'), { recursive: true });
-  if (fs.existsSync(sd)) fs.copyFileSync(sd, path.join(dest, 'docs', 'plan', 'm0-spec-defects.md'));
+  for (const reg of SPEC_DEFECT_REGISTERS) {
+    const src = path.join(DEFAULT_ROOT, reg.rel);
+    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dest, reg.rel));
+  }
   return dest;
 }
 
@@ -608,6 +706,50 @@ function runSelftest() {
       st.check('K4: GPL-named dependency is caught', g.status === STATUS.FAIL, g.detail);
     }
 
+    // injection: a kernel crate depending on a UI library (AR-03). This injection caught the round-160
+    // branch, which passed ordinary runs and threw only when its violation path was exercised.
+    {
+      const root = makeManifestRoot();
+      temps.push(root);
+      mutateFile(root, 'crates/termai-vt/Cargo.toml', function (t) {
+        return t.replace('[dependencies]', '[dependencies]\nwgpu = "0.19"');
+      });
+      const g = gateK4({ root: root });
+      st.check('K4: a kernel crate depending on a UI library is caught (AR-03)', g.status === STATUS.FAIL, g.detail);
+    }
+
+    // control: the same scratch root without the UI dependency must pass, so the rule refuses a class of
+    // dependency rather than every dependency.
+    {
+      const root = makeManifestRoot();
+      temps.push(root);
+      const g = gateK4({ root: root });
+      st.check('K4: the unmodified scratch root still passes (AR-03 control)', g.status === STATUS.PASS, g.detail);
+    }
+
+    // injection: the K-04 crate edge termai-render -> termai-vt (ADR-0027 D2). The real tree declares
+    // that edge, so the check is exercised by narrowing the admitted set back to its pre-slice value for
+    // one call: if the new allow-list entry were decorative, the run would stay green. The table is
+    // restored in a finally so the baseline checks below cannot inherit the narrowed copy.
+    {
+      const saved = ALLOWED_LIB_EDGES['termai-render'];
+      let g = null;
+      try {
+        ALLOWED_LIB_EDGES['termai-render'] = saved.filter(function (n) { return n !== 'termai-vt'; });
+        g = gateK4({ root: DEFAULT_ROOT });
+      } finally {
+        ALLOWED_LIB_EDGES['termai-render'] = saved;
+      }
+      st.check('K4: termai-render -> termai-vt is caught when the edge is not admitted (K-04 injection)', g !== null && g.status === STATUS.FAIL, g ? g.detail : 'gateK4 threw');
+    }
+
+    // control: the same real tree with the admitted edge restored must pass, so the new entry refuses a
+    // missing admission rather than the edge itself.
+    {
+      const g = gateK4({ root: DEFAULT_ROOT });
+      st.check('K4: the admitted termai-render -> termai-vt edge still passes (K-04 admission control)', g.status === STATUS.PASS, g.detail);
+    }
+
     // injection 5: wrong crate license.
     {
       const root = makeManifestRoot(); temps.push(root);
@@ -636,6 +778,90 @@ function runSelftest() {
       });
       const g = gateK6({ root: root });
       st.check('K6: dropped SD-05 registration is caught', g.status === STATUS.FAIL, g.detail);
+    }
+
+    // injection 7b: dropped registration in the P0 defect register.
+    {
+      const root = makeManifestRoot(); temps.push(root);
+      mutateFile(root, 'docs/plan/p0-spec-defects.md', function (t) {
+        return t.split('SD-13').join('SD-19');
+      });
+      const g = gateK6({ root: root });
+      st.check('K6: dropped SD-13 registration in the P0 register is caught', g.status === STATUS.FAIL, g.detail);
+    }
+
+    // injection 7c: the newest P0 registration (SD-24) must be enforced too, not just carried
+    // by the hardcoded list.
+    {
+      const root = makeManifestRoot(); temps.push(root);
+      mutateFile(root, 'docs/plan/p0-spec-defects.md', function (t) {
+        return t.split('SD-24').join('SD-25');
+      });
+      const g = gateK6({ root: root });
+      st.check('K6: dropped SD-24 registration in the P0 register is caught', g.status === STATUS.FAIL, g.detail);
+    }
+
+    // injection 7d: the newest P0 registration (SD-25, added with A20) must be enforced too. This is
+    // the injection that proves the upper bound actually moved: with the pre-A20 bound
+    // (SD-09..SD-24) this exact mutation still passed, so a stale bound reports MISSED here.
+    {
+      const root = makeManifestRoot(); temps.push(root);
+      mutateFile(root, 'docs/plan/p0-spec-defects.md', function (t) {
+        return t.split('SD-25').join('SD-24');
+      });
+      const g = gateK6({ root: root });
+      st.check('K6: dropped SD-25 registration in the P0 register is caught (upper bound moved)', g.status === STATUS.FAIL, g.detail);
+    }
+
+    // control 7e: the same fixture left unmodified still passes under the new bound, so the bound
+    // rejects a missing registration rather than the register itself.
+    {
+      const root = makeManifestRoot(); temps.push(root);
+      const g = gateK6({ root: root });
+      st.check('K6: the unmodified register still passes with the SD-25 bound (bound control)', g.status === STATUS.PASS, g.detail);
+    }
+
+    // injection 7f: the newest P0 registration (SD-26, the kernel/05 section 3.2 vs 3.3 conflict)
+    // must be enforced too, not merely carried by the hardcoded list. The mutation drops SD-26 from
+    // the register; with the pre-SD-26 bound this exact mutation still passed, so a stale bound
+    // reports MISSED here.
+    {
+      const root = makeManifestRoot(); temps.push(root);
+      mutateFile(root, 'docs/plan/p0-spec-defects.md', function (t) {
+        return t.split('SD-26').join('SD-25');
+      });
+      const g = gateK6({ root: root });
+      st.check('K6: dropped SD-26 registration in the P0 register is caught and named (upper bound moved)',
+        g.status === STATUS.FAIL && g.detail.indexOf('SD-26') >= 0, g.detail);
+    }
+
+    // injection 7g: the discrimination behind 7f - the bound itself is what enforces SD-26. Reverting
+    // the P0 ids array to the previous bound (SD-09..SD-25) for one call must make the very same
+    // mutation invisible, so a stale bound cannot ride on 7f's green. Restored in a finally so the
+    // control and the real-tree baseline below cannot inherit the narrowed copy.
+    {
+      const root = makeManifestRoot(); temps.push(root);
+      mutateFile(root, 'docs/plan/p0-spec-defects.md', function (t) {
+        return t.split('SD-26').join('SD-25');
+      });
+      const saved = SPEC_DEFECT_REGISTERS[1].ids;
+      let g = null;
+      try {
+        SPEC_DEFECT_REGISTERS[1].ids = saved.filter(function (id) { return id !== 'SD-26'; });
+        g = gateK6({ root: root });
+      } finally {
+        SPEC_DEFECT_REGISTERS[1].ids = saved;
+      }
+      st.check('K6: with the bound reverted to SD-09..SD-25 the same SD-26 mutation is NOT caught (bound discrimination)',
+        g !== null && g.status === STATUS.PASS, g ? g.detail : 'gateK6 threw');
+    }
+
+    // control 7h: the same fixture left unmodified still passes under the SD-26 bound, so the bound
+    // rejects a missing registration rather than the register itself.
+    {
+      const root = makeManifestRoot(); temps.push(root);
+      const g = gateK6({ root: root });
+      st.check('K6: the unmodified register still passes with the SD-26 bound (bound control)', g.status === STATUS.PASS, g.detail);
     }
 
     // injection 8: CODEOWNERS that leaves a top-level directory without its own rule.
@@ -691,6 +917,133 @@ function runSelftest() {
       );
       const g = gateK8({ root: root });
       st.check('K8: an action outside the ADR-0021 admission list is caught', g.status === STATUS.FAIL, g.detail);
+    }
+    // injection: a workflow whose gate steps are unpaired, exercising K8's check/selftest rule. Round 141
+    // added that rule and proved it by hand; without this it would have been in the same position as the
+    // AR-03 branch in round 160 - passing ordinary runs with an unexercised failure path.
+    {
+      const root = tmpDir('kg-k8-pairing-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  b:\n    runs-on: windows-latest\n    steps:\n      - uses: actions/checkout@v4\n' +
+          '      - name: kernel:selftest (injected)\n        run: node tools/kernel-gates/check.mjs --selftest\n'
+      );
+      const g = gateK8({ root: root });
+      st.check('K8: an unpaired selftest step is caught (pairing rule)', g.status === STATUS.FAIL, g.detail);
+    }
+
+    // control: the same pair completed, plus the artifact upload K8 also requires, must pass - so the rule
+    // refuses an unpaired gate rather than every workflow.
+    {
+      const root = tmpDir('kg-k8-pairing-ok-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  b:\n    runs-on: windows-latest\n    steps:\n      - uses: actions/checkout@v4\n' +
+          '      - name: kernel:check (injected)\n        run: node tools/kernel-gates/check.mjs\n' +
+          '      - name: kernel:selftest (injected)\n        run: node tools/kernel-gates/check.mjs --selftest\n' +
+          '      - uses: actions/upload-artifact@v4\n        with:\n          retention-days: 14\n          if-no-files-found: error\n'
+      );
+      const g = gateK8({ root: root });
+      st.check('K8: a correctly paired workflow still passes (pairing control)', g.status === STATUS.PASS, g.detail);
+    }
+
+    // injection: the conformance-verify gate present without its selftest must be caught, so the new
+    // GATE_PAIRS row is enforced rather than merely listed. Round 258 wired gen-spec --check into CI and
+    // registered it here; this exercises the failure path that registration is supposed to guard.
+    {
+      const root = tmpDir('kg-k8-conformance-verify-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  b:\n    runs-on: windows-latest\n    steps:\n      - uses: actions/checkout@v4\n' +
+          '      - name: conformance verify (injected)\n        run: npm run conformance:verify\n'
+      );
+      const g = gateK8({ root: root });
+      st.check('K8: conformance verify without its selftest is caught (new pairing row)', g.status === STATUS.FAIL, g.detail);
+    }
+
+    // control: the same pair completed, plus the artifact upload K8 also requires, must pass - so the new
+    // row refuses an unpaired gate rather than every workflow.
+    {
+      const root = tmpDir('kg-k8-conformance-verify-ok-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  b:\n    runs-on: windows-latest\n    steps:\n      - uses: actions/checkout@v4\n' +
+          '      - name: conformance verify (injected)\n        run: npm run conformance:verify\n' +
+          '      - name: conformance verify selftest (injected)\n        run: npm run conformance:verify:selftest\n' +
+          '      - uses: actions/upload-artifact@v4\n        with:\n          retention-days: 14\n          if-no-files-found: error\n'
+      );
+      const g = gateK8({ root: root });
+      st.check('K8: the completed conformance-verify pair still passes (pairing control)', g.status === STATUS.PASS, g.detail);
+    }
+
+    // injection: the conformance-suites gate present without its selftest must be caught, so the
+    // second new GATE_PAIRS row (ADR-0029 D-2: static capability declarations) is enforced too.
+    {
+      const root = tmpDir('kg-k8-conformance-suites-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  b:\n    runs-on: windows-latest\n    steps:\n      - uses: actions/checkout@v4\n' +
+          '      - name: conformance suites (injected)\n        run: npm run conformance:suites\n'
+      );
+      const g = gateK8({ root: root });
+      st.check('K8: conformance suites without its selftest is caught (new pairing row)', g.status === STATUS.FAIL, g.detail);
+    }
+
+    // control: the suites pair completed, plus the required artifact upload, must pass.
+    {
+      const root = tmpDir('kg-k8-conformance-suites-ok-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  b:\n    runs-on: windows-latest\n    steps:\n      - uses: actions/checkout@v4\n' +
+          '      - name: conformance suites (injected)\n        run: npm run conformance:suites\n' +
+          '      - name: conformance suites selftest (injected)\n        run: npm run conformance:suites:selftest\n' +
+          '      - uses: actions/upload-artifact@v4\n        with:\n          retention-days: 14\n          if-no-files-found: error\n'
+      );
+      const g = gateK8({ root: root });
+      st.check('K8: the completed conformance-suites pair still passes (pairing control)', g.status === STATUS.PASS, g.detail);
+    }
+
+    // injection: the waivers gate present without its selftest must be caught (ADR-0031 condition 4:
+    // an expired waiver turns CI red). Registered in GATE_PAIRS; this exercises that row's failure path.
+    {
+      const root = tmpDir('kg-k8-waivers-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  b:\n    runs-on: windows-latest\n    steps:\n      - uses: actions/checkout@v4\n' +
+          '      - name: waivers check\n        run: node tools/audit/check-waivers.mjs\n'
+      );
+      const g = gateK8({ root: root });
+      st.check('K8: waivers check without its selftest is caught (new pairing row)', g.status === STATUS.FAIL, g.detail);
+    }
+
+    // control: the completed waivers pair plus the artifact upload K8 also requires must pass.
+    {
+      const root = tmpDir('kg-k8-waivers-ok-');
+      temps.push(root);
+      fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  b:\n    runs-on: windows-latest\n    steps:\n      - uses: actions/checkout@v4\n' +
+          '      - name: waivers check\n        run: node tools/audit/check-waivers.mjs\n' +
+          '      - name: waivers selftest\n        run: node tools/audit/check-waivers.mjs --selftest\n' +
+          '      - uses: actions/upload-artifact@v4\n        with:\n          retention-days: 14\n          if-no-files-found: error\n'
+      );
+      const g = gateK8({ root: root });
+      st.check('K8: the completed waivers pair still passes (pairing control)', g.status === STATUS.PASS, g.detail);
     }
 
     // injection 12: an upload that publishes build intermediates or runtime session logs.

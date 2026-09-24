@@ -369,7 +369,7 @@ copy(range) 在 sessiond 侧、按网格逻辑行生成：
 | **OQ-RND-04**（**已决：AR-24 第 3 条**） | §5「网格对齐误差 ≤0.5px」的判据 | RP-05 可判定性、AR-14 两档画质验收 | **已决：max over drawn glyphs of abs(glyph_bitmap_origin − cell_box_origin) ≤ 0.5px**，在 100/125/150/200% DPI 分别判定（RM-C，golden 像素测量）；「柔和」档放宽为 glyph 边缘质心判据（两档各自留基线） | **已决（AR-24）** |
 | OQ-RND-05 | Clip 模式的光标可见性语义（K-11「每逻辑行只显示光标所在段」）需 UX 签署；spec02 §3.12 只定义「右边界裁剪」与「复制完整」，未定义光标进入续行后的显示 | 输入可用性、spec02 §3.12 措辞、命中测试 | 建议采纳 K-11（一行/逻辑行 + 光标段优先），并在状态栏给「该行已裁剪」轻提示；替代方案（固定头行 + 横向平移）已被 AR-23 §6 排除 | P1（与 UX/设计系统联合裁决） |
 | OQ-RND-06 | atlas 内存硬上限默认值（建议 24 MiB）与彩色 emoji 页是否允许出现在门禁跑（4 MiB/页 的 RGBA 页占比大） | §5 RSS 门禁余量、RP-04/RP-10/RP-11 | 建议 24 MiB + 彩色页 1 张；门禁跑启用彩色页（否则 emoji 视觉回归与 ADR-0014 M12-③ 无法覆盖） | P1 |
-| OQ-RND-07 | GridSnapshot/GridDelta/ScrollOp 的 IDL 归属与字段集（core-dto）——本文件只给最小字段集 | termai-ipc 兼容窗口、headless/多端 attach、插件只读镜像 | 建议字段集即 §3.3 结构（rev 单调 + 显式 damage + 显式 scroll），由 core-dto 生成 Rust/TS 双端；破坏性变更走 capability | P1（与架构篇/IPC owner 联合） |
+| **OQ-RND-07**（**已决：ADR-0023 D3**） | GridSnapshot/GridDelta/ScrollOp 的 IDL 归属与字段集（core-dto） | termai-ipc 兼容窗口、headless/多端 attach、插件只读镜像 | **已决（ADR-0023 D3）**：字段集 = §3.3 结构（rev 单调 + 显式 damage + 显式 scroll + **clusters: ClusterTable**），由 core-dto 生成 Rust/TS 双端；**golden/digest 必须覆盖 ClusterTable**；破坏性变更走 capability + 兼容 ≥2 minor | **已决（ADR-0023）** |
 | OQ-RND-08 | bidi 范围：v1 是否开启行内视觉重排，还是只做「逻辑序 + 标记」 | E60 扩展套件、命中测试/选区、AR-20 边界 | 建议按 K-13 开启行内重排（方块/制表行抑制），跨行重排明确不做；若 E60 资源不足可先只做标记（P2 再开重排） | P2（ADR-0014 E60 时间线） |
 | OQ-RND-09 | 跨屏迁移保留 2 组 scale 热页的内存代价 vs 抖动收益是否划算（大字号 × 2 scale × 彩色页可能撞上限） | RP-11、OQ-RND-06 上限、RV-03 | 建议保留 2 组 + 预算内 LRU 整组回收；若 RP-11 显示 2 组仍不足，改为「按显示器预取 ASCII 95 字形」的轻量策略 | P2 |
 

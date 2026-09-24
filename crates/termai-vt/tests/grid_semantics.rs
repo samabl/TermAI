@@ -1,6 +1,6 @@
 //! Test 6: SGR, cursor movement, erase, scroll region and alternate screen.
 
-use termai_core::grid::{Color, ATTR_BOLD, ATTR_UNDERLINE};
+use termai_core::grid::{Color, ATTR_BOLD, ATTR_UNDERLINE, LINE_WRAPPED};
 use termai_vt::grid::{MODE_ALT_SCREEN, MODE_AUTOWRAP, MODE_BRACKETED_PASTE};
 use termai_vt::Terminal;
 
@@ -164,6 +164,119 @@ fn autowrap_on_and_off() {
     assert_eq!(t.grid().modes() & MODE_AUTOWRAP, 0);
     t.feed(b"X");
     assert_eq!(t.grid().row_text(0), "1234X");
+}
+
+#[test]
+fn autowrap_sets_line_wrapped_on_the_row_it_leaves() {
+    let mut t = Terminal::new(5, 3);
+    t.feed(b"abcde");
+    assert_eq!(
+        t.grid().snapshot().row_flags[0] & LINE_WRAPPED,
+        0,
+        "a pending wrap has not happened yet"
+    );
+    t.feed(b"f");
+    let snap = t.grid().snapshot();
+    assert_eq!(
+        snap.row_flags.len(),
+        3,
+        "length must equal rows (ADR-0025 D1)"
+    );
+    assert_ne!(snap.row_flags[0] & LINE_WRAPPED, 0);
+    assert_eq!(snap.row_flags[1] & LINE_WRAPPED, 0);
+}
+
+#[test]
+fn autowrap_flag_change_is_carried_by_the_grid_delta() {
+    // ADR-0025 D3: termai-render consumes row_flags from the delta stream, so the
+    // wrap must damage the row it marks; otherwise only a full resync would show it.
+    let mut t = Terminal::new(5, 3);
+    let initial = t.take_delta(0).expect("initial damage");
+    t.feed(b"abcde");
+    let fill = t.take_delta(initial.rev).expect("cell writes");
+    let row0 = fill
+        .rows
+        .iter()
+        .find(|p| p.row == 0)
+        .expect("row 0 payload");
+    assert_eq!(
+        row0.flags & LINE_WRAPPED,
+        0,
+        "the wrap has not happened yet"
+    );
+    t.feed(b"f");
+    let wrap = t.take_delta(fill.rev).expect("wrap damage");
+    let row0 = wrap
+        .rows
+        .iter()
+        .find(|p| p.row == 0)
+        .expect("the wrapped row must be damaged");
+    assert_ne!(row0.flags & LINE_WRAPPED, 0);
+}
+
+#[test]
+fn explicit_line_feed_does_not_set_line_wrapped_and_clears_it() {
+    let mut t = Terminal::new(5, 3);
+    t.feed(b"abcde\n");
+    assert_eq!(t.grid().snapshot().row_flags[0] & LINE_WRAPPED, 0);
+
+    // A row that really wrapped loses WRAPPED when an explicit LF leaves it.
+    let mut t = Terminal::new(5, 3);
+    t.feed(b"abcdef");
+    assert_ne!(t.grid().snapshot().row_flags[0] & LINE_WRAPPED, 0);
+    t.feed(b"\x1b[1;1H\n");
+    assert_eq!(
+        t.grid().snapshot().row_flags[0] & LINE_WRAPPED,
+        0,
+        "an explicit LF makes the row a hard line break again"
+    );
+}
+
+#[test]
+fn scroll_moves_row_flags_with_the_rows() {
+    let mut t = Terminal::new(2, 4);
+    t.feed(b"abc");
+    t.feed(b"de");
+    t.feed(b"f");
+    let before = t.grid().snapshot().row_flags.clone();
+    assert_ne!(before[0] & LINE_WRAPPED, 0);
+    assert_ne!(before[1] & LINE_WRAPPED, 0);
+    t.feed(b"\x1b[T");
+    let after = t.grid().snapshot().row_flags.clone();
+    assert_eq!(after[0] & LINE_WRAPPED, 0, "the exposed top row is blank");
+    assert_eq!(after[1], before[0]);
+    assert_eq!(after[2], before[1]);
+    assert_eq!(after[3], 0);
+}
+
+#[test]
+fn alternate_screen_swaps_and_clears_row_flags() {
+    let mut t = Terminal::new(2, 4);
+    t.feed(b"abc");
+    assert_ne!(t.grid().snapshot().row_flags[0] & LINE_WRAPPED, 0);
+    t.feed(b"\x1b[?1049h");
+    assert!(t
+        .grid()
+        .snapshot()
+        .row_flags
+        .iter()
+        .all(|f| *f & LINE_WRAPPED == 0));
+    t.feed(b"\x1b[?1049l");
+    assert_ne!(t.grid().snapshot().row_flags[0] & LINE_WRAPPED, 0);
+}
+
+#[test]
+fn delete_lines_moves_row_flags_up() {
+    let mut t = Terminal::new(2, 4);
+    t.feed(b"abc");
+    t.feed(b"de");
+    t.feed(b"f");
+    let before = t.grid().snapshot().row_flags.clone();
+    t.feed(b"\x1b[2;1H\x1b[M");
+    let after = t.grid().snapshot().row_flags.clone();
+    assert_eq!(after[1], before[2]);
+    assert_eq!(after[2], before[3]);
+    assert_eq!(after[3] & LINE_WRAPPED, 0);
 }
 
 #[test]

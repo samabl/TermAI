@@ -926,6 +926,29 @@ pub struct SegmentRead {
 }
 
 /// Read a whole segment, stopping at the first damaged record.
+/// Read only the fixed-size segment header, verifying its magic and CRC.
+///
+/// Each sealed segment records where it starts in `SegmentHeader::first_seq`, so a caller can locate
+/// the segment covering a sequence without reading any records. This exists for the cross-segment
+/// replay window (A10): the broker walks headers from the newest segment backwards to find the first
+/// segment the window needs, then reads only those segments.
+///
+/// # Errors
+/// Fails if the file is shorter than a header, or if the header's magic or CRC does not verify.
+pub fn read_segment_header(path: &Path) -> Result<SegmentHeader, LogError> {
+    let mut file = File::open(path)?;
+    let mut hb = [0u8; SEGMENT_HEADER_LEN];
+    let mut read = 0_usize;
+    while read < SEGMENT_HEADER_LEN {
+        let n = file.read(&mut hb[read..])?;
+        if n == 0 {
+            return Err(LogError::Truncated { offset: 0 });
+        }
+        read += n;
+    }
+    SegmentHeader::decode(&hb)
+}
+
 pub fn read_segment(path: &Path) -> Result<SegmentRead, LogError> {
     let mut bytes = Vec::new();
     File::open(path)?.read_to_end(&mut bytes)?;
@@ -1013,6 +1036,88 @@ pub fn read_segment(path: &Path) -> Result<SegmentRead, LogError> {
         crc_mismatch_at,
         last_valid_seq,
     })
+}
+
+/// Why a requested tail-replay window cannot be satisfied.
+///
+/// AR-26 fixes the retention semantics: P0 metadata is durable but may be archived
+/// (kernel/04 section 3.2.4 drops raw bytes past the segment budget) and the P1 raw byte
+/// ring is volatile. A client asking for a range the Log can no longer serve must be told
+/// so: a short replay that looks successful would fake screen consistency, which is the
+/// opposite of E-P0-4 "screen 可恢复". \`from_seq\` is EXCLUSIVE; \`head\` is the
+/// SegmentWriter's next free seq, i.e. the exclusive upper bound of appended records.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ReplayGap {
+    /// Records after \`from_seq\` up to the oldest readable record are gone.
+    BelowWindow { first_available: u64 },
+    /// The client claims to have applied seqs the server never produced.
+    AheadOfHead { head: u64 },
+    /// The segment tail is damaged, so a complete replay cannot be produced.
+    TailUnreadable { last_valid: Option<u64>, head: u64 },
+}
+
+/// Decide whether \`(from_seq, head)\` can be replayed COMPLETELY from an already-read
+/// segment. Returns the gap instead of a partial event list, so a caller cannot
+/// accidentally serve a lying short replay (kernel/04 section 3.4 + AR-26).
+pub fn replay_window_check(read: &SegmentRead, from_seq: u64, head: u64) -> Result<(), ReplayGap> {
+    if from_seq > head {
+        return Err(ReplayGap::AheadOfHead { head });
+    }
+    let lo = from_seq.saturating_add(1);
+    if lo >= head {
+        return Ok(()); // nothing is being requested
+    }
+    let first = read.records.first().map(|r| r.id.seq);
+    let last = read.records.last().map(|r| r.id.seq);
+    match (first, last) {
+        // Seq values are handed out consecutively, so the readable set is a contiguous
+        // range: completeness means it covers every seq in (from_seq, head).
+        (Some(f), Some(l)) if f <= lo && l >= head - 1 => Ok(()),
+        (Some(f), _) if f > lo => Err(ReplayGap::BelowWindow { first_available: f }),
+        _ => Err(ReplayGap::TailUnreadable {
+            last_valid: last,
+            head,
+        }),
+    }
+}
+
+/// The cross-segment form of [`replay_window_check`] (A10).
+///
+/// `reads` must be consecutive segments in ascending id order. `kernel/04` section 3.2.1 chains
+/// segments on rotation and `seq` stays monotonic across them, so their union is one contiguous range
+/// and the question is the same; only the coverage test is taken over the union instead of one
+/// segment. Without this a TAIL_REPLAY whose floor fell in an earlier segment was refused with
+/// `BelowWindow` even though every record it needed was on disk and `list_segments` could find it.
+///
+/// # Errors
+/// The same three conditions as [`replay_window_check`], judged over the union of `reads`.
+pub fn replay_window_check_across(
+    reads: &[SegmentRead],
+    from_seq: u64,
+    head: u64,
+) -> Result<(), ReplayGap> {
+    if from_seq > head {
+        return Err(ReplayGap::AheadOfHead { head });
+    }
+    let lo = from_seq.saturating_add(1);
+    if lo >= head {
+        return Ok(()); // nothing is being requested
+    }
+    let first = reads
+        .iter()
+        .find_map(|r| r.records.first().map(|r| r.id.seq));
+    let last = reads
+        .iter()
+        .rev()
+        .find_map(|r| r.records.last().map(|r| r.id.seq));
+    match (first, last) {
+        (Some(f), Some(l)) if f <= lo && l >= head - 1 => Ok(()),
+        (Some(f), _) if f > lo => Err(ReplayGap::BelowWindow { first_available: f }),
+        _ => Err(ReplayGap::TailUnreadable {
+            last_valid: last,
+            head,
+        }),
+    }
 }
 
 #[cfg(test)]
@@ -1109,6 +1214,104 @@ mod tests {
                 kind: 9,
             },
         ]
+    }
+
+    // ---- tail replay window (AR-26 / kernel/04 section 3.4) ----
+
+    fn seg_read(first_seq: u64, count: u64) -> SegmentRead {
+        let records = (0..count)
+            .map(|i| LoggedRecord {
+                id: RecordId {
+                    segment_id: 0,
+                    seq: first_seq + i,
+                    offset: 0,
+                },
+                ts_ns: i,
+                record: Record::Resize {
+                    pane: 0,
+                    cols: 80,
+                    rows: 24,
+                    px_w: 0,
+                    px_h: 0,
+                },
+            })
+            .collect::<Vec<_>>();
+        SegmentRead {
+            header: SegmentHeader {
+                format_version: FORMAT_VERSION,
+                min_reader_version: MIN_READER_VERSION,
+                segment_id: 0,
+                created_at_unix_ns: 0,
+                first_seq,
+                prev_segment_hash_prefix: [0u8; 8],
+                flags: 0,
+            },
+            last_valid_seq: records.last().map(|r| r.id.seq),
+            records,
+            tail_truncated: false,
+            crc_mismatch_at: None,
+        }
+    }
+
+    #[test]
+    fn replay_window_accepts_exactly_the_readable_range() {
+        let read = seg_read(5, 4); // seq 5..=8, head is 9.
+        assert_eq!(replay_window_check(&read, 4, 9), Ok(()));
+        assert_eq!(replay_window_check(&read, 5, 9), Ok(()));
+        // At the head (or past the last record) there is simply nothing to replay.
+        assert_eq!(replay_window_check(&read, 8, 9), Ok(()));
+        assert_eq!(replay_window_check(&read, 9, 9), Ok(()));
+        // An empty Log with no records ever appended is also satisfied.
+        assert_eq!(replay_window_check(&seg_read(0, 0), 0, 0), Ok(()));
+    }
+
+    #[test]
+    fn replay_window_refuses_a_floor_below_the_oldest_readable_record() {
+        let read = seg_read(5, 4);
+        assert_eq!(
+            replay_window_check(&read, 0, 9),
+            Err(ReplayGap::BelowWindow { first_available: 5 }),
+            "the client needs seq 1..4, which are gone"
+        );
+        assert_eq!(
+            replay_window_check(&read, 3, 9),
+            Err(ReplayGap::BelowWindow { first_available: 5 })
+        );
+        // An empty Log cannot answer a non-empty request either.
+        assert_eq!(
+            replay_window_check(&seg_read(0, 0), 0, 3),
+            Err(ReplayGap::TailUnreadable {
+                last_valid: None,
+                head: 3
+            })
+        );
+    }
+
+    #[test]
+    fn replay_window_refuses_a_resume_point_ahead_of_the_server_head() {
+        let read = seg_read(0, 3); // seq 0..=2, head is 3.
+        assert_eq!(
+            replay_window_check(&read, 4, 3),
+            Err(ReplayGap::AheadOfHead { head: 3 }),
+            "the client claims seqs the server never produced"
+        );
+    }
+
+    #[test]
+    fn replay_window_refuses_a_damaged_tail_that_the_request_needs() {
+        let mut read = seg_read(0, 3); // readable 0..=2
+        read.tail_truncated = true;
+        read.last_valid_seq = Some(2);
+        // The request reaches into the unreadable region (head 6, readable up to 2).
+        assert_eq!(
+            replay_window_check(&read, 0, 6),
+            Err(ReplayGap::TailUnreadable {
+                last_valid: Some(2),
+                head: 6
+            })
+        );
+        // A client already at the head needs nothing from the damaged region.
+        assert_eq!(replay_window_check(&read, 5, 6), Ok(()));
     }
 
     #[test]
@@ -1299,6 +1502,77 @@ mod tests {
         }
         let expected: Vec<u64> = (0..20).collect();
         assert_eq!(seqs, expected, "seq must be monotonic across segments");
+    }
+
+    #[test]
+    fn replay_window_across_segments_covers_what_neither_covers_alone() {
+        // A holds 0..5 and B holds 5..10; the requested window (3, 10] spans the boundary, so
+        // neither segment covers it and their union does. This is the case A10 exists for.
+        let a = seg_read(0, 5);
+        let b = seg_read(5, 5);
+        assert!(
+            replay_window_check(&a, 3, 10).is_err(),
+            "A alone must not cover it"
+        );
+        assert!(
+            replay_window_check(&b, 3, 10).is_err(),
+            "B alone must not cover it"
+        );
+        assert_eq!(replay_window_check_across(&[a, b], 3, 10), Ok(()));
+    }
+
+    #[test]
+    fn replay_window_across_segments_still_refuses_what_is_missing() {
+        // Negative controls: taking the union must not turn refusals into acceptances.
+        let a = seg_read(5, 5);
+        let b = seg_read(10, 5);
+        assert_eq!(
+            replay_window_check_across(&[a, b], 0, 15),
+            Err(ReplayGap::BelowWindow { first_available: 5 })
+        );
+
+        let c = seg_read(0, 5);
+        assert_eq!(
+            replay_window_check_across(&[c], 20, 10),
+            Err(ReplayGap::AheadOfHead { head: 10 })
+        );
+
+        assert!(matches!(
+            replay_window_check_across(&[], 0, 5),
+            Err(ReplayGap::TailUnreadable {
+                last_valid: None,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn read_segment_header_reports_first_seq_without_reading_records() {
+        let dir = tmp_dir("header-only");
+        let mut w = SegmentWriter::create(&dir, 0, 7, [0u8; 8], 1, 0).unwrap();
+        w.append(
+            &Record::PtyOut {
+                pane: 0,
+                bytes: vec![1; 16],
+            },
+            0,
+        )
+        .unwrap();
+        w.flush(FlushMode::FsyncFull).unwrap();
+
+        let h = read_segment_header(w.path()).unwrap();
+        assert_eq!(
+            h.first_seq, 7,
+            "the header must carry the segment's first seq"
+        );
+
+        // Negative control: a file shorter than a header must be refused, not misread.
+        let short = dir.join("short.seg");
+        std::fs::write(&short, [0u8; 8]).unwrap();
+        assert!(matches!(
+            read_segment_header(&short),
+            Err(LogError::Truncated { .. })
+        ));
     }
 
     #[test]

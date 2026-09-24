@@ -4,7 +4,7 @@
 - 日期：2025-01-01
 - 决策者：发布工程负责人 + QA 架构师 + 首席性能工程师（联合终裁），项目发起人授权（HARNESS §11 OQ-26 / OQ-28 工程部分）
 - 关联：AR-01、AR-02、AR-14、AR-19、AR-21；DC-16、DC-17、DC-37、DC-40；HARNESS §5、§7（P0/P2）、§8.1、§8.2、§11（OQ-26、OQ-28）；ADR-0012（门禁 / 目标两列口径）、ADR-0013（全栈开源，Apache-2.0 OR MIT）
-- 实现位置：crates/termai-xtask（bench / perf-gate / matrix / dist / sign）、tests/matrix/、tests/conformance/、crates/termai-render 与 crates/termai-gpu（后端选择与软件光栅）、crates/termai-pty、docs/spec/07-engineering-quality-and-release.md、CI 定义与 machine-fingerprint.json / nightly-exception.json / ci-cost.json
+- 实现位置：~~crates/termai-xtask（bench / perf-gate / matrix / dist / sign）~~ **被 ADR-0028 取代**（该 crate 不存在；§5 测量与门禁的最终主场为 `tools/bench/`，见 ADR-0028）、tests/matrix/、tests/conformance/、crates/termai-render 与 crates/termai-gpu（后端选择与软件光栅）、crates/termai-pty、docs/spec/07-engineering-quality-and-release.md、CI 定义与 machine-fingerprint.json / nightly-exception.json / ci-cost.json
 
 ## 背景与问题
 
@@ -282,7 +282,7 @@ HARNESS §5 只规定「release 构建 + SSD」，未固定硬件；§8.2 只写
 | --- | --- | --- |
 | AR-01 / AR-02 | 网格绝不经 WebView；WebView 可选，缺失降级纯原生面板（T3） | term-render、webview-shell、shell-bridge |
 | AR-14 | 三字体后端均不启用系统 subpixel AA | term-render（font backend trait） |
-| AR-19 | 门禁 / 目标两列口径；本 ADR 仅绑定机器，不改数值 | termai-xtask perf-gate、bench-report.json |
+| AR-19 | 门禁 / 目标两列口径；本 ADR 仅绑定机器，不改数值 | ~~termai-xtask perf-gate~~ **被 ADR-0028 取代**、bench-report.json（测量与门禁的实现主场为 `tools/bench/`） |
 | AR-21 / ADR-0013 | 全栈开源 Apache-2.0 OR MIT，无专有硬件/服务依赖 | 仓库根 LICENSE、CI 许可门禁 |
 | DC-16 | Windows 唯一生产路径 ConPTY，Win10 1809 地板（arm64 见决策 2） | termai-pty（conpty） |
 | DC-17 | wgpu 后端阶梯 T0–T3；栅格化统一 swash | termai-gpu、term-render |

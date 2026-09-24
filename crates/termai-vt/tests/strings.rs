@@ -61,6 +61,21 @@ fn length_limit_returns_to_ground() {
     assert!(rows_joined(&t).contains('Z'));
 }
 
+#[test]
+fn sos_is_capped_by_its_own_one_mib_limit_not_the_dcs_cap() {
+    // ADR-0023 D2 froze SOS/PM at 1 MiB while DCS/APC get 16 MiB. This test pins the
+    // *wiring* (the source of the M0 bug, where SOS/PM reused the DCS cap): an SOS
+    // string must overflow just past 1 MiB even though the 16 MiB DCS cap would allow
+    // it. SOS/PM overflow is counted under the existing DcsOverflow key because the 14
+    // counter keys are frozen by kernel/01 section 3.4, so no new key is introduced.
+    let mut t = Terminal::new(40, 4);
+    t.feed(b"\x1bX");
+    t.feed(&vec![b'x'; 1024 * 1024 + 1]);
+    assert_eq!(t.counters().get(termai_vt::ParseErrorKind::DcsOverflow), 1);
+    t.feed(b"Z");
+    assert!(rows_joined(&t).contains('Z'));
+}
+
 struct Lcg(u64);
 
 impl Lcg {

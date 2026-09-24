@@ -1,0 +1,32 @@
+{
+  "schema": "termai-waivers/1",
+  "policy": "Every waiver carries RUSTSEC ids (or an explicit non-advisory reason), a granted date, an expiry as an absolute date AND a minor-version bound (whichever comes first), a replacement trigger, an owner and evidence. An expired waiver is a FAILURE, not a warning (ADR-0031 condition 4; same shape as kernel/01 K-04's expiring difference register).",
+  "waivers": [
+    {
+      "id": "W-01",
+      "kind": "advisory-unmaintained",
+      "subject": [
+        "rustybuzz@0.20.1",
+        "ttf-parser@0.25.1"
+      ],
+      "advisories": [
+        "RUSTSEC-2026-0206",
+        "RUSTSEC-2026-0192"
+      ],
+      "why": "DC-17 / kernel/03 K-05 name rustybuzz as the only OpenType shaping engine. Both crates are unmaintained (RUSTSEC) with no safe upgrade, and neither has a known vulnerability. The alternative (skrifa plus a maintained shaper) changes DC-17 and needs its own ADR.",
+      "decision": "ADR-0031",
+      "owner": "T1 Core Kernel",
+      "granted": "2026-09-23",
+      "expires": "2027-03-23",
+      "expires_within_minors": 2,
+      "minor_baseline": "0.1.0",
+      "replacement_trigger": "any RUSTSEC vulnerability (not merely unmaintained) against rustybuzz or ttf-parser; OR skrifa plus a maintained shaper that satisfies the DC-17 feature set without a C dependency; OR two minor releases of TermAI, whichever comes first",
+      "evidence": "docs/adr/ADR-0027-spdx-evidence.md",
+      "visible_in": [
+        "ADR-0027",
+        "SBOM",
+        "release notes"
+      ]
+    }
+  ]
+}

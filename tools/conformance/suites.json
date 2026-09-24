@@ -1,0 +1,65 @@
+{
+  "schema": "termai-conformance-suites/1",
+  "note": "Static declarations for the upstream VT suites. A suite's eligible set may only be reduced by a STATIC capability precondition declared here (kernel/01 K-01 S_cap); runtime or manual skips and difference entries are forbidden for a 100% suite (X=0). Every exclusion must cite an ADR and a kernel/01 clause.",
+  "suites": [
+    {
+      "name": "esctest2",
+      "pinned_revision": "2798f12149a19c3295e9b4853ab2da4b2eff1b2b",
+      "invocation": {
+        "expected_terminal": "xterm",
+        "xterm_checksum": 336,
+        "claimed_vt_level": 1,
+        "xterm_reverse_wrap": 383
+      },
+      "xterm_reverse_wrap_rule": "The terminal we pin is a modern xterm, so esctest must be told the reverse-wrap patch level (>= 383). With the default 0, esctest's ReverseWraparound() returns private mode 45 and judges us by pre-2023 semantics, which is a different ruler (ADR-0030 D-1). At >= 383 it returns 1045 (broad), while tests that set mode 45 directly keep testing the narrowed behaviour - matching xterm's cursor.c CursorBack.",
+      "claimed_vt_level_rule": "ADR-0030 D-1: claimed_vt_level is the highest N whose xterm DA1 expected set is entirely implemented. Level 1 = [1,2] (VT100 + Advanced Video Option), which this implementation can claim; level 2 would require 6/9/15/22/29 and is not claimable.",
+      "static_capability_exclusions": [
+        {
+          "capability": "color-query",
+          "test_prefixes": [
+            "ChangeColorTests.",
+            "ChangeDynamicColorTests.",
+            "ChangeSpecialColorTests.",
+            "ResetColorTests.",
+            "ResetSpecialColorTests."
+          ],
+          "citation": "ADR-0029 D-2; kernel/01 3.5 (OSC 4 / 10 / 11 / 12 = v1 never); AR-20",
+          "reason": "OSC 4 / 10 / 11 / 12 are not implemented in v1 and are never answered. There is no colour rendering yet, so answering with a palette would be an unprovable capability claim (AR-20). Declaring the capability absent is the static precondition; it is not a difference entry and it expires when colour rendering lands.",
+          "excluded_case_count_measured": 47,
+          "excluded_case_count_source": "docs/audit/esctest-failing-index.md: the five prefixes above account for 13+13+14+2+5 = 47 located failing cases"
+        },
+        {
+          "capability": "xterm-window-ops",
+          "test_prefixes": [
+            "XtermWinopsTests."
+          ],
+          "citation": "ADR-0032 D1; AR-14 (pixels stay out of the VT layer); E-P0-2 not implemented; kernel/01 K-01 S_cap",
+          "reason": "Window manipulation (iconify/deiconify, move, push/pop icon and window titles, report icon/window label, DECSLPP, pixel resize) is a property of a window host that v1 does not have. The VT layer answers 11t/13t truthfully as normal and 0;0, so pretending a window was moved would be a lie (AR-20). Static precondition, not a runtime skip and not a difference entry. Revoke when E-P0-2 lands.",
+          "excluded_case_count_measured": 17,
+          "excluded_case_count_source": "docs/audit/esctest-level1-triage.md: the XtermWinopsTests failures that fail in isolation"
+        },
+        {
+          "capability": "deccolm-132",
+          "test_prefixes": [
+            "DECSETTests.test_DECSET_Allow80To132",
+            "RISTests.test_RIS_ResetDECCOLM"
+          ],
+          "citation": "ADR-0032 D2/D3; kernel/03 (cols change only on resize, reflow writeback is rejected by V-06); kernel/01 K-03",
+          "reason": "DECCOLM (CSI ? 3 h, 80/132 columns) is not implemented in v1: the grid's column count is fixed and reflow writeback is frozen out by kernel/03 V-06. DA1 bit 1 keeps its DEC/ECMA meaning (VT100 + AVO) under the K-03 arbitration order, so it is not a promise of 132-column support. Static precondition; revoke with E-P0-2.",
+          "excluded_case_count_measured": 2,
+          "excluded_case_count_source": "docs/audit/esctest-level1-triage.md"
+        },
+        {
+          "capability": "c1-8bit-controls",
+          "test_prefixes": [
+            "DECIDTests.test_DECID_Basic"
+          ],
+          "citation": "ADR-0030 section 6; kernel/01 OQ-VT-14 (8-bit C1 is not recognised in UTF-8 mode); AR-20",
+          "reason": "DECID is the 8-bit C1 control 0x9A. OQ-VT-14 froze the rule that UTF-8 mode does not recognise 8-bit C1: the byte is counted as c1_8bit_in_utf8 and never dispatched as DECID, so this case cannot pass without inventing a non-default mode. Static capability precondition; revoke if a non-UTF-8 mode is ever exposed.",
+          "excluded_case_count_measured": 1,
+          "excluded_case_count_source": "target/conformance/lvl1-rev383/esctest.log (the last remaining failed_real case)"
+        }
+      ]
+    }
+  ]
+}

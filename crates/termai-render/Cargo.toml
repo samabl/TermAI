@@ -1,0 +1,35 @@
+[package]
+name = "termai-render"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "TermAI render pipeline (kernel/03). UI-side grid mirror (ADR-0024 D1) plus the S6 shaping and S7 atlas slices (ADR-0027 D1)."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+termai-core = { workspace = true }
+# ADR-0027 D2 (Accepted) registers this edge: kernel/03 K-04 makes termai-vt's width table the
+# only column-width authority, and spec kernel/03 section 3.5.1 step 1 spells the shaper's
+# source as `termai-vt::width::measure(scalars)`. The shaper binds its production
+# `shape::CellWidthSource` to that API instead of carrying a second wcwidth table, so the
+# grid and the shaper cannot drift. K4's allow-list entry is 'termai-render -> [termai-core,
+# termai-vt]'; the termai-render -> termai-gpu edge stays unregistered until it is declared.
+termai-vt = { workspace = true }
+# ADR-0027 D1 (Accepted): rustybuzz 0.20.1 (MIT), swash 0.2.10 (Apache-2.0 OR MIT) and
+# fontdb 0.24.0 (MIT) are admitted at SPDX tier A with R=D=0; the unmaintained advisories
+# against rustybuzz/ttf-parser are covered by the ADR-0031 time-boxed waiver W-01
+# (docs/audit/waivers.json, expires 2027-03-23 or after 2 minors). kernel/03 K-05: rustybuzz
+# is the only OpenType shaping engine, swash the only outline/colour-glyph engine; fontdb
+# carries font discovery and the fallback chain (kernel/03 section 3.5.2).
+# No wgpu, winit or termai-gpu dependency in this slice (ADR-0024 D1, ADR-0027 D2/D3 - no fake
+# dependency).
+rustybuzz = { workspace = true }
+swash = { workspace = true }
+fontdb = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"

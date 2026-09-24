@@ -2,7 +2,7 @@
 
 use termai_vt::{
     BackendId, EscapeSink, Params, StringKind, StringTerm, Terminal, VtBackend, VteBackend,
-    DCS_LEN_LIMIT_DEFAULT, MAX_PARAMS, OSC_LEN_LIMIT_DEFAULT,
+    DCS_LEN_LIMIT_DEFAULT, MAX_PARAMS, OSC_LEN_LIMIT_DEFAULT, SOS_PM_LEN_LIMIT_DEFAULT,
 };
 
 #[test]
@@ -50,8 +50,9 @@ fn reset_clears_grid_and_counters() {
 
 #[test]
 fn default_caps_match_the_contract_constants() {
-    assert_eq!(OSC_LEN_LIMIT_DEFAULT, 64 * 1024);
-    assert_eq!(DCS_LEN_LIMIT_DEFAULT, 1024 * 1024);
+    assert_eq!(OSC_LEN_LIMIT_DEFAULT, 1024 * 1024);
+    assert_eq!(DCS_LEN_LIMIT_DEFAULT, 16 * 1024 * 1024);
+    assert_eq!(SOS_PM_LEN_LIMIT_DEFAULT, 1024 * 1024);
     assert_eq!(MAX_PARAMS, 16);
     let backend = VteBackend::new();
     let caps = backend.caps();

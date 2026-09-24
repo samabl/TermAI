@@ -1,0 +1,2 @@
+KEY "Punterminated[31mred"
+ASSERT ROW 0 = red

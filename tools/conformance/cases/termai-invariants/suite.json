@@ -1,0 +1,5 @@
+{
+  "oracle": "kernel-01-spec",
+  "suite": "termai-invariants",
+  "suite_version": "kernel/01 sections 3.3-3.4 (unrecognised-sequence and string-limit contract)"
+}

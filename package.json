@@ -13,7 +13,18 @@
     "design:selftest": "node tools/design-gates/check-design.mjs --selftest",
     "design:baseline": "node tools/design-gates/check-design.mjs --update-baseline",
     "kernel:check": "node tools/kernel-gates/check.mjs",
-    "kernel:selftest": "node tools/kernel-gates/check.mjs --selftest"
+    "kernel:selftest": "node tools/kernel-gates/check.mjs --selftest",
+    "bench:check": "node tools/bench/check.mjs",
+    "bench:selftest": "node tools/bench/check.mjs --selftest",
+    "conformance": "node tools/conformance/run.mjs",
+    "conformance:check": "node tools/conformance/run.mjs --determinism-check",
+    "conformance:gen": "node tools/conformance/gen-spec.mjs",
+    "conformance:verify": "node tools/conformance/gen-spec.mjs --check",
+    "conformance:verify:selftest": "node tools/conformance/verify-selftest.mjs",
+    "conformance:suites": "node tools/conformance/check-suites.mjs",
+    "conformance:suites:selftest": "node tools/conformance/check-suites.mjs --selftest",
+    "waivers:check": "node tools/audit/check-waivers.mjs",
+    "waivers:selftest": "node tools/audit/check-waivers.mjs --selftest"
   },
   "engines": {
     "node": ">=22"

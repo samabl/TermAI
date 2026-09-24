@@ -1,0 +1,781 @@
+# TermAI P0 未闭合清单与技术债登记（debt-p0）
+
+> **效力**：本文件是**登记与索引**，不是设计权威；冲突以 [HARNESS.md](../../HARNESS.md) 为准。
+> **依据**：spec 07 §3.9（每版本偿还 ≥1 项 P1 债、性能达标余量入登记）+ AR-19（达标余量必须记账）+ AGENTS §5（未决问题不得用 TODO 代替）。
+> **口径**：每条给出 owner / 触发条件 / 依据编号。**未验证的一律写「未验证」**。
+
+> **入口（第 151 轮重排）**：**下面这几段是现状摘要，先读它们**——四条出口、全部门禁、E-P0-1 口径、还剩什么、机器产物、两个探针、方法纪律。**逐轮的『轮次补记』已整体移到本段末尾**（过程记录，按追加顺序），**读者不必再越过它们才能看到现状**。
+>
+> **可运行的操作手册**：`docs/plan/p0-verification-runbook.md`——门禁命令、esctest 的**必备参数**、两个协议探针、分诊三件套、**改动的六步验收顺序**，以及~~六条~~**五条**环境缺口（**第 244 轮更正：§6 的表格有 5 个数据行**——C 编译器／Xvfb+xterm／网络／RM-A-B-C／仓库设置；**我最初的计数把表头也算成了一行**）。**每条命令都标注它防的坑**（缺 `--xterm-checksum 336`、陈旧二进制、按类分诊、空输出误读）；**这三条铁律各由本会话的一次事故换来**。
+>
+> **自第 100 轮以来的变化（第 107 轮补记；⚠ 第 200 轮更正：本条写于第 107 轮，早于第 132–163 轮的四项 selftest 与「check 必须配 selftest」的 `K8` 强制——CI 现状请以下一行「全部门禁」与 `docs/plan/p0-verification-runbook.md` 为准）**：① **E-P0-3 的「进 CI」一半已完成**——`bench:check`、`conformance L0`、`ci-cost` 三项检查已接入 Windows/Linux 两个 job（**结构性门禁阻断；§5 数字与成本读数在未触顶时不阻断**，依 ADR-0014）；② **C4 三件套齐全**（`ci-cost.json` 数据 + `tools/ci-cost/check.mjs` 读数检查 + CI 接线），**并做过负例对照**（改错总额 → exit 1）；③ **C1/C2/C3 仍需发起人**（TSC 未成立、CODEOWNERS 双签不可执行、分支保护未启用），**C5 需真实 CI 运行**（macOS/Linux 作业从未跑过），**C6 是周期性流程**。**四项治理前置里，唯一能在仓库内实现的 C4 已落地。**
+>
+> **四条出口**：E-P0-1 **未判定** ｜ E-P0-2 **未实现** ｜ E-P0-3 **未判定** ｜ E-P0-4 **部分**。
+>
+> **全部门禁（~~第 144 轮实跑复核：六个 check 与四个 selftest 全绿~~ **第 243 轮更正：~~七对~~ 十对 check/selftest（第 258 轮加入 `conformance verify`、第 259 轮加入 `conformance suites`、第 265 轮加入 `waivers`）**——**tokens／design／kernel／bench／conformance／conformance-verify／conformance-suites／ci-cost／audit-claims／waivers**，与 `GATE_PAIRS` 一致；第 232 轮加入 `audit-claims` 后未同步本行）**：`kernel-gates` **8 PASS / 0 FAIL**；`conformance` ~~**gating 64/64（R=1.0）**~~ → **gating 68/68（R=1.0）、语料 279 条（278 执行 / 1 能力前置排除）（第 272 轮实测）**、ctlseqs 208/208、**G1: NOT_JUDGED**；`bench:check` ~~**7 PASS / 0 FAIL**~~ → **8 PASS / 0 FAIL（第 257 轮 ADR-0029 D-4 加 B9）** 但 **gating INCONCLUSIVE / REFERENCE_MACHINE_UNAVAILABLE**（`gatingNumbersProduced: 0`）。
+>
+> **E-P0-1 当前口径（已过 AR-27 自检；**第 145 轮在当前树上第三次确认——失败集合与第 97 轮逐字节相同**，说明第 98–144 轮的全部改动（CI 接线、`A10` 三部件、四个 selftest、K8 配对强制）**没有引入任何回归**）**：~~**267 passed / 41 known-bug / 259 failed / substitutions 0**~~ **⚠ 第 261 轮起口径改为 level 1（ADR-0030）：103 passed / 378 known-bug / 86 failed（raw eligible 189），经 D-2 的 `color-query` 静态排除后 ~~gate-eligible 142 / failed_real 39~~ → **第 272 轮实测（同族命令 + 必带的 `--xterm-reverse-wrap 383`）：124 passed / 376 known-bug / 67 failed（raw eligible 191）；`excluded_by_capability 67` = 47 color-query + 17 xterm-window-ops + 2 deccolm-132 + 1 c1-8bit-controls → gate-eligible 124，`failed_real 0`、substitutions 0、feeds 27031（日志 `target/conformance/verify-272/`）**；换算由 `node tools/conformance/esctest-report.mjs` 完成。**这两组数字不可互比**：第 261 轮的 103/86 是**未带 `--xterm-reverse-wrap 383`** 的口径（默认 0 → esctest 按 pre-383 语义判反绕），命令不同即尺子不同（§6.3 规则 8）。**诚实边界**：`failed_real 0` 只说明「在 ADR-0030 声明的级别 1 上、在 `S_cap` 静态排除之后没有真实失败」，**不等于 E-P0-1 通过**——`excluded_by_vt_level` 从日志无法拆分（报告如实报 `unknown`），376 条 known-bug 里「级别不足未运行」的部分是否藏有真实缺口**无法机械判定**（AGENTS §5）；且 V-01（vttest）与 V-04（真实语料 ≥20%）仍未满足。**另发现一处工具缺口（见 A20）**：报告打印的重构命令漏了 `--xterm-reverse-wrap 383`，即它打印的命令**复现不了它自己印的数字**。上表 level 5 的 267/41/259 是旧口径，仅作对照。** 调用必须带 `-- --expected-terminal xterm --xterm-checksum 336`（level 1 还须带 `--max-vt-level 1`）（缺它会得到 110/117 一类**伪失败**，见计划 §6.3 规则 8）。
+>
+> **现在还剩什么、以及为什么**：
+>
+> 1. **要决策的（不在实现者权限内）——第 256 轮已全部关闭**：`docs/plan/p0-open-decisions.md` **五项均已决**：**D-5** 由 `ADR-0028`（第 177 轮，§5 测量主场 = `tools/bench`）、**D-6** 第 255 轮落地（值的读取 / §5 行绑定 / 计数器）、**D-1 / D-2 / D-3 / D-4** 由 **[ADR-0029](../adr/ADR-0029-p0-judging-domain-and-capability-declarations.md)**（第 256 轮）关闭。**其中最要紧的是 D-1 的更正**：kernel/01 §5 早已把 **V-02（esctest，100%，`R_strict=1 且 X=0`）** 与 **V-04（xterm 语料，`R_gate ≥ 0.99` + 差异上限）** 分成两个套件——`p0-open-decisions` 把它们当成一个，因而「哪条 §8 管辖 esctest」不成立；**建议的「读法 B」被否决**（对 esctest 登记差异要求 `X>0`，与 K-01 冲突，且构成 §8.1-1 的放宽 → 需 TSC，当前无合法批准人）。**后果是 E-P0-1 收紧**：259 条失败**全部是硬缺口**，唯一合法的分母削减是 `S_cap`（套件 manifest 的静态能力前置，禁止运行时 skip）。**其余三家的结论**：D-2 采 ①（`OSC 4/10/11/12` v1 不实现、明文登记 + `S_cap`）；D-3 采 ②（`DA/DA2/DECID` 必须实现且与钉定 oracle 逐字节一致）；D-4 采 A（§8.2 归 kernel/06 **§3.10** + 独立 `RELIABILITY_MAPPING`，不动 `SECTION5_MAPPING`）。**仍待决策者：无**（下一批未决在 kernel/00-index §5 与 HARNESS §11，均非 P0 出口阻塞项）。
+>
+> 2. **要设计的**：`XtermWinops` 19 条需 **resize + reflow 策略**（连动 kernel/03）。
+>
+> 3. **要取证的**：`DECRQM` 25 条（SD-22）需 xterm 实现或 ctlseqs 条款；**本环境拿不到**。
+>
+> 4. **环境缺口（非排期缺口）**：vttest（无 C 编译器）、G1 真实语料 oracle（需 Xvfb + 钉定 xterm）、渲染依赖 SPDX 证据（网络受限）、RM-A/B/C 参考机（E-P0-3 判定）。
+>
+> 5. **§5 的 NON_GATING 呈现（D-6）——第 255 轮已落地**（不再是「现在就能开工的」）：**§5 的 NON_GATING 呈现**——**完整规格见 `docs/plan/p0-open-decisions.md` D-6 的五步**（值的来源 → 值的**进入路径**（~~`--report` 现只校验 schema，**读取路径不存在**~~ → **第 255 轮已建：`tools/bench/values.mjs` + `B8` 扩展为「schema 校验 + §5 行绑定」**）→ 呈现 → 计数器 → 验收）。**范围经第 187 轮收窄**：**可立即开工的是 `governed: no` 的三行（H17/H18/H19）**——~~**H17←`tools/design-gates`、H18/H19←`tokens`**~~ → **第 255 轮更正：H18←`tokens:check` 第 5 关（本机可得 = **53**，不是一个文件的 26）；H19 是「网格对齐误差 ≤0.5px」（需 RM-C 像素渲染），**对比度是表外对照 `C1`**（本机可得 = 5.17）；H17 需浏览器层**；**H12（`governed: partial`）需先解释其含义**；**H13（`governed: yes` 且 `machine: none`）与 `B7` 存在待澄清的张力，不在本批**。**硬边界经第 188/189 轮更正**：**不是「`B7` 要求恒为 0」**（那条判据因计数器是**字面常量**而**处于沉睡**）——**而是「必须把计数器做成从结果计算的值」，并注入一个产出 gating 数字的行以确认 `B7` 因此判 FAIL**——**第 255 轮已兑现**：计数器由读取到的值计算，注入 + 对照进 `bench:selftest`（**65/65**，第 256 轮）。**验收证明要求（注入 + 对照）见 D-6 第 ⑤ 步。** **并且第 193 轮已确认它不触碰任何被校验的契约**：**`BENCH_REPORT_SCHEMA`（`lib.mjs:290`）的 `metrics` 本就是 `S.arrayOf(METRIC_SCHEMA, 1)`**——**步骤 ① 写出的报告填的是 schema 已允许的字段**，**因此 `B1–B3` 逐字校验的 schema 与 kernel/06 §3.7 转录都不会被动到**；**要新建的只是**读取路径**（步骤 ②）。**
+>
+> **它不需要参考机、不需要 TSC、不需要新环境**——**是四项待决之外唯一可立即开工的 P0 工作**。
+>
+> **本会话新增的机器产物**：`docs/audit/esctest-classification.md` + `docs/audit/esctest-failing-index.md`（268→259 条失败的全量定位与分类，由 `tools/conformance/{failing-index,classify-esctest}.mjs` 生成）。
+>
+> **可复用的两个探针**（定性用，比跑套件快且不看 harness 脸色）：`FEED <hex>` 直驱 `termai-vt-conformance --server`；**用 `DECRQM` 读终端自身状态**（无需新增访问器）。
+>
+> **方法纪律**：[docs/plan/p0-delivery-plan.md](../plan/p0-delivery-plan.md) §6.3（**二十二条**）。其中**十一条（第 10–20 条）**由本会话的失败直接换来：**先取状态再谈语义**、**协议层优先于套件**、**验证与提交分离**、**改数字必须同时改总表**。
+>
+> **轮次补记（过程记录；按追加顺序，最新在下）**
+>
+> **自第 169 轮起，本文件不再追加逐轮补记。** 理由不是主观取舍，而是三处病例：第 147/148 轮追加更正把旧断言留在行首、第 152–167 轮锚点漂移把摘要第二次埋掉并给笔记层层套上引号（第 168 轮清理）。**逐轮补记的价值是过程史，而它的代价是反复破坏本文件的第一屏**——而第一屏正是交接要用的那一屏。**今后的过程结论去两处**：① `docs/plan/p0-delivery-plan.md` §6.3 的纪律清单（稳定、按编号、不随轮次膨胀）；② 提交历史本身（每条提交都已写明引用与理由）。**本文件从此只记「状态与归属」**：谁负责、现在什么状态、什么条件才能关。
+>
+> **第 109 轮补记（用新工具 `triage-single.mjs` 得出的结论）**：① **第 72 轮那个「resize 守卫导致 4 条 CHT/CBT 回退」已定性为「污染」**——逐条隔离显示 `CHT_ExplicitParameter`、`CHT_OneTabStopByDefault`、`CBT_ExplicitParameter`、`CBT_OneTabStopByDefault` **单跑全部通过**；唯一单跑仍失败的 `CHT_IgnoresScrollingRegion` 正是第 57 轮已定性的**左右边距族（模式 69，子集外）**。**所以守卫是对的，那 4 条是污染**——**第 72/73 轮遗留的「−4 机理未定位」至此闭合。** ② **残余泄漏不是制表位**：在 **HTS 已存在**（会设置制表位）之后重测「DECSTR 重置制表位」，**结果仍是 267/259，逐字段不变** → **假说再度被推翻，改动已回滚**。**泄漏源仍未定位。**
+>
+> **第 149 轮：登记表自洽性检查通过，并找到防止漂移的那条做法**。**机械检查**（同时含「未实现/未做/未判定」与「已落地/已实现/已完成」的行）只报出三行，**逐行核对后都是合法的**：**A10** 的旧断言被 **删除线 `~~…~~`** 明确标注为已被取代（**正确做法**）；**A13** 描述「已落地 + 一处已知粗化」；**E-P0-3** 是「出口未判定，而方法学部分已完成」——**三者都不是自相矛盾**。**因此第 98/128/147/148 轮查出的漂移都已修净，审计闭合。** **而 A10 展示了其余漂移行所缺的那条做法**：**更正一行时，把被取代的原句加上删除线，而不是只在后面追加**——**读者于是同时看到「曾经是什么」与「现在是什么」**。**A4 与 C4 当时的问题正是只有追加、没有标注**。**建议把这条并进本文件的书写约定**：**任何行的结论发生变化时，旧结论必须加删除线并注明轮次，新结论随后**。
+>
+> **第 142 轮：ADR-0014 声明的实现位置 `crates/termai-xtask` 并不存在——E-P0-3 的「§5 测量实现」因此有一处归属分歧**。**已核实的三个事实**：① `Test-Path crates/termai-xtask` = **False**；② `Cargo.toml` 中 **0 处**提到 xtask；③ **实际的门禁工具是 Node**——`tools/bench/README.md` 记录的入口是 `node tools/bench/check.mjs`（B1–B7 与 `--selftest`、`--json`、`--report`、`--machine`）。**而 ADR-0014 的「实现位置」一节写着**：`crates/termai-xtask（bench / perf-gate / matrix / dist / sign）`。**这意味着 E-P0-3 的「§5 每条指标的测量实现未做」不只是「没做」**：**它声明的主场不存在，而事实上的主场（Node `tools/bench`）与 ADR 不同**。**因此实现前必须先定「哪个是权威主场」**——**与 A9/D-4 属同一族：先定归属，再写代码**。**处置（按 AGENTS §5「不修改历史」）**：**不改 ADR-0014**；**登记为分歧**，需要时以**新 ADR 取代**（在旧条目上标注「被 ADR-xxxx 取代」），或由 owner 明确「Node 工具是最终形态、ADR 中的 xtask 计划已废」。**在归属定案前不写 §5 测量代码。**
+>
+> **第 140 轮（失败实验，第 141 轮已改为显式清单并落地）**：尝试实现 K8 的自检配对检查——**失败并回滚**；代价估算漏了一项（第 17 次自我更正）。**第 141 轮的解**：**不猜名字，改用显式清单**（`GATE_PAIRS`，六行），**并做了反例对照**（把 `conformance selftest` 改名使其不再匹配前缀 → K8 报 **1 处配对违规**、7 PASS / 1 FAIL；还原 → 8 PASS）——**即这条检查被证明能失败，且它正好能抓住我第 101 轮的那次遗漏**。。**做法**：在 `gateK8` 里按「步骤名前缀」配对（`tokens` / `design` / `kernel` / `bench` / `conformance` / `ci-cost` 各须同时有 check 与 selftest 步骤）。**结果：K8 报 13 处配对违规，门禁从 8 PASS 变 7 PASS / 1 FAIL。** **原因**：CI 的步骤名**并不统一**——`tokens:check`、`design:check static layer`、`kernel:check`、`bench:check`、**`ci-cost check`（空格）**、**`conformance L0`（无 check 字样）**；我那条「含 check 或 L0 或冒号即视为门禁」的判据**把 `cargo check`、`Set up Node 20`、`Browser prerequisite`、`Upload the visual baselines` 等非门禁步骤也算了进来**。**已回滚**（门禁恢复 8 PASS），**并且不留下一个会产生 13 条假警报的检查**。**更正**：第 138–139 轮我把代价量成「2 处文档 + 门禁代码」，**漏了第三项——「如何判定一个步骤是门禁」本身是个需要设计的问题**（按名字、按 `run` 行、还是按显式清单，各有代价）。**下一步（已明确）**：先决定判据，再写检查——**候选**：① 以步骤的 **`run` 行为准**（`npm run <x>:check` / `node tools/.../check.mjs`）——**最贴近事实，但 run 行同样不统一**；② **显式清单**（在检查里维护「本项目有哪些门禁」的列表）——**简单、可读，代价是新增门禁时要记得加一行**（且必须在注释里写明这条义务）。**建议 ②**，因为它把「什么算门禁」变成一个**显式、可审阅**的决定，而不是从名字里猜。
+>
+> **第 139 轮：把「扩展 K8」这个建议的成本也量出来——它是 2 处，不是 21 处**。**grep 结果**：`K8` 在 6 个文件里共 **21 处引用**（ADR-0022×10、`p0-delivery-plan.md`×5、ADR-0021×2、`m0-delivery-report.md`×2、`debt-p0.md`×1、`README.md`×1）；**但其中「引用 K8 标题文本」（build artifacts / 构建产物）的只有 2 处**（`p0-delivery-plan.md:142`、`debt-p0.md:11`）。**其余约 19 处是按名字提及**（如「K8 通过」），**而 K8 仍然叫 K8**——**那些不需要改**。**所以两方案的真实代价是**：**新开 K9 = 22 处文档同步**（都是「K1–K8 / 8 PASS」这类会被编号变更作废的表述）；**扩展 K8 = 2 处标题文本 + 门禁代码本身**。→ **建议「扩展 K8」不仅成立，而且现在有数字支撑。** **并得到一条可复用的精度**：**一次改名/扩责的代价，等于「引用了它含义的地方」，而不是「提到它名字的地方」**——本轮若只数 21 处，就会把一个 2 处的改动误估为 21 处。
+>
+> **第 138 轮：把「check 必须配 selftest」这条约定变成机器强制——方案已定，但不在本轮动手**。**动机**：这条约定**第 101 轮是被我自己弄丢的**（只接 `bench:check`、不接 selftest；`conformance` 干脆没有）——**一条能被我自己违反的约定，应该由门禁来守，而不是由我记住**。**检查内容（机械、可判定）**：解析 `.github/workflows/ci.yml`，**对每个名为 `<tool>:check` 的步骤，要求存在同名的 `<tool>:selftest` 步骤**（`tokens` / `design` / `kernel` / `bench` / `conformance` / `ci-cost` 六个现在都成立）。**为什么不塞进 K7/K8**：K7 是 CODEOWNERS 覆盖、K8 是**构建产物策略**——**把「自检配对」塞进任何一个都会让那个门禁的名不副实**，而 K 系列的名称与标题被文档引用。**所以干净的做法是新开一个 K9**，其代价必须一并做掉：**① `docs/plan/p0-delivery-plan.md` 与登记表里「K1–K8」的表述**；**② `docs/plan/p0-verification-runbook.md` 里「期望 summary: 8 PASS」**（会变成 9）；**③ `tools/kernel-gates/check.mjs` 的 K1 标题字符串**（现写作 K1–K8）。**⚠ 更正（同一轮内）**：我原先写「这三处」——**grep 之后实际是 22 处引用，分布在 4 个文件**：m0-delivery-report.md×1、p0-delivery-plan.md×8、p0-verification-runbook.md×4、debt-p0.md×9。**所以 K9 的真实代价是 22 处文档同步，而不是 3 处。** **据此修正建议**：**新开 K9** 要动 22 处；**而扩展 K8**（从「构建产物策略」扩为「workflow 策略：产物 + 自检配对」）只需改 K8 的标题及其引用，**数量明显更少**。**因此建议改为「扩展 K8 并更新其标题与引用」**，除非 owner 认为 K 系列「一名一责」比文档改动量更重要。**在完成同步之前不动门禁**——**否则会造出「文档说 8、实际 9」的新漂移，正是第 98/99 轮审计出来的那类问题。** **而本轮我自己又犯了一次同族错误：先写了一个未经 grep 的数字（「三处」），下一分钟就被 grep 更正。**
+>
+> **第 137 轮：审计线收官——CI 里「每个 check 都配一个 selftest」这条约定现在**完整成立**，六个配对如下**：`tokens:check` / `tokens:selftest`、`design:check` / `design:selftest`、`kernel:check` / `kernel:selftest`、`bench:check` / `bench:selftest`、**`conformance L0` / `conformance selftest`**、**`ci-cost check` / `ci-cost selftest`**。**即：项目中早已存在「门禁必须被证明能失败」这条约定**（`tokens`、`design`、`kernel` 三对一直如此）——**而我在第 101 轮接线时把它弄丢了**（只接了 `bench:check`，没接 selftest；`conformance` 也没有自检）。**第 132–136 轮是把这条约定补回一致。** **一处值得记下的设计差异**：`design:selftest` 是在**临时副本**上注入（静态检查可以），而 **conformance 必须在真仓库里就地注入 + `finally` 还原**（因为 `--root` 得能 `cargo build`）——**所以「有 selftest」是统一约定，但「怎么注入」要看被测对象的形态**。**新增任何 CI 门禁时，必须同时给出它的 selftest**——这条现在有六个先例。
+>
+> **第 135 轮：更正第 134 轮的自检设计——`--root` 是「仓库根」，不是「语料根」**（第 16 次自我更正）。**读代码确认**：`run.mjs:87` 从 `<root>/tools/conformance/cases` 读语料；`run.mjs:66` 以 `cwd: root` 跑 `git status --porcelain`；`run.mjs:281-282` 生成的复现脚本会 `Set-Location <root>` 并 **`cargo build`**——**即 root 必须是一个可构建的仓库**。**所以第 134 轮说的「把语料复制到临时根、以 `--root` 指向它」不可行**：那个临时根得带上整个 Rust 工作区。**更正后的设计（可直接实现）**：**对真仓库的生成用例树做「就地注入 + 保证还原」**——① 选一个 `gen-spec.mjs` **可重新生成**的用例文件（还原失败时可用它兜底）；② 在内存里备份、改坏一条期望、跑 `run.mjs`，**断言退出码非零且报告点名那条用例**；③ **在 `finally` 中还原原字节**；④ **对照**：还原后再跑一次，须回到正常判定。**残留风险如实记下**：**会改动工作树的自检，若进程被强杀可能留下被改坏的用例**——这正是为什么必须选「可重新生成」的文件，并且还原放在 `finally`。**这条更正在实现之前完成，而不是之后**——本会话已多次为「先实现后修正」付账。
+>
+> **第 134 轮：`conformance L0` 的故障注入自检——问题已问、现状已查、设计已定**。**现状**：`tools/conformance/run.mjs` **没有 `--selftest`、没有任何故障注入**（全文只有一处 `process.exit(code)`），**它的 CLI 是** `--root <dir>` / `--out <file>` / `--no-artifacts` / `--determinism-check` / `--quiet` / `--help`（第 4–5 行与 `parseArgs`）。**因此它今天的绿是「跑得通」，不是「被证明会报错」。** **可行的自检设计（据此可直接实现）**：**以 `--root` 指向一个临时根**——把语料（或其中一个最小子集）复制过去、**故意改坏一条期望**、以 `--root <temp>` 跑一次，**断言退出码非零且报告指出那条用例**；再以**未改坏的同一临时根**跑一次作为**对照**（必须通过）。**这既不动真仓库，也复用了既有的 `--root` 参数，不需要给 runner 加新选项。** **判据沿用本会话那条**：**在它被证明能报错之前，它的绿色不算证据。**
+>
+> **第 132–133 轮：「这个门禁能失败吗？」这条审计的应用与结果**。**已做到「在 CI 里自证能失败」的门禁**：`kernel-gates`（`--selftest`）、`bench:check`（`bench:selftest`，6 对照 + 21 故障分支）、**`ci-cost`（本轮新增 `--selftest`：注入「总额与逐条求和不符」与「触及上限」两种故障，各须被捕获，**并含对照**——真实清单仍须通过，以免是校验器一律拒绝）**。**尚未做这项审计的**：**`conformance L0`**（第 101 轮接入 CI，但**它没有故障注入自检**）——**下一步就该问它：什么能证明它会失败？**（`gen-spec --check` 是漂移检查，**不是**故障注入）。**这条审计本身值得记住**：**它的判据不是「跑得通」，而是「被证明能报错」**——本会话已用它先后发现三处缺口（成本检查的未执行分支、bench 自检未接 CI、以及分诊工具那个谎报 bug）。
+>
+> **第 124 轮：`A10` 验收测试的两点已核实，只剩一个未知**。**已核实**：① `broker.rs` 的 `mod tests`（1174 行）**只导入**了 `SegmentWriter` 等——**`Record` / `RotationPolicy` / `FlushMode` 都没有导入**，写 helper 时需自行 `use termai_session::log::{Record, RotationPolicy, FlushMode};`；② **attach 在 broker 层的驱动方式是 `on_frame`**——分派在 `broker.rs:192` 的 `msg::ATTACH_REQUEST => self.on_attach_request(h.corr_id, payload)`。**仍未知（下一轮先读这一个）**：**构造 `ATTACH_REQUEST` 载荷要用哪个 codec 函数**（wire 测试里它被包在 `Harness::attach_payload(...)` 辅助方法里，broker 测试模块没有这个 helper）。**读完那一个函数即可动手**：`broker_with_rotated_log` → `do_hello` → `on_frame(ATTACH_REQUEST)` → `on_frame(TAIL_REPLAY)` → 断言跨边界窗口被接受 + 一条 `BelowWindow` 对照。**本条已无其他未知**——这是本会话第一次能把「下一步」写到「只差读一个函数」。
+>
+> **第 123 轮：`A10` 验收测试的前置被收窄——不必改 wire harness**。第 122 轮我说「要先给 `apps/sessiond/tests/wire.rs` 的 `Harness` 加轮转」，**那只说对了一半**：`apps/sessiond/src/broker.rs` **自带 `mod tests`（1174 行起）**，其中的 `broker_at(tag, first_seq)`（1213 行）**直接用 `Registry::new()` + `SegmentWriter::create(&dir, 0, first_seq, [0u8;8], 1, 0)` + `reg.insert(...)` 造会话**，并且 `do_hello`（1248 行）已给出握手驱动方式。→ **造「已轮转的日志」所需的原语全在这个模块里**，**不必动 wire harness**。**下一步（具体到一个 helper）**：在该模块加一个 `broker_with_rotated_log(tag, first_seq, max_bytes)`——建 writer、循环 append 大记录、`if w.needs_rotation(&RotationPolicy{max_bytes}) { w.rotate(&dir, &policy, 1000) }`、`flush(FsyncFull)`、**再把 writer 交给 `reg.insert`**、最后 `Broker::new(policy(), reg, id)`；然后 `do_hello` + ATTACH + `TAIL_REPLAY`，**断言下界落在早段的窗口被接受且事件覆盖全窗口**（对照：同一 helper 下把窗口下界设到最老段之前，应仍得 `BelowWindow`）。**风险自陈**：本模块内 `Record` 是否已导入、ATTACH 在 broker 层如何驱动，我**尚未核实**——**下一轮先读这两点，再写**（本会话的教训：先读再写）。
+>
+> **第 122 轮：`A10` 的最后一个部件卡在「测试环境造不出条件」，而这解释了它为何长期存在**。查 `apps/sessiond/tests/wire.rs`：`Harness` **只有 `new_from(tag, first_seq)`**，**没有 `RotationPolicy`、没有 `max_bytes`、没有任何轮转触发**（全文件仅两处 `new_from`）。→ **要写「轮转后跨边界窗口被接受」的端到端验收，必须先给 wire harness 加轮转能力**（例如 `new_rotating(tag, first_seq, max_bytes)`，并让 `append_record` 在 `needs_rotation` 时轮转）。**更值得注意的是这条因果**：**`A10` 的缺口能活到今天，是因为测试环境根本造不出「段旋转」这个条件**——**没有哪个测试能让日志轮转，于是「旋转后重放会怎样」从来没有被问过**。**这是一条通用的覆盖教训**：**一个能力没被测试，往往不是因为它被漏掉，而是因为让 bug 出现的那个前置条件在测试环境里不存在。** **下一步（已具体）**：① 给 `Harness` 加轮转；② 写跨边界验收测试（轮转 → `TAIL_REPLAY` 取下界落在早段 → 期望**被接受**且事件覆盖全窗口）。
+>
+> **第 118 轮：`A10` 的设计决定已作出（有证据支撑），并列出实现所需的三个部件**。**决定：由新到旧按段头走，只读覆盖 `from_seq+1` 所需的段**——而不是全读。**依据**：`SegmentHeader` **带 `first_seq`**（`log.rs:582`，编码在头部 24..32 字节），**所以不需要读整段就能知道每段的起点**；于是「最后一段满足 `first_seq <= from_seq+1` 的段」就是窗口起点，**attach 的 I/O 与「需要的段数」成正比，而不是与日志总长成正比**——**这正是 AR-26 第 4 条「<2s 重连」所要求的**（全读会让重连延迟随会话年龄增长，直接威胁该预算）。**实现所需的三个部件**：**(1)** **`read_segment_header(path)`——当前不存在**（`log.rs` 只有读整段的 `read_segment`），需新增「只读定长头部并校验其 CRC」的小函数（**零行为变更**）；**(2)** `replay_window_check_across(&[SegmentRead], from_seq, head)`（第 103 轮已给写法）；**(3)** broker 接线：`path.parent()` + `list_segments` + 头部走查选起点 → 读所需段 → 调 (2)。**顺序必须是 1 → 2 → 3**，且 1 与 2 各自带自己的单元测试（**注意第 117 轮的发现：规格测试不能先于接口存在**）。
+>
+> **第 117 轮：把 `A10` 的实施路径写到「只剩一个设计决定」的程度**。读了 `broker.rs:797-820` 后，改动需要三步：**(1)** `registry.log_path` 只给**当前段**，需由 `path.parent()` 取目录、用 `list_segments` 拿到升序段列表；**(2)** 决定**读哪些段**；**(3)** 给 `replay_window_check` 一个跨段形式（按第 103 轮的写法即可）。**其中 (2) 是一个真正的设计决定，不是实现细节**：**全读**（O(全部段) I/O，段多时拖慢 attach）还是**由新到旧累积直到覆盖 `from_seq+1`**（O(所需段)，但要先知道每段的首 seq——而这需要**读头或读元数据**）。**它与 E-P0-4 的「<2s 重连」预算是同一个数**——**attach 延迟**。**因此本轮不做半成品**：**在决定「读多少段」之前不写这段代码**（本会话已多次因跳过这一步而回滚：第 66 轮 resize 守卫、第 87–88 轮两次修错 `alt_saved`）。**并发现在前**：写「跨段应可覆盖」的规格测试**必须先有 `replay_window_check_across`**（否则不编译），所以**规格测试不能先于接口存在**——这条也一并记下。
+>
+> **第 116 轮：更正第 115 轮——「没有生产调用者」是错的（第 14 次自我更正）**。我用 `path: "crates"` 做 grep，**而调用者不在 `crates/`**：**`apps/sessiond/src/broker.rs:820` 正是 `replay_window_check(&read, from_seq, head)` 的生产调用点**（同一函数在 808 行用 `read_segment` 读**单个**段，再按 `ReplayWindow` 的三种缺口返回拒绝）。→ **第 115 轮「它只有测试调用」的结论站不住，予以撤回**；**第 103 轮的分析反而是对的**：`A10` 就是「检查只吃一个段、broker 也只读一个段，**段旋转后无法覆盖所需窗口**」，与 `A10` 行原文一致。**并且这重新打开了一个可实施的任务**（不是死代码）：改 `broker.rs:808` 使其按 `list_segments` 覆盖 `(from_seq, head)` 所需的段范围，并给 `replay_window_check` 一个跨段形式；**TAIL_REPLAY 路径已有线上测试**（`tail_replay_after_attach_carries_the_p0_tail_only`、`tail_replay_below_the_window_is_refused_over_the_wire`）**可作为验收**。**教训（与第 81 轮同源）**：**「没有调用者」这种结论必须用全仓搜索得出，不能用限定目录的搜索**——**先怀疑自己的搜索范围，再怀疑被测对象**。
+>
+> **第 115 轮：`A10` 的缺口描述被修正——比「只吃单个段」更深**。查 `crates` 全域的 `replay_window_check` 调用点发现：**它没有任何生产调用者**——除 `log.rs:1039` 的定义外，**其余命中全部在 `log.rs` 自己的 `#[cfg(test)]` 里**；`checkpoint.rs:195-204` 走的是 `list_segments` + `read_segment`（检查点恢复），**不是重放窗口检查**。→ **所以 A10 的真实缺口不是「给检查加一个段列表变体」，而是「跨段重放的整条路径尚未接线，连单段检查都还没被生产代码调用」**。**据此否决一个诱惑**：此时写 `replay_window_check_across` 只会**再添一个没人调用的公开函数**——正是本会话反复批评的「纸面工作」。**正确的下一步**：先定**重放在哪里被调用**（按 ADR-0026，`0x0502` TAIL_REPLAY 的会话侧路径），再让窗口检查按 `list_segments` 的结果跨段覆盖；**在此之前不动 `log.rs`**。**判据可复用**：`pub fn` + 只有测试调用 = **不是已实现的功能，只是已定义的接口**。
+>
+> **第 111 轮结论（当前状态普查已完成，替换上一段的待定）**：`repro`（**267/259**，已实现 HTS）的全量逐条普查结果是 **污染 0 / 259 —— 259 条全部单跑仍失败**。与上一段的旧普查（`altfix`，258 状态）对照可知**那 9 条「污染」的真实身份**：`altfix` 的制表位家族失败 **10 条**，`repro` 只剩 **1 条**（`CHT_IgnoresScrollingRegion`，第 57 轮已定性为左右边距族、子集外）——**即：实现 HTS 之后，制表位家族的 9 条失败全部消失**（这正是第 94 轮 **+9** 的来源）。**由此得出两条硬结论**：① **那 9 条从来不是「缺陷」，也最终不是「污染」**——它们是**「HTS 未实现」这一个根因的两种表现**（全量里失败、单跑时因默认制表位恰好命中而通过）；② **当前 259 条失败全部是真实失败，污染为 0**。→ **E-P0-1 的剩余缺口里，「污染」已不再是一个解释**；每一条失败要么是**真缺陷**，要么是**子集外序列**（后者待 SD-23 判定域追认）。**产物**：`target/conformance/triage-now/triage.md`（可复现、可引用）。
+>
+> **第 111 轮：普查产物持久化 + 一个强信号**。① **工具缺陷修正**：第一次全量普查的逐条结论**随 job 输出一起丢了**（harness 只保留最终输出）——**一个被登记表引用的数字必须是磁盘上可复现、可引用的产物**，所以 `triage-single.mjs` 现在会把结果写成 `<outRoot>/triage.md`（表 + 三行计数）。② **普查结果（`altfix` 日志，即 258 状态、HTS 尚未实现时）**：**9 / 268 条污染，且 9 条全部属于制表位家族**（`CBTTests`×2、`CHTTests`×2、`HTSTests`×1、`TBCTests`×4）。**这是一个强信号：残余泄漏高度可能就在制表位状态上。** ③ **但该普查取自 HTS 实现之前的状态**（当时 TBC/HTS 的失败本身是「未实现」），所以**当前状态（267/259，已实现 HTS）的普查已重新启动**，结果写入 `target/conformance/triage-now/triage.md` 后再据实登记。**在拿到当前数字之前，本条的 9/268 只代表旧状态，不得当作现状引用。**
+>
+> **第 110 轮：全量逐条分诊完成——污染 ≈ 3.4%（9 / 268）**。此前只有抽样估计（第 77 轮 1/4、第 81 轮跨类 ≤5%、第 83 轮 1/12）；本轮用 `triage-single.mjs ALL` 对**当时全部 268 条失败**逐条单跑：**真实失败 259 条，污染 9 条**。**三度抽样与全量测量至此一致：污染确实很小，剩余失败的主体是真实缺口（未实现的核心序列与未登记的扩展）。** 这也**彻底关闭**第 79 轮「+14 说明污染严重」的推断——第 84 轮的字段消融已证明那 +14 来自 **DECSTR 模式复位的正确性**，本轮的全量数字再次印证污染量级不可能是原因。**方法固化**：`tools/conformance/triage-single.mjs <log> <ClassPrefix|ALL>`，逐条隔离（第 82 轮的教训：按类隔离对类内污染是盲的）。
+>
+> **第 166 轮：AR-06 **按构造成立**——比第 165 轮的按名字扫描强得多**。**读 `crates/termai-core/src/risk.rs`（475 行）**：**① 规则被写在代码里**——**第 67 行的文档注释原文**：「**AR-06: confirmation can never be disabled by configuration.**」；**② 没有任何配置输入**——grep `std::env|std::fs|File::|from_env|config|Config` **在该文件中命中 0 处**（唯有的 `argv` 命中是**被分类的命令行本身**，即分类的**输入数据**，**不是配置**）；**③ 公开面是纯函数**——**`pub fn classify(intent: &CommandIntent) -> RiskAssessment`**，**入参只有「意图」，没有配置、也不做 I/O**。→ **因此「确认不可由配置关闭」不是「没人写关闭开关」，而是「没有任何参数或输入能让它被关闭」**：**一个纯函数，其行为只取决于被分类的命令**。**这比第 165 轮的结论强一个量级**，**也正是第 165 轮我说「下一轮要做的更强的论证」**。**限制仍如实写明**：**这只证明 `termai-core` 的风险模型本身不可配置**；**「确认」的实际执行者（UI / CLI 调用方）是否会在别处以别的方式绕过它，不在本轮的证据范围内**——**那属于调用方审计，留有下文。**
+> **第 165 轮：AGENTS §2 第 3 条（AR-06「破坏性/外发型操作的确认不可由配置关闭」）——按名字扫描未发现关闭路径，但这不是全文核对**。**扫描**：`crates/` 全部 **74 个 .rs 文件**中，`skip_confirm|assume_yes|no_confirm|confirm_required|disable_confirm|allow_without|bypass_confirm|force_overwrite` **命中 0 处**。**确认逻辑确实存在且位置合理**：`confirm` 共 **46 处**，集中在 **`risk.rs`（风险分级，5）**、**`paste.rs`（粘贴确认，12）**、**`lease.rs`（租约，6）**、**`grid.rs`（17）**。**⚠ 限制（必须写清）**：**这是按名字扫描**——**而本会话第 157 轮刚证明按名字扫描会漏（`HACK` 匹配 `AttachHack` 那次是误报，而 `chunk={esc}` 那次是漏报，因为变量名是 `esc`）**。**所以准确表述是**：「**没有以这些名字暴露的关闭配置**」，**不是**「**已证明无法关闭**」。**更强的论证方向（下一轮，已具体）**：**如果这些 crate 根本不接收「配置」输入**（例如 `risk.rs` 的风险模型是编译期常量、不来自文件/环境/命令行），**那么这条规则是「按构造成立」的**——**那比逐条读 46 处更有力**。**在此之前，不说「AR-06 已验证」。**
+> **第 164 轮：把「每个门禁都有注入吗」问到底——K2/K3 没有，但它们的缺口与我那三处**不同类**。**统计**（`st.check('K<N>:` 计数）：**K1=2、K4=5、K5=2、K6=2、K7=2、K8=5**；**K2（clippy）与 K3（cargo test）为 0**。**判断（而非机械补全）**：**我本会话那三处缺口的危险在于「有逻辑分支而分支从不执行」**（K8 的配对判定、K4 的依赖比对、`ci-cost` 的上限比较）——**那些分支可能有 bug（K4 就真的有）**。**而 K2/K3 是薄包装**：跑一条 cargo 命令、看退出码——**这段「cargo 失败 ⇒ 门禁失败」的管道，正是 K1 的注入（在临时工作区写入格式错误的 Rust）已经在走的那一条**。**所以 K2/K3 的失败路径并非无人走过，只是没有被「以自己的名义」走过。** **处置**：**登记为低风险的覆盖缺口，不强行补**——**因为再写一条「制造 clippy 警告 / 制造失败测试」的注入，验证到的是同一段代码，收益远小于成本**（且临时工作区里跑 `cargo clippy` 会显著拖慢 selftest）。**若 owner 认为「每个门禁都必须有自己的注入」是硬要求，则这条随时可补**——**本轮的结论是「有充分理由不补」，而不是「忘了补」。**
+> **第 163 轮：查出并补上 K8 配对规则的同一处缺口——它的失败路径此前也没有被 selftest 覆盖**。**检查方式**：grep `selftest` 段里的 `K8:` 断言——**原有三条**（无产物上传、动作未准入、发布被禁路径），**第 141 轮我加的「check 必须配 selftest」配对规则一条也没有**。**即：它与第 160 轮那个 AR-03 分支处在同一位置**——**手动证明过一次（第 141 轮改名对照），但没有任何注入覆盖它**。**已补两条**：① **注入**——临时 workflow 只有 `kernel:selftest` 而无 `kernel:check` → **要求 K8 失败**；② **对照**——同一对配齐并附上 K8 也要求的产物上传 → **要求 K8 通过**（证明它拒绝的是「不成对的门禁」，而不是「所有 workflow」）。**实测**：`--selftest` 报 **injected faults caught: 23/23**（由 21 升至 23，含这两条）；**正常路径 `kernel-gates` 8 PASS / 0 FAIL**。**至此，我在本会话加给门禁的三项新规则**（K8 配对、K4 AR-03、以及 `ci-cost` 的两分支）**都各自带上了注入与对照**——**而它们最初没有**：**K8 配对靠手工证明、K4 AR-03 甚至是假绿、`ci-cost` 只测了算术分支**。
+> **第 162 轮：AR-03 检查修好了，并且这次是**被证明能失败**的；同时更正第 161 轮的一处错误描述**。**修法**：把 `const failures = [];` **移到 AR-03 循环之前**（第 160 轮的 TDZ 缺陷即在于此），**并在 `--selftest` 中加入两条注入**：① **在临时根的内核 crate 清单里放入 `wgpu` → 要求 K4 失败（AR-03）**；② **同一临时根不加该依赖 → 要求 K4 通过（对照）**。**实测**：**正常路径 `K4` PASS、`kernel-gates` 8 PASS / 0 FAIL**；**`--selftest` 报「injected faults caught: 21/21」**——**含这两条**。**因此 AR-03 现在既有「能通过」也有「能失败」的证据**，**并且对照排除了「它只是拒绝一切依赖」**。**⚠ 更正第 161 轮**：那一轮我写下「`check.mjs` 已回滚到 HEAD…**AR-03 因此仍无人守**」——**这句是错的**。**第 160 轮的提交本身就包含那个有缺陷的检查**，我第 161 轮的 `git checkout` 只丢弃了**未提交**的注入尝试，**并没有把已提交的缺陷检查移除**。**真实情况是**：**该缺陷检查一直存在于提交历史中，直到本轮才被真正修好**——**即：如果某个内核 crate 日后真的引入了 UI 依赖，`K4` 会抛 `ReferenceError` 崩掉，而不是干净地失败。** **这条更正与第 98/128/147/148 轮是同一族**：**我描述的处置与实际发生的处置不一致**——**而这次不一致发生在「我以为已经回滚」这个判断上。**
+> **第 161 轮：我第 160 轮提交的 AR-03 检查是**假绿（false green）**——已回滚；这是本会话最有教益的一次。**。**事实**：第 160 轮我给 `K4` 加的 AR-03 分支，**把「内核不得依赖网络/AI/UI 库」的循环写在了 `const failures = [];` 之前**——JavaScript 的 TDZ 使得**该循环里 `failures.push(...)` 一旦执行就会抛 `ReferenceError`**。**而它通过了 `kernel-gates` 8 PASS、看起来完全正常**：**因为「没有命中」时那行根本不被求值**——**即：这个检查永远不可能报告它本该报告的违规，一报告就崩。** **是谁发现的**：**我在第 161 轮试图为它补一个「能失败」的对照（往 selftest 里加一条注入 `wgpu` 的用例）时，它立刻抛了出来**。**处置**：**`check.mjs` 已回滚到 HEAD**（正常路径 8 PASS、`--selftest` PASS、工作树干净）。**AR-03 因此仍无人守**——第 159 轮那个发现依然成立。**修法极小且已写明**：**把 `const failures = []; const edges = [];` 移到 AR-03 循环之前**（我因上下文耗尽未再动手，以免留下半成品）。**这一轮把本会话的核心教训演示在了我自己的工作上**：**① 一个检查「通过」不代表它能失败**——**我这轮亲手提交过一个不能失败的检查**；**② 唯一发现它的方式是去做那个对照实验**——**而不是再读一遍代码（我读过，没看出来）**；**③ 因此「每个门禁都要被证明能失败」不是形式主义**——**这一条刚刚救了这份代码，使它不至于长期带着一个永不生效的检查**。
+> **第 160 轮：把 AR-03 交给 K4 守（已实现）；但它的失败路径**没有**被证明——如实登记**。**实现**：`K4` 新增 `KERNEL_CRATES`（六个内核 crate）与 `NETWORK_AI_UI_TOKENS`（网络/AI/UI 库名），**对内核 crate 的依赖逐个比对**；**`termai-render` 故意不在 `KERNEL_CRATES` 内**，并在注释里写明理由——**它是 UI 侧管线，ADR-0024/ADR-0027 允许它日后引入 wgpu/winit/rustybuzz/swash，那不是对 AR-03 的违反**。**实跑**：`K4` PASS、`kernel-gates` **8 PASS / 0 FAIL**。**⚠ 但控制实验失败，因此这条检查弱于本会话其它检查**：**① 往真 crate 的 `[dependencies]` 里注入 `wgpu` 会让 cargo 解析失败，门禁在打印 summary 之前就中止**（我第一次注入还把行加到了 `[dependencies]` 之外，K4 正确地忽略了它、而另外三个门禁红了——**那次是控制写错，不是检查错**）；**② 用 `--root` 指向临时树也不行**——`K1–K3` 会在 K4 之前失败（fail-fast），根本走不到 K4。**结论**：**K4 的新分支目前只有「通过」的证据，没有「能失败」的证据**——**这与本会话其它四个门禁（`kernel`/`bench`/`ci-cost`/`conformance` 都有 selftest）是不同的**。**下一步（已具体）**：**把 K4 的依赖检查抽成一个可单元测试的函数**（输入 = 清单列表，输出 = 失败项），**为它写一个纯函数测试**（含一个注入 `wgpu` 的清单）——**这样无需 cargo、无需 fail-fast 顺序也能证明它能失败**。**在补上它之前，不应把这条检查与那四个等量齐观。**
+> **第 159 轮：AGENTS §2 第 1 条（AR-03「内核不依赖 AI / 网络 / UI」）合规扫描——通过，且依赖表本身就是证据**。**扫描**：六个内核 crate 的 `Cargo.toml` 中 `reqwest|hyper|tokio|ureq|curl|isahc|openai|anthropic|winit|wgpu|tao|egui|gtk|webview` **命中 0 处**。**并读出了完整依赖表**（这份表比命中数更有说服力）：`termai-core` **零依赖**（真正的叶子）；`termai-vt` = core + `vte` + `unicode-width` + `blake3`；`termai-pty` = core + `libc` + `windows-sys`；`termai-session` = core + ipc + `blake3` + `sha2`；`termai-ipc` = core。→ **没有一个内核 crate 依赖网络、AI 或 UI**，**且依赖表最小到可以逐行审阅**。**这条与 `K4`（依赖方向 + 许可denylist）互补**：K4 检查**方向**与 **GPL/AGPL/SSPL**，**不检查「是不是网络/AI/UI 库」**——**所以这条非协商约束此前没有门禁在守它**，**本轮是它第一次被实际验证**。**建议（登记为下一步）**：**把这三个词表（网络 / AI / UI 库名）加进 `K4`**，**让 AR-03 从「靠人记得」变成「被门禁守住」**——**与本会话第 141 轮把「check 配 selftest」交给 K8 是同一种做法。**
+> **第 158 轮：AGENTS §2 第 7 条（AR-04「热路径禁用 JSON / gRPC 序列化」）合规扫描——通过，且比要求的更严格**。**扫描**：热路径五个 crate（`termai-vt` / `termai-pty` / `termai-session` / `termai-core` / `termai-ipc`）的 `Cargo.toml` **json 类依赖 0 处**；其 `src/` 中 `serde_json` 使用 **0 处**。**进一步**：**把范围放大到全部 `crates/` 与 `apps/` 的 `Cargo.toml`——没有任何一个 crate 或 app 声明 `serde_json`**；workspace 级 `Cargo.toml` 也没有 serde/serde_json。→ **整个 Rust 工作区零 JSON 依赖**，**不只是「热路径没有」**。**这与设计一致**：**IPC 走 CBOR（`codec.rs`），JSON 只存在于 Node 侧工具**（`tools/`）——**而工具不在内核或热路径上**。**因此这条非协商约束不只是「没被违反」，而是「被遵守得比要求更彻底」**。**审计线的意义再次体现**：**前两轮（155/156）在日志上发现了真实违规，本轮与上一轮（157）则在两条规则上确认合规**——**只有去查，才知道哪条规则被人无意打破了、哪条规则被严格执行了；两者都不会让门禁变红。**
+> **第 157 轮：AGENTS §5「不得用 TODO 代替未决问题」合规扫描——通过**。**扫描**：`crates/` + `apps/` + `tools/` 共 **107 个文件**（`.rs`/`.mjs`/`.ts`）。**结果**：**区分大小写后 `TODO`/`FIXME`/`XXX`/`HACK` 命中 0 处**；**库代码（`crates/`）中 `todo!()` / `unimplemented!()` 命中 0 处**。→ **合规**：**未决问题确实在 HARNESS §11 与登记表里，没有被散落成代码里的 TODO**——**这条规则在本仓库是被遵守的，而不只是写在文档里**。**一处方法自陈**：**首轮我用不区分大小写的匹配，得到 9 处——全部是误报，因为 `HACK` 匹配了 `AttachAck`（后者含「hAck」）**。**改为区分大小写后为 0**。**这是本会话第 7 次「命令错、产物没错」**——**而这次特别值得记：一个不区分大小写的模式，把「没有任何 TODO」这个通过结论，先变成了 9 条看似存在的债务。** **若我没有核对那 9 条的内容，就会把 9 条误报登记进债务表——给下一个会话凭空造出 9 件不存在的工作。**
+> **第 156 轮：日志合规扫描完成——第 155 轮那两处是仅有的违规**。**扫描**：`crates/` + `apps/` 共 **84 个 .rs 文件、37 处 `println!/eprintln!`**，**逐条过目**。**结论**：**除第 155 轮已修的两处（`argv` 与 `chunk=`）外，没有其它「命令全文或内容」被写进日志**。**其余 print 分为三类**：① **用户显式调用的 CLI 输出**——`termai` 的版本/exit/grid digest、**`logdump` 的段列表与记录列表**（第 532–573 行）——**这是工具的功能本身，不是「日志」**；② **`TERMAI_DEBUG` 下的 5 条计数器**（子进程数、读取字节数、超时状态）——**不含命令文本或内容**；③ 版本字符串与错误提示。**一处留待确认（不是结论）**：**`cli.rs:554` 的 `describe(&r.record)`** 是否会把 `PtyOut` 记录的**字节内容**渲染出来——**若是，则 `logdump` 会把终端内容打到 stdout**。**判断归属**：**AGENTS §6 禁的是「日志」（附带输出），而 `logdump` 是用户在自己机器上显式要求的本地诊断**（与 `cat` 该文件同类）；**但 AR-11/AR-12 的措辞是「永不」**——**因此「`logdump` 能否显示内容」是一个需要 owner 明确的口径问题**，**已按同一族（D-4/D-5）登记，而不是我单方面判定**。**扫描方法的两处自陈**：① 首轮我用 `crates/**/*.rs`——**PowerShell 不展开 `**`，扫了 0 个文件**；② 次轮我把**路径数组管道给 `Select-String`**——**它把路径当成待搜索的文本，又是 0**。**两次都是命令错，不是产物错**（本会话第 5、6 次同型）。
+> **第 155 轮：发现并修掉一处日志合规违规（AGENTS §6 / AR-11 / AR-12）**。**定位 A8 时（PTY 在 `apps/termai/src/cli.rs:284` 生成，确认 A8 描述准确）顺带发现**：该文件有 **7 处 `[dbg]` 调试输出**，**由 `TERMAI_DEBUG` 环境变量开关控制**——**其中两处即使作为可选输出，也违反 AGENTS §6「禁止打印 secret、命令全文或文件内容」**：① **`cli.rs:242` 打印完整的 `argv`（命令行全文）**；② **`cli.rs:363` 打印 `chunk={esc}`（一段终端输出内容）**——**而终端输出正是 AR-11/AR-12 要求永不进日志的东西**。**已修**：**argv 从格式串中移除**（只保留 program 与 shell 策略，并写明理由）；**`chunk=` 那一条整体删除**（改为注释说明「内容正是 AR-11/AR-12 要挡住的」）；**顺带把因此变为未使用的绑定改为 `_esc`**（否则 K2 `-D warnings` 会红）。**验证**：`kernel-gates` **8 PASS / 0 FAIL**（K2 clippy clean），`cargo build -p termai` 无 warning。**其余 5 处 `[dbg]` 是**行数/子进程计数/超时状态**，不含命令文本或内容**——**保留（它们在 `TERMAI_DEBUG` 下仍有诊断价值）**，**但登记为待评估**：AGENTS §6 同时要求「日志需可分类、可脱敏」，而这 5 条仍是未结构化的 `eprintln!`。
+> **第 154 轮：交接链端到端验证通过；并统计出本会话最高频的错误类型**。**验证结果**：入口段指向的 **11 个产物全部存在**；**D-1…D-5 五项决策齐备且有序**。**（一处假警报来自我自己的命令**：我数 `^## D-[0-9]` 得到 6，**因为第 146 轮那个「D-1…D-3 之间的关系」标题也匹配**——**产物没问题，是我的 grep 不精确**。）**由此得到一条统计**：**「先怀疑自己的命令」在本会话已发生四次**——第 81 轮（空输出其实是自己的过滤写法）、第 116 轮（限定目录的搜索得出全仓结论）、第 130 轮（`Test-Path Cargo.lock` 误读）、**本轮（PowerShell 三元写法 + 不精确的 grep）**。**这比任何一次「内容写错」都更频繁**。**因此它是本会话最强的单条操作纪律**：**当一个结论看起来不对时，第一步不是怀疑被测对象，而是重跑那条命令、或换一种写法得到同一个结论**——**这条现在有四个病例和一个反例（第 116 轮的正例是它救回来的）。**
+> **第 152 轮：审计我自己的提交——一处不合规（AGENTS §6）**。**检查结果**：**Conventional Commits 形式全部合规**（`feat/fix/docs/test/ci/...` 无一例外）；**但近期大量提交的 `Refs:` 只写了「rounds NNN」与文件名，没有写 AR/DC/ADR 编号**——**而 AGENTS §6 要求「每个 PR 必须关联 AR/DC 编号或 ADR」**。**后果是实际的**：**按 `AR-37`、`ADR-0022`、`K-08` 去搜提交历史，搜不到这些提交**；它们只能通过登记表的散文被追溯。**历史不改**（且不应改）；**记录于此，并作为今后的做法**：**提交的 `Refs:` 必须至少含一个项目编号（AR-/DC-/ADR-/K-/SD-/E-P0-/A 行号/D 编号），「第 N 轮」不是项目编号。** **这一轮与本会话其它审计同形**：**我一直在检查别人的产物，而这一次检查对象是我自己的输出。**
+> **第 167 轮：AR-06 的「执行侧」不存在——所以不能报「AR-06 已验证」**。**全仓搜索**（**不是限定目录**——第 115 轮我因限定搜索得出过错误结论）：`risk::classify` / `CommandIntent` **只出现在 `risk.rs` 本身**（定义 + 它自己的 9 条单元测试）；另一处 `classify` 是 `msg::classify`（IPC 消息分类，无关）。→ **`risk::classify` 没有任何生产调用者——没有任何代码消费 `RiskAssessment` 去真的要求确认。** **因此 AR-06 的准确状态是**：**① 模型侧：已按构造成立**（第 166 轮：纯函数、无配置输入、规则写在 `risk.rs:67`）；**② 执行侧：尚未实现**——**「确认」这件事目前没有任何执行者**（`paste.rs` 的粘贴确认是**另一条独立路径**，且它在 `broker.rs:1472` 的测试里表现为**拒绝而非静默发送**）。**结论**：**「确认不可由配置关闭」目前是「空真」（vacuously true）**——**既没有东西在确认，也就没有东西能被跳过。** **这必须与「已验证」区分开**：**模型的不可配置性是已证明的；而规则是否真的在保护用户，取决于那个还不存在的执行者。** **归属**：**命令确认属于交互层，而交互层正卡在 E-P0-2（无窗口/IME 宿主）上**——**因此这不是「有人违反了 AR-06」，而是「AR-06 的执行方还没被建出来」**，**与 E-P0-2 同源。**
+
+
+## A. 阻塞 P0 出口的四条（E-P0-1…E-P0-4）
+
+| # | 未闭合项 | owner | 触发条件 / 判定 | 依据 |
+| --- | --- | --- | --- | --- |
+| A1 | 语料 ~~**275 条**~~ → **279 条（第 272 轮实测：278 执行 + 1 能力前置排除）** / AR-31 要求 **xterm 用例 ≥2000**；**真实语料 0% / ≥20%**。**第 129 轮判断：不要用机械膨胀去追那个数字。** 依据：**AR-31 的三项里，`ctlseqs 1:1` 已满足**（runner 报 **208/208 resolved entries 各有 ≥1 用例**）；**决定 G1 判定的是 64 条 gating（L0 真期望）**，而 runner 的判定始终是 **`gate: NON_GATING` / `G1: NOT_JUDGED`**——**把语料从 275 堆到 2000 靠生成参数变体，不会改变任何一条判定**，只会造出「**看起来更好、却不决定任何事情**」的数字（本会话反复批评的那类）。**AR-31 里真正有价值的是 `真实语料 ≥20%`，它卡在环境**（需 Xvfb + 钉定 xterm 的 oracle）。**另一条本会话证据**：第 31 轮的「+20 条门禁用例」切片**跑了 3 轮零产出**——**从文档推导期望本就是判断工作，不是可以批量机械化的**。 | T1 | 语料扩充必须带来**新的判定能力**（新的 gating 期望或新的 oracle），而不是新的行数 | AR-31、§8.1-1、计划 §6.3 规则 9 |
+| A2 | **真实语料 0% / ≥20%**，且**环境阻塞**：需 Xvfb + 钉定 xterm + 固定 locale/font 的 oracle 环境与 vim/htop/neovim/fzf/tmux/less/btop 捕捉 | T1 + 平台 | 起 RM-A/RM-B 后才能做；**自钉基线不计入**（`tools/conformance/run.mjs` 已机器强制） | kernel/01 K-03、V-04、ADR-0014 |
+| A3 | ~~**vttest 本机无法构建**（无 C 编译器、无 WSL 分发版）~~ → **第 272 轮更正原因（结论不变，机理不同）**：**本机有三套可用的 C 编译器**——MSVC `cl` 19.51（经 `vcvars64.bat`）与 **w64devkit gcc 14.1 + make 4.4.1**（ver 1.23.0，sha256 `5C7DCE67…`，解压即用）。本行原引的 `configure: error: no acceptable cc found in $PATH` **可复现，但根因不是缺编译器**：autoconf 在 `;` 分隔的 Windows PATH 上按 `:` 切分，因此 `checking for gcc... no` 与同一 shell 里 `gcc --version` 正常**同时成立**；用冒号 PATH + `CC=gcc` + 显式 `--build/--host=x86_64-w64-mingw32` + `TMPDIR` 后 **configure 成功**。真正的墙是 **POSIX tty 头**：`vttest.h:49-58` 只接受 `termios.h`+`tcgetattr` / `termio.h` / `sgtty.h`，而 **mingw-w64 三者都没有**，于是第一个编译单元即 `vttest.h:57: #error please fix me`。**已验证的最小解法**：MSYS2 的 **`msys`** 工具链（`pacman -Sy gcc make`），**不是** `mingw-w64-x86_64-gcc`——依据是 MSYS2 包文件清单：`msys2-runtime-devel` 提供 `/usr/include/termios.h`，`mingw-w64-x86_64-headers-git` **不提供**；预计 10–20 分钟，属 T5 系统变更。**脚本有意不打补丁**：桩掉 termios 的 vttest 不再是 V-01 需要的那把上游尺子，那是假绿。 | T5 + 平台 | ~~configure 报 `no acceptable cc found in $PATH`；需 RM-A/RM-B + kernel/01 §3.9 driver~~ → **即便装上 MSYS2 构建成功，V-01 仍不可判定**，还差三件（均与编译无关）：① 期望网格必须来自钉定 **xterm + Xvfb** oracle（本机无 X11）；② vttest 是交互式程序，需 `expect` 式**双向** driver 回答 DA/DECRQM/DSR；③ `unix_io.c:260-266` 的 `readnl()` 在管道 EOF 时 `read()` 返回 **0 而非 −1**，`ch` 永不为 `'\n'` → **有限 stdin 脚本会死循环而非退出**。证据见 `tools/conformance/vttest/README.md` | §8.1-1、OQ-VT-12、V-01 |
+| A4 | ~~**esctest **权威口径：**267 passed / 41 known-bug / 259 failed / substitutions 0**~~ → **第 272 轮权威口径（级别 1，ADR-0030）：124 passed / 376 known-bug / 67 failed、`excluded_by_capability 67`、gate-eligible 124、`failed_real 0`、substitutions 0、feeds 27031**；**级别 5 的 267/41/259 是旧尺子，仅作对照**（**必须带 `-- --expected-terminal xterm --xterm-checksum 336`**；第 145 轮在当前树上确认失败集合与第 97 轮逐字节相同） / substitutions 0**（第 39 轮实测，**必须带 `-- --expected-terminal xterm --xterm-checksum 336`**）；**最大单簇 = DECRQM oracle 分歧（SD-22，26 条）**；其余失败簇：`CSI … t` 窗口尺寸（SD-19）、颜色族、DECRQM 余项、DECRQSS、DECDSR、DECSET、左右边距/原点模式 **簇级归因（第 36/37 轮实测，负责人自己做）**：① **DECRQM 26 = oracle 分歧**（SD-22，**不是 bug**）；② **XtermWinops 19 = 功能缺口**：`DECSLPP`（`CSI 8;rows;cols t`）必须**真的改变终端尺寸**（实测 `GetScreenSize()` 期望 90x10 实得 80x24），另有 iconify/deiconify 等窗口状态变更——**这需要 grid 支持动态 resize + reflow 语义**，与 kernel/03 的 reflow 设计连动，**不是快修**；③ **DECSET 18 至少含 alt-buffer（mode 47）内容语义差异**（实现在 rect 校验和上与期望不符，`decset.py:422`）。**⚠ 更正（第 38 轮新证据）**：上一轮我写下「已排除 harness 的 DECRQCRA 校验和是共同根因」，**该结论不成立、已降级为未定**。第 38 轮我用探针逐字节复现 `decset.py` 的序列（含把 `CUP(Point(x=1,y=2))` 正确展开为 `CSI 2;1H`），**我们的网格内容与 esctest 期望完全一致**（`ALT = ["", "def", "def"]`、退出后 main 原样恢复），已固化为回归测试 `crates/termai-vt/tests/alt_buffer.rs`。**网格对、比较却失败** → 差异落在**校验和/比对路径**（失败信息里 got 是 `0xffe0` / `0xff9c` 一类的 0xFFxx 编码，而 expected 是原始码位 0x00 / 0x64）。**下一步必须先查 harness 的 `checksum` 实现**，而不是继续改终端。 **簇级归因（第 40 轮，在**正确参数**的 308 条失败运行上重做，旧计数作废）**：① **DECRQM 26** = oracle 分歧（SD-22，不改）；② **颜色三族合计 40**（`ChangeSpecialColor` 14 + `ChangeColor` 13 + `ChangeDynamicColor` 13）＝ **最大的可修簇**：根因是 **`OSC 4 / 10 / 11 / 12` 颜色查询没有任何答复**，适配器直接 `Timeout waiting to read`（`change_color.py:94 → ReadOSC("4")`）——**不是校验和、也不是渲染问题**。**这里有一个必须先做的判断**：答复颜色查询等于**对外声明本终端的调色板**；在终端尚无颜色渲染前，报一套 xterm 默认 256 色是否算诚实的「能力声明」，需要 UX/内核一起定；定了才可派机械切片（实现调色板 + 应答），否则应登记为**差异**。③ `XtermWinops` 19 = 功能缺口（`DECSLPP` 真 resize + 窗口状态，连动 reflow 设计）；④ `DECSET` 16 / `DECSED` 9 / `DECSEL` 6 / `DECCRA` 8 / `BS` 8 / `DL` 7 / `SD` 6 / `DECSERA` 6 等仍待逐个归因；⑤ `DECRQSS` 11 / `DECDSR` 10 属查询类，预计与颜色簇同因（无应答）。 **子集分类框架（第 42 轮，据 kernel/01 §3.5 表；追认前均为初步）**：该表覆盖的是**扩展协议子集**——OSC 133/633/7/0/2/8/9/777/52(仅写)/1337(内联子集)、Sixel、kitty graphics/keyboard；**明确列出「永不」的**是未知 DCS/APC/PM/SOS 与 OSC 52 读。据此初步分类：**(a) 真缺陷（核心 VT，必须修）**：`BS`/`DL`/`SD` 等编辑类与核心 `DECSET/DECRST` 模式——**注意：核心 VT 不在 §3.5 表内，所以「不在表里」绝不能当作偏差的借口**，否则会把基本编辑行为误判为「声明不做」；**(b) 子集外 → 偏差候选**：OSC 4/10/11/12（颜色 40 条）、`DECCRA` 8、`DECSERA` 6、`DECSED` 9 / `DECSEL` 6（选择性擦除）、`DECRQSS` 11 / `DECDSR` 10（查询类）、`XtermWinops` 的 `DECSLPP`（resize 连动 reflow）。**(c) oracle 分歧**：`DECRQM` 26（SD-22）。**(b) 的每一条仍须按 K-04 附最小复现 + 依据 + 豁免期限逐条登记**，不得整类一句「不做」带过——**这正是 SD-23 待追认的内容**。 | T1 | 逐簇修复并在**同一 commit** 重测；接入门禁前须两次自证 | §8.1-1、AR-27 | **[第 39 轮更正]** 此前记录的 117/407 与 110/414 是**调用参数不对**（漏了 `--xterm-checksum 336`，导致 esctest 对每个单元格校验和取反）所致的伪影；它们只在**同参数**下可比（SD-19 的 110→117 仍成立）。**任何 esctest 数字必须连同完整调用命令一起记录。**
+| A5 | **无原生窗口 / GPU / IME 宿主**（E-P0-2 完全未实现） | T1 + T2 | 需先过 wgpu/winit/rustybuzz/swash 的依赖准入（ADR-0015） | §7 E-P0-2、DC-17、ADR-0024 D3 |
+| A6 | ~~**渲染依赖在本环境无法取得 SPDX 证据**（网络受限、无本地 cargo 缓存）→ 只能落地零依赖切片~~ → **已关闭（第 262–272 轮）**：crates.io/github 可达，SPDX 证据已采集（`docs/adr/ADR-0027-spdx-evidence.md`：269 个第三方包、R=D=0、GPL/AGPL/SSPL 命中 0、弱 copyleft 仅 `r-efi`），**ADR-0027 已 Accepted**（第 264 轮，公告一侧按 ADR-0031 的 W-01 时间盒例外处置）；依赖已按序落地：`crates/termai-gpu`（wgpu，第 267 轮）→ **字体栈 rustybuzz/swash/fontdb（第 272 轮，`crates/termai-render` 的 S6/S7）**。因此本行不再是 E-P0-2 的阻塞项 | T5 | ~~在可联网环境跑 `cargo-deny` 输出后补 ADR~~ **已执行**：`cargo deny check licenses advisories bans sources`（cargo-deny 0.20.2，配置 = 仓库根 `deny.toml`）→ licenses/bans/sources ok，advisories 两条 unmaintained（RUSTSEC-2026-0206/0192）由 W-01 覆盖且**到期即红**（`node tools/audit/check-waivers.mjs`）。**仍余**：窗口侧的 `winit` 尚未进入 workspace（属 WS-04 切片） | AR-21、ADR-0015 P3、ADR-0027 D1/D3、ADR-0031 |  **第 130 轮用新证据复核（不是凭记忆）**：本机 cargo registry 缓存**存在且有 474 个 crate 文件**，但**其中没有任何一个渲染依赖**（`wgpu` / `rustybuzz` / `swash` / `winit` / `fontdb` 全部不在）；`Cargo.lock` **存在（7687 字节）、已被 git 跟踪、未被忽略**，**但其中没有这些依赖的任何条目**（因为没有任何 crate 依赖它们）。→ **结论不变且更硬**：**渲染依赖在本机物理上不可得**，ADR-0027 的 SPDX 列**无法在此填写**；**E-P0-2 仍然卡在取得这些 crate（需网络）**。**顺带更正我自己一次瞬时误判**：同一轮里我第一次检查 `Cargo.lock` 时读成了「不存在」——**第二次检查证明它存在且被跟踪**；**又一次印证「先怀疑自己的命令」**。 |
+| A7 | **§5 每条指标的测量实现未做**（~~主场待 D-5~~ **主场已定**：第 177 轮 `ADR-0028` 采纳 A，最终主场为 `tools/bench`，ADR-0014 的两处 xtask 引用已被取代并标注）；**无 RM-A/RM-C** → `tools/bench` 打印 `gating numbers produced: 0` | T1 | 先起 RM-A；再逐指标实现（H1…H19） | B-10、AR-24.3、AR-27、ADR-0014 |
+| A8 | ~~**sessiond 不持有 PTY**（生命周期在 `apps/termai`）~~ → **第 272 轮已闭合（守护进程层；commit `fd04a11`）**：`apps/sessiond/src/host.rs` 新增 `SessionHost`/`PtySession`——`open` 在平台后端（Windows ConPTY + Job Object / unix forkpty）真实起子进程并按会话 id 持有进程树；`close()` 是唯一拆除路径，固定顺序 `kill(Force)` → 有界 `wait`（`REAP_BUDGET = 1.5s`，落在 AR-30 第 2 条的 2s 之内）→ 恰好一次释放 pty（`PtyBackend::close` 契约上不杀进程，故回收是 owner 的责任）；reap 失败报 `HostError::NotReaped` 而**不报成功**（AR-20），且条目保留使重试重新 kill；重复 close 返回 `already_closed`，不 panic。`apps/sessiond/tests/pty_lifecycle.rs` 用真实进程证明：关闭后**子进程与孙进程**均在 2s 内消失（自 close 起轮询，非固定 sleep），**对照 1**「未关闭的会话在同一时刻仍有活树」、**对照 2**「close 幂等且未知 id 不报错」；非空真性由临时桩掉 kill+wait 得到 `left: 2 / right: 0` 证实。**仍余（故 E-P0-4 仍为「部分」）**：~~① `SessionHost::probed()` **尚未被任何 main 循环调用**（`apps/sessiond/src/main.rs` 仍是 stub），因此这条回收路径在当前生产路径上还没有触发者，`broker.rs` 也没有 session-closed 的拆除点（只有 `GO_AWAY → Draining`）；~~ → **① 第 272 轮已闭合（`6e2ae65`）**：`apps/sessiond/src/daemon.rs` 的 serve 循环**在生产路径上持有 `SessionHost`**，其唯一出口（EOF / `GO_AWAY` / 握手被拒 / 帧错误 / 传输错误）调用 `self.host.close_all()`，另有 `Drop` 兜底；**已用真实二进制做 OS 级端到端验证**（CRC32C 校验过的 PING 得到应答、链路开启时子进程存活、EOF 后 `not_reaped=0 clean=true` exit 0、`live ping after shutdown: 0`），并有 5 条真实进程验收测试（含两条会话与「无人关闭的那条」对照）与「禁用 DSR 回写即全红」的注入对照。**② A9 的重建时延验收**：机制已实现、数字在门禁内但仍 INCONCLUSIVE（见 A9），且**新增** A29（线协议无 `SESSION_CREATE`）与 A30（EOF 退出 vs AR-13）。**原始缺口描述保留：** **（生命周期在 `apps/termai`）**——第 214 轮补充证据：`apps/sessiond/Cargo.toml` 已声明 `termai-pty` 依赖，但整个 `apps/sessiond`（7 个 .rs 文件）没有任何代码使用它**（6 处「PTY」命中全是注释文字；无 `termai_pty::` 路径、无 `PtyBackend` 引用）。**因此这条迁移的**依赖边已就位、代码未写**；同一事实也是一处**声明而未使用**的依赖**——**是留给 A8 的，还是应清理，需 owner 判定**。**（复核用了规则 18：首次 `src/*.rs` 通配只覆盖该层，递归到 7 个文件后才得 6 处，并逐条读过。）**→「会话关闭 → ≤2s 回收孤儿」在守护进程层**未实现**；且 `close()` **契约上不隐式杀树** | T1 | sessiond 接管 PTY 时必须显式 kill；否则首次多会话即泄漏 | AR-30 第 2 条、§8.2 |
+| A9 | ~~**sessiond 重建 P95 ≤2s / P99 ≤5s 的验收未做**~~ → **第 272 轮：实现半边已闭合，门禁半边仍不可判**。已落地：`apps/sessiond/src/restore.rs`（`rebuild_session` 读 Log → 检查点窗口 → 尾巴重放进**全新**引擎；fixture 走守护进程真实路径 `Registry::feed_pty_out`）、`apps/sessiond/tests/session_rebuild.rs`（重建后屏幕与活会话屏幕**逐字段相等**：`GridSnapshot` + `canonical_bytes` + digest + 逐行文本；空 Log 必须是错误而非空屏）、`apps/sessiond/examples/rebuild_bench.rs` + `tools/bench/sessiond-rebuild.mjs`（≥10 Run × ≥1e4 次重建 → Run p95/p99 → 取 Run 中位数，按 kernel/06 §3.10 / K-02 / §3.2 的 frame 行；**每次重建都做相等性检查且检查在计时窗口之外**，不相等就拒发报告）、`tools/bench/check.mjs` 的 **B8**（从 `--report` 读 R1/R2；注入 + 对照 2 组，`bench:selftest` **74/74 → 78/78**）。**总负责人独立复跑**：`node tools/bench/check.mjs --report target/bench-reports/sessiond-rebuild-report.json` → **[B8] PASS、`summary: 9 PASS / 0 FAIL / 0 SKIP`**；无 `--report` 时仍是 8 PASS。**实测 R1 = 1.953 ms（门禁 ≤2000）、R2 = 2.314 ms（门禁 ≤5000），100,020 次重建全部相等**——**但两行仍判 INCONCLUSIVE / NON_GATING**，因为本机没有注册的 RM-A 指纹（ADR-0014 铁律 5）：**数字落在门禁内不等于门禁结果**。 | T1 | ~~**第 126 轮更正第 30 轮的口径**~~：该验收出自 `HARNESS.md:259`（§8.2 可靠性，非 §5），主场经 **ADR-0029 D-4** 定为 kernel/06 §3.10 + `RELIABILITY_MAPPING`。**仍缺**：① 注册 RM-A 指纹 + T0 独占 + 安静主机（本机在并行编译时 MAD/median 达 8–10%，在 RM-A 上会判 `INCONCLUSIVE(NOISE_FLOOR)`）；② 检查点保真（见 A24）；③ **`E-P0-4` 因此仍为「部分」** | AR-26 第 4 条、§8.2、kernel/06 §3.10、ADR-0014、ADR-0029 D-4、B1/B3/B8 |
+| A10 | ~~**跨段重放未实现**（TAIL_REPLAY 只读当前 segment；旋转后只会 BelowWindow）~~ **已实现（第 115–125 轮）**：`read_segment_header`（`55b4441`）→ `replay_window_check_across`（`6d5b75d`）→ broker 接线（`8faa12c`）→ **端到端验收**（`83f3fef`：`broker_with_rotated_log` 造 ≥2 段的轮转日志，跨边界窗口**被接受**；对照：下界早于所有段仍须拒绝；**helper 内含「确实轮转过」的守卫**，防恒真）。**关键事实**：`SegmentHeader.first_seq` 在头部，所以按段头由新到旧走查——**常见情形只多一次头部读、attach 延迟不随日志年龄增长**（AR-26 第 4 条 <2s）。 | T1 | 段滚动/归档后必须仍能重放或明确要求全量快照 | ADR-0026 D3、kernel/04 §3.2.1、AR-26 第 4 条 |
+| A11 | **TailReplay 事件只投影 5 类** → **不能替代 GRID_SNAPSHOT** | T1 | 新增 tag 须先出 ADR | ADR-0026 D5 |
+| A12 | **IPC fuzz smoke 已落地**（`c495e07`：确定性 xorshift64*、固定种子、≥20000 次、随机帧头极端 `len` 不分配、CBOR 不 panic、含**正例对照组**）。**仍缺**：① **24h / ≥10⁸ 次**的持续 fuzz（G6 门禁本体，需 CI 排期）；② PTY 与 VT 侧的持续 fuzz；③ 8 MiB 上限端到端实跑与 broker 的 `FRAME_TOO_LARGE` 分支单测 | T1 | AGENTS §6；G6 = 24h 无 crash | §8.1-6、DC-37 |
+| A13 | **VRM**：**映射 + 模式切换均已落地**（`1055f0f` 映射；`14bedbb` `VrmState` 持有/切换 + **RP-08 操作面断言**：`Fold→Clip→Fold` 后 `mirror.rev()`、`canonical_bytes()` 不变且 `take_damage()` 为空）。**仍缺**：`ScrollAnchor`、命中测试、a11y 投影、显示行总数、从配置读模式；另有一处已知粗化——`VisualRow.clipped` 是**单一 bool**，无法区分「遮住头/尾/两端」，而 kernel/03 §3.8 的 `VRowKind` 信息更多（按切片边界未做） | T1 | 每一步都不得改变列数与复制字节 | AR-23 §6、kernel/03 K-10、RP-08 |
+| A14 | **`HARNESS.md:686` 的目录清单仍写「ADR-0001…ADR-0027」**，而 `ADR-0028` 已于第 177 轮落地（其 README 索引行也已于第 192 轮补上） | 文档 | ~~是否更新该行~~ **已解决（第 194 轮）**：**`git log -L 686,686:HARNESS.md` 显示该行**在每一次新增 ADR 的提交里都被改过**——ADR-0023（`d85030b`）、0024（`5601d1d`）、0025（`ec27022`）、0026（`15b81be`）、0027（`14cc76d`）。**因此「新增 ADR 即更新此行」是本项目既有的约定**，**第 177 轮我未照做，此行因此停在 0027**。**已按约定改为 `ADR-0001…ADR-0028`，并标注 ADR-0028 为 Accepted。** | — |
+| A15 | **AGENTS §4 的第 2 条合并门禁「行为回放：录制会话回放通过率 ≥99.5%」在 CI 中不存在，~~也没有任何登记项~~**（**后半句已于第 211 轮作废**：该门禁**一直被追踪**为计划追踪表的 G2，状态「部分」、carrier `.trec` 语料回放——见本行末的更正）（第 210 轮核实：`.github/workflows/*.yml` 中 `replay` 零命中；登记表与交付计划里所有 `replay` 命中都指 `A10` 的会话日志跨段重放，）**⚠ 第 211 轮更正（自我更正第 23 次）：本条原先声称「也没有任何登记项」——这句是错的。交付计划的追踪表里本来就有这一行：`| G2 行为回放 | ≥99.5% | 部分 | T1 (WS-01) | .trec 语料回放 |`（`docs/plan/p0-delivery-plan.md:250`）。我第 210 轮查「回放|replay」时用了 `Select-Object -First 8`，而两文件的命中按路径排序、`debt-p0.md` 在前——计划里的「行为回放」整行被截断掉了，于是我把「前 8 条命中」当成了「全部命中」。这是 `-First N` 造成的假结论（与第 157 轮「不区分大小写造出 9 条假债务」同族）。因此本条的准确表述是：§4 第 2 条门禁的 CI 强制缺失，而它已被追踪为「部分」（G2，carrier `.trec` 语料回放）——是已知缺口，不是未登记缺口。** | T1（+ owner 判定归属） | **§4 列了六条合并门禁，本条是唯一既无实现、也未被登记的一条。** 现状：`crates/termai-vt` 有 `replay.rs` 与 `tests/replay.rs`（VT 层重放），但**「≥99.5% 通过率」这一阈值没有任何地方强制**。**需 owner 判定**：是补一条回放门禁（含语料与阈值），还是明确本项目不设该门禁（那需要 §4 的修订，属新 ADR 或 spec 变更） | AGENTS §4 第 2 条、spec 07、`crates/termai-vt/src/replay.rs` |
+| A16 | **本会话的全部未决项都不在 `HARNESS.md` §11（Open Questions）里，且 HARNESS 全文没有一处指向 `docs/plan/p0-open-decisions.md`**（第 216 轮核实：§11 的 OQ 表止于 OQ-28；`HARNESS.md` 中 `p0-open-decisions` 命中 0 处）。**受影响的**：**D-1／D-2／D-3**（§7 `G1` 判定域、能力声明、设备身份）、**D-4**（§8.2 口径）、**A15**（§4 第 2 条门禁）、**`logdump` 的 scope 问题**、**H12／H13 的疑问**。**为什么这是缺口**：**AGENTS §5 要求「所有未决问题进 HARNESS §11，并标注必须决策的 Phase」**——**§11 是 owner 读决策的地方**（OQ-26/27/28 正是以「已裁决（ADR-xxxx）」关闭的），**而本会话的未决项只存在于计划的决策简报与登记表里**，**从权威文档出发读不到它们**。**⚠ 第 218 轮更正本条的修法建议（自我更正第 25 次）**：**我原先建议「补 OQ-29… 行」——但核实后发现**§11 的 OQ 表自仓库初始化以来从未被追加过**：`git log -S 'OQ-21' -- HARNESS.md` 与 `git log -S 'OQ-26' -- HARNESS.md` **都只返回初始化那一次提交**，**而 HARNESS 全历史只有 10 次提交**。**即：**没有「追加 OQ 行」这个既有做法**（与 §12 文档地图**相反**——那一行被更新过 3 次）。**因此本项更准确的描述是**：**本项目在初始化之后，为不同类别的问题各有归宿**——**AR/DC 结论变更 → 新 ADR**（§11 的 CR 规则明写）；**规格缺陷 → `SD-xx` 登记**（`docs/plan/p0-spec-defects.md`）；**契约修订 → `CR-xx`**（§11 下半表）；**而「P0 出口的判定域与口径」（D-1…D-4）这一类，没有既有归宿**——**这正是它们落进一份新文档的原因。** **所以需要 owner 定的不是我原提案的「补几行」，而是**：**这一类问题从此归到哪儿**（新增 OQ 行？新 ADR？还是承认决策简报就是它的家）。** **（本轮已按第 12 轮那类先例做了一件事：把决策简报加进 §12 文档地图，使它至少从 HARNESS 可达。）** | T1（+ owner） | **建议动作（additive）**：**~~① 为上述各项补 `OQ-29…` 行（含必须决策的 Phase）~~**（**已被第 218 轮推翻：§11 的 OQ 表自初始化以来从未被追加——`git log -S` 只返回初始化提交**）；**② 使决策简报从 HARNESS 可达——**已于第 217 轮完成**：加进 **§12 文档地图**（不是 §11 的指针，因为 §12 才是「文档在哪」的地方）**。 **注意 §11 的既有规则**：**「本节只登记不涉及架构取舍、仅为消除文档冲突的修正；任何改变 AR/DC 结论的事项，必须走 RFC → 新 ADR」**——**因此 D-1／D-2／D-3 与 D-4 若定案，其产物应是**新 ADR**（D-5 走 ADR-0028 正是这条规则的正例）** | AGENTS §5、HARNESS §11、`docs/plan/p0-open-decisions.md` |
+| A17 | **`HARNESS.md` §12「文档地图」没有 `tools/` 行**——**而 `tools/` 下是本项目全部门禁的实现，且本会话为其中三个工具补了 README**（第 205/206/207 轮：`ci-cost`／`kernel-gates`／`tokens`；加上原有的 `bench`／`design-gates`／`conformance`，六个工具各有 README） |**核实**：`Select-String -Path HARNESS.md -Pattern '^\| tools'` **零命中**。**为什么不直接加（与第 194/217 轮的差别）**：**§12 的标题是「文档地图」，而 `tools/` 是代码目录**——**其缺席可能是**有意**的**（地图里列出的是 `docs/*` 与三个根文档）。**而第 194 轮改 ADR 范围、第 217 轮补 plan 行，两次都先由 `git log -L` 确认了**既有先例**；**这一条查不到先例**（地图从未有过 `tools/` 行）——**因此按第 218 轮的教训，这是需要 owner 定的「新做法」，不是我该单方面决定的边界变更。** | T1（+ owner） | **owner 需定**：**§12 是否收录代码目录**？**若收录**：加一行 `tools/`（六个工具的 README 与它们各自守的门禁），**使「门禁在哪」从权威文档一次可达**。**若不收录**：**应说明地图的收录范围**（只收文档），**以免读者以为 `tools/` 不存在**——**本会话三次「不可达」教训（第 131/146/216 轮）都源于「没有一处指向它」** | HARNESS §12、AGENTS §4、`tools/*/README.md` |
+| A18 | **`npm run conformance:verify`（= `node tools/conformance/gen-spec.mjs --check`，生成器与已入库语料的一致性检查）~~不在 CI 中~~（**第 258 轮已接入两个 CI job**）——而它在第 256 轮抓到一处真实漂移**：`tools/conformance/data/spec-cases.mjs` 的 `inv-esc-intermediate-has-no-side-effect` 仍用 `ESC #8`（**已定义**的 DECALN，无法表达「未识别序列零副作用」），而已入库的 `.trec` 早在 `e141127` 就是 `ESC #9`——**生成器与语料分叉，且没有任何 CI 步骤会发现**（`.github/workflows/*.yml` 中 `gen-spec` 零命中；第 256 轮核实）。**已修**：把生成器源改回 `#9`，`.trec` 与已入库字节重新逐字一致，`gen-spec --check` PASS、L0 gating 恢复 **64/64（R=1.0）** | T5 + T1 | ~~把 `conformance:verify` 接入 CI~~ **已接入（第 258 轮）**：`conformance verify` / `conformance verify selftest` 两步加进 `kernel` 与 `linux-x64` **两个 job**，并在 K8 的 `GATE_PAIRS` 注册为第 8 行；**注入 + 对照**（§6.3 规则 10）写在 `tools/conformance/verify-selftest.mjs`——把已入库 .trec 的 `ESC #9` 改回生成器曾写的 `ESC #8` → `gen-spec --check` 必须红且点名该用例，还原 → 必须绿；K8 自身新增注入 + 对照，证明第 8 行被强制。**原始发现（本行前半）保留未删。** | §8.1-1、kernel/01 §3.2/§3.4、WS-01 |
+| A19 | **时间盒例外 W-01**：`rustybuzz@0.20.1` / `ttf-parser@0.25.1` 均 **unmaintained**（RUSTSEC-2026-0206 / RUSTSEC-2026-0192），无已知漏洞、无安全升级；DC-17 / kernel/03 K-05 指定 `rustybuzz` 为唯一 shaping 引擎。**所有者于第 264 轮批准时间盒例外（ADR-0031 A）** | T1 Core Kernel | **到期即红**（ADR-0031 条件 4）：`expires 2027-03-23` **或 2 个 minor**（基线 0.1.0），先到者为准；替换触发 = 任一 RUSTSEC **漏洞**、或 `skrifa` + maintained shaper 满足 DC-17、或满 2 minor。机器校验：`node tools/audit/check-waivers.mjs`（过期即失败）。**不得据此声称「供应链已清」** | ADR-0031、ADR-0027、ADR-0015 P3、`docs/audit/waivers.json` W-01、`docs/adr/ADR-0027-spdx-evidence.md` |
+| A20（**已闭合**） | ~~**`esctest-report` 打印的「可复现命令」复现不了它自己印的数字（第 272 轮新发现）**~~ → **第 272 轮已修（`fb0b544`）**：重构命令现在携带 `--xterm-reverse-wrap <值>` 并与运行手册 §2 的规范命令**逐字节一致**；manifest 未声明该字段时打印 `--xterm-reverse-wrap NOT-DECLARED` 并附「这是占位符、命令不可复现」的显式说明，**不可能再静默看起来完整**；该工具 `--selftest` **7/7 → 10/10**（2 注入 + 1 对照），并以变异实验证明判别力（还原成修复前 → **7/10、exit 1**）。**仍余（如实）**：`excluded_by_vt_level` 仍 UNKNOWN；报告**完全不解析 `substitutions`/`feeds`**（SD-20 的剩余动作仍未做）；命令按**当前** manifest 重构，无法证明某份旧日志出自哪份 manifest；`check-suites.mjs` 仍不校验 `xterm_reverse_wrap`（不在本切片范围，现仅由 NOT-DECLARED 占位 + 自检兜底）。**原始描述保留**：`tools/conformance/esctest-report.mjs:225-235` 的 `reconstructEsctestCommand()` 从 `suites.json` 的 `invocation` 拼命令，却**漏了 `xterm_reverse_wrap`**（`tools/conformance/suites.json:12` 已声明 383）。后果是实质性的：按运行手册第 268 轮那条坑，缺该参数时 esctest 默认 **0**、`ReverseWraparound()` 返回 **45**，判的是 **pre-383 旧语义**——即把报告末尾那段命令原样复制粘贴**会得到另一组数字**，正是 §6.3 规则 8 与 SD-20 要防的事。**同处还有一处命名漂移**：`kernel/01:279` 写「SHA-256 记入 `suites.toml`」，实现是 `tools/conformance/suites.json`（仓库内 `suites.toml` 零命中）。 | T5 + T1 | ① 重构命令必须包含 `xterm_reverse_wrap`，缺失时**显式打印「未声明」**而非静默省略；② 命名漂移按 SD-17 先例（采纳实现命名 + 分册补注），**不改实现**；③ 若按②登记新 SD 行，`K6` 的上界断言（`check.mjs` 的 `SD-09..SD-24`）必须同 PR 更新，并按规则 10 为 K6 补一条注入 + 一条对照 | §6.3 规则 8、SD-20、kernel/01 §3.9、`tools/conformance/esctest-report.mjs:225`、`tools/conformance/suites.json:12` |
+| A21 | **`design:selftest` 出现间歇性红灯——本会话第一次观测到 merge-blocking 门禁自身非确定（第 272 轮）**。证据：**同一 commit `0f699b9`、同一棵树**，`push` 运行 **全绿**（run 35940553747），`pull_request` 运行（run 35940556739）在 **`design:selftest`** 一步失败；而 `6f3a590` 的两次运行该步都通过。**本机连续 3 次 `npm run design:selftest` 均 `19/19` PASS**。**取证边界（诚实）**：匿名 GitHub API 对 `/actions/jobs/{id}/logs` 返回 **403**，因此**目前只有「哪一步红了」，没有「哪条注入未被捕获」**——结论只到「非确定性」为止。 | T2 + T5 | ① 在有凭据的环境取该 run 的日志，区分「某注入未被捕获」与「某对照被误报」；② 复现手段：本机**加负载**下循环 `design:selftest`（浏览器层时序敏感），并按规则 10 保持注入 + 对照；③ **不得**用重试或 `continue-on-error` 掩盖（K8 会拒绝后者）；④ 若确认是浏览器层时序，修法是**显式等待/冻结动画时钟**，不是放宽判据 | §8.1-3 G3、spec 07 §3.4、§6.3 规则 10/19；run 35940553747 vs 35940556739 |
+| A22 | **本轮引入的 CI 回归（Linux x64 + macOS arm64 全红），根因是新测试的宿主假设（第 272 轮，修复中）**。`6f3a590` 的 **push 与 PR 两次运行都失败**（run 35943545567 / 35943549585）：`macos arm64` 的 `cargo test --workspace` 失败、`linux x64` 的 `kernel:check`（即 K3）失败；**而上一提交 `0f699b9` 的 push 运行是全绿的**，所以这是**本轮引入**的。已定位两处**宿主假设**（都是「本机能过、别的宿主必挂」那类）：~~① `apps/sessiond/tests/pty_lifecycle.rs:264-305` 在**所有平台**断言树 ≥2 个进程（`TREE_PROCESSES`），而该数来自 **Windows Job Object** 视角——Unix 侧只列**进程组组长**（`crates/termai-pty/src/unix/pty.rs:418-436`），于是 Linux/macOS 上恒为 1；~~ **⚠ 第 272 轮就地更正（自我更正）：① 被证据推翻**——`git show 6f3a590:apps/sessiond/tests/pty_lifecycle.rs` 显示该文件**从一开始就已按平台门控**（`:28-31` `#[cfg(windows)] const TREE_PROCESSES = 2;` / `#[cfg(unix)] const TREE_PROCESSES = 1;`），三个断言在 Unix 上比的是 **1 而不是 2**，且最强的那条本来就是 `#[cfg(windows)]`。**我把「读到一半的文件」当成了证据**——这正是本会话规则 11「先怀疑自己的命令/证据，再怀疑被测对象」的又一次实例；A22 原先的 ① 已按此**撤回**（该子代理以原始 `git show` 输出推翻了它，我复核后确认其正确）。**该文件当时的真实缺陷不是「红的根因」，而是「Unix 上根本没有 AR-30 第 2 条的主验收」**（已在该切片中补上）。**② 曾是当时的最佳解释，但第 272 轮被 CI 注解推翻**：~~`crates/termai-render/tests/shaping.rs:79-120` 要求系统存在**等宽且覆盖 CJK（U+4E2D）**的字体，找不到就 `panic!`……**一个新增的字体依赖测试即可同时解释 macOS 的 `cargo test` 与 Linux 的 K3 两处红**。~~ → **实测（`6911c9e` 的 run，经 `::error::` 注解读取）**：macOS 上**只剩一条**失败用例 `sessiond::host::tests::the_probed_backend_can_open_and_close_a_session`、Linux 同样**只有这一条**——**即字体可移植性修复确实消除了 shaping 那一族（macOS 从多条降到一条），但真正的 CI 红因是另一个更严重的东西：见 A26（Unix spawn/kill 竞态，会泄漏子进程）**。**这次能定位，靠的是本轮新增的 CI 失败注解（见 A26 第 3 点）——在此之前，任何无凭据的人都只能看到「exit code 101」。** | T1 + T2 | ~~① sessiond：把「一个平台能力预期」显式化……② render：把「字体覆盖」与「K-04 列宽」两类断言拆开……~~ → **已闭合（第 272 轮，`eabbd92`）**：两件事都做了（平台能力预期显式化 + 字体选择三步降级 + K-04 列宽断言保持无条件），但**真凶是第三个**——见 **A26**（Unix spawn/kill 竞态）。**CI 已全绿**：run **35948532691**（pull_request）与 **35948528067**（push），同一 sha `eabbd92`，**8 个作业 7 成功 + 1 按设计跳过**（`design-baseline` 仅 workflow_dispatch），其中 `macos arm64` 与 `linux x64` 均 success。 | §8.1-1/§8.1-4、ADR-0014 平台矩阵、§6.3 规则 11（先怀疑自己的命令）、run 35943545567 |
+| A26 | **Unix `spawn`/`kill` 竞态：`forkpty` 后立即关闭会漏杀子进程（第 272 轮由 CI 注解定位；修复中）**。**证据链**：`6911c9e` 的 CI 注解（macOS 与 Linux 各一条）指向唯一失败用例 `sessiond::host::tests::the_probed_backend_can_open_and_close_a_session`——该用例在 `SessionHost::probed()`（**Unix = forkpty 后端**）上打开 `/bin/sleep 30` 后**立即**关闭；而同一后端的集成测试（`pty_lifecycle.rs`）**因为先轮询到树非空才关闭**而全部通过。**机理**：`crates/termai-pty/src/unix/pty.rs:160` 的 `spawn_forkpty` **没有就绪握手**，父进程在子进程尚未执行 `setsid()`（forkpty 的 login_tty 路径）时即返回；该窗口内子进程的进程组仍是父进程的，于是 `kill(-pid, SIGKILL)`（`:102-111` 的 `kill_group`）以 `ESRCH` 失败、**子进程存活**；`UnixTree::kill` 随后轮询 5s（`:473-516`）见组仍活而返回 `Err(TreeNotEmpty{live:1})`，`PtySession::close()` 因此报 `NotReaped`。**这不是测试瑕疵，而是真实的生产孤儿泄漏路径**：sessiond 打开会话后立刻收到关闭请求即泄漏子进程——**即 AR-30 第 2 条的「孤儿清理 = 100%」在 Unix 上尚未成立**（Windows 因 ConPTY 创建同步而不受影响，这也解释了为何只有 unix runner 红）。 | T1 | ① 在 `spawn_forkpty` 加**就绪握手**（fork 前建同步管道，子进程在会话建立后、exec 前写一个状态字节/errno，父进程用**有界** `poll()` 读取；子进程侧只允许 async-signal-safe 调用）；② 力杀路径加**兜底**：`kill(-pgid)` 失败时直接对 pid 发信号，使「组信号失败」永不导致子进程存活；③ 验收：紧接 `open` 的 `close` 必须回收；exec 失败必须报错且不泄漏；**注入 + 对照**（去掉握手 → 新测试必须红）；④ 不改 `KillMode` 语义、九元契约、5s 内部期限与 `reaped`/`live_children` 的含义 | AR-30 第 2 条、§8.2、kernel/02 §3.1/§3.3、DC-16、A8、A22 |
+| A26（**已由 CI 证实并闭合**） | 见上一行：修复已落地为 `eabbd92`（PTY-READY-1 就绪握手 + PTY-KILL-1 组/pid 兜底），**并且 unix 侧现在有了真实运行证据**——run **35948532691 / 35948528067** 在 `linux x64` 与 `macos arm64` 上**全绿**，即 `apps/sessiond/tests/pty_lifecycle.rs::closing_a_session_immediately_after_open_reaps_its_tree`、`crates/termai-pty/tests/interface_invariants.rs::spawn_returns_only_when_the_child_owns_its_process_group`、`crates/termai-pty/tests/exec_failure.rs::a_program_that_cannot_be_executed_is_refused_without_leaking` **在真实 Unix 上通过**。**结论更正**：~~AR-30 第 2 条在 Unix 上「机制已闭合、证据待 CI」~~ → **证据已到**（三进程树回收 + 就绪语义 + exec 失败不泄漏在真实 Unix 上通过）。**仍不改 E-P0-4 的「部分」判定**，因为 `SessionHost::probed()` 依旧没有生产调用者（`main.rs` 仍是 stub）。**遗留边界**：① `spawn` 现在对无法 exec 的程序返回 `Err(PtyError::Spawn)` 而非 Ok+退出码 127（行为变更，cli 已映射）；② EOF-as-success 理论上会被「同进程另一线程并发 fork 出的子进程持有写端副本」延迟，最坏是误报 `ETIMEDOUT`（拒绝启动，**不会泄漏**），若 CI 出现该现象，缓解方案是在超时路径上先探 `getpgid(pid) == pid`；③ `apps/sessiond` 无法做 darwin 交叉检查（blake3 的 cc-rs 需要 Darwin 编译器），故 sessiond 的 unix 测试臂是 linux 目标验证 + macOS 由 CI 兜底 | — |
+| A27 | **CI 失败此前不可诊断（第 272 轮已修复）**：merge-blocking 作业红时，无凭据者只能看到 `Process completed with exit code 101`——日志端点 `GET /actions/jobs/{id}/logs` 匿名 403，**因此「谁红的、红在哪条用例」在仓库外不可得**，这与「门禁必须可复核」直接冲突（A21 的间歇红灯正是因此只能停在「非确定性」）。**已落地**：macOS 的 `cargo test --workspace` 与 Linux 的 `kernel:check` 两步现在**各只跑一次**、把输出完整打印到日志，并在**非零退出**时用 POSIX `sh + tr + awk` 过滤出 `test X ... FAILED` / `failures:` 列表 / `---- X stdout ----` 崩溃块 / `error[E…]` 编译错误，**每条一个 `::error::` 注解**（上限 50，末尾给「已发/总数/被截断」摘要），再 `exit "$status"` 保留原判——工作流命令是**匿名可读**的（`/commits/{sha}/check-runs` + `/check-runs/{id}/annotations`），这正是本会话定位 A26 的手段。无新 action（15→15，ADR-0021）、无 `continue-on-error`、无重试、无步骤增删（K8 的 `GATE_PAIRS` 前缀配对未变）、`$RUNNER_TEMP` 之外不落盘且不上传（AR-11）。 | T5 | **已知边界**：① Linux 侧只看得见 `check.mjs` 打印的 **2000 字符 tail**，超出窗口的用例名不会被注解（修法在 `check.mjs`，本轮未动）；② 不同二进制里的同名用例会合并成一条；③ >50 条时其余只在日志里；④ **GitHub 每次运行的注解「显示」上限无法在本环境核实**（docs.github.com 从沙箱不可达），故计数行放在最后；⑤ Windows 的 `kernel` 作业**未接入**——它的 `run:` 在 `windows-latest` 上走 pwsh，POSIX 片段跑不了，需要显式 `shell: bash`（属独立改动）；⑥ 注解不替代日志：完整输出仍在步骤日志里。**第 272 轮再次加强（同轮内，因为「只有用例名」不够用）**：每个 `---- X stdout ----` 崩溃块现在**额外**注解 `thread '…' panicked at …` 头 + **至多 3 行**后续诊断（`assertion … failed: …` 与 `left:`/`right:` 值），**逐字照抄、不重排不摘要**——这次加强的动机是实测的：定位 `the_placement_stays_within_half_a_pixel_at_every_rp05_device_scale` 时，**只有用例名答不出「哪条断言、什么值」**，只能靠本机复现去猜。**新增的诚实边界**：(a) 每个崩溃至多 3 行，第 4 行起只在日志里（续行只做去缩进，数值逐字节保留）；(b) Linux 侧仍受 `check.mjs` 的 **2000 字符 tail** 限制，跨越窗口的崩溃**完全不可见**，tail 切断头部时名字退化为块名或 `unnamed-test`（值仍会带出）；(c) 不同二进制的同名用例仍会合并，`test result:` 汇总行不注解；(d) 无 panic 文本的失败（`harness=false` 直接 exit、超时/abort）只能落到 `::warning::` 回退；(e) 验证环境是 Git Bash 的 `dash`/`bash` + `gawk`（含 `--posix`），**未**在 ubuntu-latest 的 `mawk` 与真实 CI 上验证 | spec 07 §3.4、ADR-0021、K8、AGENTS §4、A21、A22、A26 |
+| A28（**已闭环**） | ~~**H12（输入字节等价，§5 唯一「机器无关」行）已可判定——并且判出 FAIL：93.3333%（70/75）（第 272 轮）**~~ → **第 272 轮闭环：裁决已做且已执行（`a555a77`），现为 `H12 = 100%（75/75）`、`[B8] PASS`（`summary: 9 PASS / 0 FAIL`）**。裁决依据 **K-03**（规范 > 文档 > 实现）：**kernel/05 §3.3 的键盘表是权威**（它是专门的键盘模式表，也是本语料逐条引用的那张表），因此**改的是编码器而不是语料**——**语料一字未改**（改语料会让这条测量自我循环）。5 处分歧（MOK(2) 的 `Ctrl+Shift+A`/`Alt+x`/`Esc`、Kitty 的 `Enter`/`Left`）全部消失。**新增登记 SD-26**：§3.2「功能键」行与 §3.3 键盘表的正文冲突（前者说 kitty 下 `CSI {code};{mod}u`，后者给 `Enter`=`CR`、`Left`=`CSI 1;1D`）——**要改的是 spec 文本**，且今天没有任何语料或门禁能区分两种读法。**这条记录的最初价值仍然成立**：它一落地就报 FAIL 并给出 5 条可引用条款的分歧——**真实门禁数字就该长这样**。这是本项目**第一条在本机被真正判定的 §5 门禁行**。落地物：`tools/bench/input-corpus.json`（75 例，**每条期望都带依据**：kernel/05 条款号或 xterm ctlseqs 规则；另有 **11 条「无可引依据」被显式列入 `omitted` 而非编造**）、`tools/bench/input-bytes-driver.rs`（链真实 `termai_core` rlib，**不含任何编码逻辑**，只做 行协议→`StandardEncoder::encode`→记录字节与 `EncodeOutcome`）、`tools/bench/input-bytes.mjs`（逐字节比对 + D0 自检 + 出 kernel/06 §3.7 报告 + 逐例产物 + 按来源与模式打印覆盖与缺口）、`check.mjs` 的 **B8** 扩展（机器无关门禁行按其自身 verdict 判，范围限定 `machine:'none' && governed!='no'`，H17/H18/H19 不受影响），`bench:selftest` **78/78 → 83/83**。**总负责人独立复跑**：`bench:check --report target/bench-reports/input-bytes-report.json` → **[B8] FAIL**、`H12 = 93.3333 pct`、`summary: 8 PASS / 1 FAIL`（不变量：无 `--report` 时仍 8 PASS）。**5 处真实分歧各有条款引用**：MOK(2) `Ctrl+Shift+A` 期望 `CSI 27;6;65~` 实得 `0x01`；MOK(2) `Alt+x` 期望 `ESC x` 实得 `CSI 27;3;120~`；MOK(2) `Esc` 期望 `CSI 27;1;27~` 实得 `0x1B`；Kitty `Enter` 期望 `CR` 实得 `CSI 13u`；Kitty `Left` 期望 `CSI 1;1D` 实得 `CSI 57354u`。**按 K-03（规范 > 文档 > 实现）kernel/05 §3.3 的表优先**，故这是**编码器与规格表的分歧**（或表本身有 errata）——**属 owner 决策，producer 不得抹平**。**会计诚实**：registry 的 H12 是 `machine:'none'`（`governed:'partial'`），ADR-0029 D-5 使它**不计入机器绑定计数**（`gatingNumbersProduced` 仍为 0）；但 §5 门禁行本身**已在本机被判定**。**注入 + 对照双向都有**：`--inject-mismatch L03`（改坏期望，不改编码器输出）→ H12 = 92%、B8 FAIL；同一管线跑编码器满足的 70 例子集 → 100%、B8 PASS、9 PASS。 | T1（编码器）+ owner（表 errata） | ~~① **裁决**：是修 `crates/termai-core` 的 `InputEncoder` 以匹配 kernel/05 §3.3 的三处 MOK(2) 与两处 Kitty 行，还是承认表错……~~ → **① 已裁决并执行（`a555a77`）**：按 K-03 修**编码器**匹配 §3.3（表胜），**语料未改**；§3.2 与 §3.3 的措辞冲突另立 **SD-26** 交 spec owner。② **未覆盖且不主张**：原生 IME 宿主（preedit/候选生命周期）、KeyTranslator/死键组合、FocusRouter/IN-04 Super 路由、OSC 52 读、DECSET 驱动的鼠标状态机，以及 11 条无可引依据的期望——报告已逐项打印。~~③ 该行**不是**「已达标」：当前 verdict 是 **FAIL**~~ → **③ 更正：当前 verdict = PASS（100%，75/75）**，但**「PASS」只对本语料覆盖的 S3 编码阶段成立**，且它**不是机器绑定门禁数字**（`machine:'none'`，ADR-0029 D-5），故 E-P0-3 仍为「未判定」 | E-P0-3、H12、A28、SD-26、AR-29 第 3/5 条、AR-31 第 4 条、K-03、K-05、K-11、IN-AC-09、kernel/05 §3.2/§3.3/§3.7、kernel/06 §3.7、ADR-0029 D-5 |
+| A31 | **RP-05 摆放测试把「宿主字体的墨迹」当成「摆放规则」断言 → 两个 Unix 作业全红（第 272 轮；本会话第三次同类宿主假设）**。CI 于 `0e78691` 在 **macOS arm64 与 Linux x64** 红，注解只给出用例名 `the_placement_stays_within_half_a_pixel_at_every_rp05_device_scale`；**真因靠复现而非猜测找到，且不是 CI 提示里猜的那两条**：失败断言是**逐字形墨迹框包含**——atlas 的墨迹框是轮廓**向外取整**到整设备像素（swash padding），而 cell 宽度是**分数**的 `advance_ratio × logical_px × scale`；于是「墨迹框必须落在 cell box 内 1px」对一个整数墨迹框约比 cell 宽 1px 的字体**在任何摆放之下都不成立**（Lucida Console 的 `A`：8px 墨迹框 vs 7.381px cell，叠加 ≤0.5px 的取整后越界 0.09–0.3px）。**量化**：把**全部 270 个系统字体**灌进真实测试，**153/270 会失败**，其中等宽类 **6/23**（正是 CI runner 的那一类）。**同轮还查出一个真实报告 bug**：`probe_shape` 的 fallback 在候选**确实**是分数时才返回 `fractional: false`（它只判了 `discriminating`），导致整类字体在一条它们**已经满足**的断言上失败 | T1 + T2 | **已修（`2f8907e`，测试侧；`place.rs` 与之逐字节相同，摆放算术无缺陷）**：**被测规则保证的**无条件（四档 ≤0.5px 合约、样本数 == 绘制字形数、绘制+拒绝 == 该行字形数、零样本必须 `NoDrawnGlyphs` 而**不是** 0.0px、笔在 cell box 内居中、基线与「位图框 == 取整后的 cell 原点」「墨迹框 == 取整后的笔 + bearing」两条恒等式、+1px 与错格两条注入越界）；**宿主提供的**改为**按分支断言 + 打印该字形自己的数值**（墨迹框本身就出界的字形改证「绘制框 = 理想框经 ≤0.5px 取整」，并在**无任何字形**行使严格式时**打印一行**使其不可能静默失效）。**验收证据**：三条字体分支（step 1/2/3）各自 21 passed / 0 failed；**270 字体全扫 0 失败**；把 `round` 注入成 `floor` 能让测试红（`left: Point { x: 24.0, .. } right: Point { x: 25.0, .. }`），还原后哈希相同；**CI 35955132576（PR）/ 35955129871（push）在同一 sha `2f8907e` 上全绿**（7 成功 + 1 按设计跳过）。**纪律化**：写成 **§6.3 规则 22**（测试依赖宿主资源时，把「宿主提供什么」与「被测规则保证什么」分开） | E-P0-2、E-P0-3、H19、RP-05、V-10、K-04、K-12、AR-14、ADR-0014、A22、A23、run 35952573711 vs 35955132576 |
+| A29 | **线协议里没有「创建会话」的消息，因此 sessiond 的会话生命周期仍是 argv + 进程生命周期（第 272 轮由守护进程切片确认）**。证据（全部由子代理逐一核实）：`crates/termai-ipc/src/msg.rs` 注册表 36 个类型**无一为 create**；`apps/sessiond/src/broker.rs` 的 `on_frame` **无创建分支**，且 `Broker::new` 接收的是**已建好的 Registry**；`Registry::insert` 是库调用；`docs/spec/kernel/04` 的 `SessionLifecycle::create` 是 **library trait 而非 IPC 消息**。**后果**：会话由启动 sessiond 的父进程（argv：`--session ID --cols --rows --log-dir -- PROGRAM [ARGS…]`）确定，客户端只能对**这一个**会话做 attach/lease/input/snapshot——**与 DC-18「sessiond 是会话唯一真源、可多端 attach」的完整形态之间差一个契约**。 | T1 + 总负责人 | ① 新增 `SESSION_CREATE`（请求/应答，或会话控制段）需要 **ADR + kernel/07 §3.2 行**（`msg.rs` 开头写明「数值即契约」，且 **0x0504..=0x05FF 已被 ADR-0023 D1 冻结**）；② 守护进程侧**已经准备好**：`Daemon::open_session(id, command, size)` 就是该分支要调用的入口；③ 在此之前，多会话 `close_all` 只被 2 会话验收测试覆盖，`run()` 每进程只服务一个会话 | E-P0-4、DC-18、AR-13、ADR-0023 D1、kernel/04、kernel/07 §3.2 |
+| A30 | **sessiond 在链路 EOF 时退出（并因此回收进程树）——这与 AR-13「不得仅因无人 attach 就终止用户进程」在 M0 传输下语义冲突（第 272 轮登记）**。M0 传输是 stdio：父进程消失即等价于「启动者已退出」，此时终止是**有意的**；但 P1 换到 UDS/多客户端 + supervisor 模型后，**「detach ≠ EOF」必须被重新建立**，否则首个脱离式客户端会杀掉用户的 shell。**同时**：没有信号/终止处理器（为保 `#![forbid(unsafe_code)]` 未引 FFI 或新依赖），因此对 sessiond 的硬杀**没有进程内钩子**——M0 下靠「父进程死了管道就断」兜底。 | T1 | ① P1 的 UDS/supervisor 落地时，把「EOF ≠ detach」写进 kernel/04 的生命周期不变量并加验收；② 信号处理需要 FFI 或新依赖 → 若要做，先走 ADR-0015 白名单；③ 多会话关闭是**顺序**的（N × 1.5s 最坏），且 pump 每 16KiB 持一次整 broker 互斥锁、pump 线程**有意分离**（`PtyBackend::close` 契约上负责唤醒停住的读） | AR-13、DC-18、kernel/04 §3.1、AR-30 第 2 条 |
+| A23 | **H19（网格对齐 ≤0.5px）的测量机制已落地，但仍不是门禁数字（第 272 轮）**。`crates/termai-gpu/src/{offscreen,align}.rs`：离屏 render target + cell-quad 管线（WGSL 精确灰度覆盖，AR-14）+ 回读 + 从像素重建四边形边缘的测量；本机 **T0（DX12 硬件）** 实测四个 RP-05 DPI 档最差偏差 **0.0103 / 0.0096 / 0.0090 / 0.0077 px**（含真正的小数格子 7.8×16.25 … 15.6×32.5），**并已证明能失败**：注入 0.75px 位移 → 报 0.758px「EXCEEDED」。**运维副产品**：GPU 与 CPU 覆盖镜像的一致性测试（≤1/255）抓到一个真实合成缺陷——四边形为保住亚像素边缘而放大 1px 时，`blend: None` 会让邻居的零覆盖片段**擦掉已写像素**，改用预乘 alpha + 源覆盖后修复。 | T1 + T2 | ① `gate_eligible=false`，因为 `probe::PINNED_REFERENCE_DRIVERS` 为空（无 machine-fingerprint）→ ADR-0014 下**即便 T0 也是 NON-GATING**；~~② 图案是**矩形而非字形位图**，因此测的是 OQ-RND-04 的几何半边（quad 边缘 vs 理想网格线），**不是** `abs(glyph_bitmap_origin − cell_box_origin)`~~ → **② 第 272 轮已闭合（`a08e5f1`）**：`crates/termai-render/src/place.rs` 把**真实栅格化位图**按 cell box 摆放并测量 `abs(glyph_bitmap_origin − cell_box_origin)`，四档 DPI 实测 **0.5000 / 0.4375 / 0.5000 / 0.5000 px**（40 采样/档，refusals 0）。**新发现（必须记账，AR-19）**：三档恰好落在 **0.5px 上界**——那不是缺陷而是「理想网格线正好落在半像素」时 round-to-nearest 的数学最坏值（测试同时断言 `floor()` 会得 0.8750–0.9688px，故该探针对「截断式摆放」必红）；但其代价是**这条门禁的余量为零**：任何使格子度量或舍入轻微恶化的改动都会立刻越界，**应视为特性而非可调参数**。**仍未闭合的第三项**：~~③ 真实字形位图、注册钉定驱动、kernel/06 拥有采样方法 + `tools/design-gates` 判定并加逐档 golden~~ → 真实字形位图**已有**；**仍缺**：③ `place.rs` **尚无 S8 消费者**（`termai-render → termai-gpu` 边未准入，帧级/上屏链路不存在）；④ **RM-C + 钉定驱动指纹**（无它永远是 NON-GATING）；⑤ kernel/06 拥有采样方法 + `tools/design-gates`（G3/RP-05）拥有判定并加 100/125/150/200% 逐档 golden；⑥ OQ-RND-04 的 **Soft 预设**边缘质心判据未实现（当前只判 Sharp） | H19、RP-05、OQ-RND-04、AR-14、AR-19、ADR-0014、§8.1-3、kernel/03 S8 |
+| A24 | **检查点保真缺口：带 `CheckpointRef` 的 Log 无法忠实重建（第 272 轮由 A9 切片浮出）**。① `EngineReplay::restore` **不加载 CAS 内容**（仓库里**没有 CAS 存储**），因此检查点里的网格状态无法还原——**仍开放**；~~② `recover_session` **只重放 `PtyOut`，不重放 `Resize`**，所以窗口尺寸变化后的重建语义未定义。~~ → **② 已闭合（第 272 轮，commit `db838a5`）**：`recover_session` 现在按 **Log 顺序**把每条 `Record::Resize { cols, rows, .. }` 交给回放槽（`GridReplay::resize`，`crates/termai-session/src/checkpoint.rs`）——**在它所在的位置生效**，不是只在末尾套用一次最终尺寸，也不是只套用最后一条；sessiond 的重建路径由 `apps/sessiond/src/restore.rs` 的 `ResizeAwareReplay` 转发到与 broker `on_resize` 同一个 `TerminalEngine::resize`，机制测试 `apps/sessiond/tests/session_rebuild.rs` 覆盖「Log 中段 resize」「Log 末尾 resize」「无 resize 对照」，并在四个轴（`GridSnapshot` 含几何 / `canonical_bytes` / digest / 逐行文本）上做等值比较，另有差分断言证明 resize 是**按位置**生效而非只在末尾。**当前处置仍是诚实的**：fixture 断言 `checkpoints == 0`，且驱动在发现恢复是从检查点续接时**拒发计时报告**——即「不测自己不能保证的东西」。**该切片自报的两条后续（仍未做，如实记录）**：(a) `EngineReplay` **仍通过 trait 默认实现丢弃 `Resize`**，因此日后任何**直接**使用它（不经 `ResizeAwareReplay`）的调用者会再次退化——建议修法是 `apps/sessiond/src/registry.rs` 里加**约 3 行 override** 并**删掉 `ResizeAwareReplay`**（让唯一路径自己保真，而不是外包子类）；(b) **计时夹具仍只用一个尺寸**，所以 R1/R2 的读数**不覆盖 resize**（机制有测试，时延没有对应场景）。另有已知边界：**spawn 几何不是 Log 记录**，第一条被记录之前的 resize 无法恢复。 | T1 | ① 建 CAS 存储或在 Log 里内联检查点内容（ADR-0003 的既有设计需追认实现边界）——**仍开放**；~~② 让 `recover_session` 覆盖 `Resize`（并回答「resize 后的历史 tail 在哪个尺寸下重放」——与 kernel/03 的 reflow/V-06 连动）~~ → **② 已执行（`db838a5`）**：答案是「按 **Log 位置**回放」（`Resize` 之后的记录在改变后的几何下回放），不是「在某个尺寸下重放整段前缀」；③ ~~在此之前，`E-P0-4` 的「screen 可恢复」只能在**无检查点、无 resize** 的会话上成立于验收~~ → **更正为**：现在对**无检查点、有 resize** 的会话也成立于验收，**仍不能**对**带检查点**的会话成立；④ **新增**：按 (a) 给 `EngineReplay` 补 `resize` override 并删除 `ResizeAwareReplay`；⑤ **新增**：让计时夹具包含 resize 场景，使 R1/R2 覆盖几何变更 | AR-13、AR-26 第 4 条、ADR-0003、ADR-0009、kernel/04 §3.2/§3.3、`crates/termai-session/src/checkpoint.rs` |
+| A25 | **ZWJ / VS16 序列的列宽语义未定（第 272 轮由 K-04 统一浮出）**。统一到 `termai-vt::width::measure` 后，规则是**逐标量求和**（因为 `Grid::print` 一次只决定一个标量），于是「👩‍💻」算 **4 列**、「❤️」算 **1+0 列**；`unicode-width` 的**整串**形式（`UnicodeWidthStr::width`）在同一字符串内会做 ZWJ/VS 折叠，两者**不等价**。**本切片有意保持 `Grid::print` 的既有行为**（改它属于 VT 语义变更，不是宽度表变更），所以它消除的是「两套真相」，不是「序列宽度是否正确」。 | T1（+ 01/02 会签，因用户可见） | ① 需 owner 判定列宽语义归属：按标量（现状）还是按**字素簇/序列**；② 若改，须走 AR-28（对外契约变更）+ 与 kernel/01 的 xterm-oracle 差异登记（xterm 自身对 ZWJ 的处理即存在分歧，K-03 的仲裁顺序要落到具体条款）；③ **不得**在没有 ADR 与差异登记的情况下改，因为它是**用户可见的复制/对齐行为** | K-04、AR-28、K-03、kernel/01 §3.5、kernel/03 |
+### §2 八条不可协商约束的核实状态（第 196 轮汇总：已核实四条、空洞四条，后者因其対象尚未存在）
+
+| # | 约束 | 状态 | 依据 |
+| --- | --- | --- | --- |
+| **1** | **AR-03** 内核不依赖 AI／网络／UI | ✅ **已核实，且已被门禁守住** | 第 159 轮：六个内核 crate 的完整依赖表逐一读过（`termai-core` 零依赖）；**第 162 轮起由 `K4` 检查**（`KERNEL_CRATES` + `NETWORK_AI_UI_TOKENS`，`termai-render` 有意豁免——ADR-0024/0027 允许其引入 UI 库） |
+| **2** | **AR-01** 字符网格不由 WebView 渲染；WebView 不得覆盖原生 IME 浮层 | ⬜ **空洞**（**无 WebView 代码**——E-P0-2 未实现） | 不存在被约束的对象；**它会在渲染/UI 第一刀落地时第一次变得可违反** |
+| **3** | **AR-06** 破坏性操作确认不可由配置关闭 | ✅ **模型侧已按构造成立**（纯函数、无配置输入）；**执行侧不存在** | 第 166 轮：`risk.rs:67` 明文写着该条，且 `classify` 是纯函数；**第 167 轮：全仓搜 `risk::classify` 无生产调用者** → **「不可关闭」目前是空真**；**执行方属交互层，卡在 E-P0-2** |
+| **4** | **AR-07** 插件不得写 PTY／输出流、不得帧内绘制、不得持有句柄 | ⬜ **空洞**（**无插件宿主**） | 不存在被约束的对象 |
+| **5** | **AR-11** PTY 流／文件内容／命令输出／密钥永不进入服务端 | ⬜ **空洞**（**无服务端**） | 不存在被约束的对象；**旁证**：第 155 轮修掉的 `argv`／`chunk` 打印，是**本机日志**层面同类风险的实例，已修 |
+| **6** | **AR-12 / DC-33** secret 永不进入模型上下文、日志、遥测；脱敏在上下文构建器内 | ◐ **日志侧已核实**（第 155–156 轮：84 文件／37 个打印点逐条读过，修掉 2 处）；**上下文构建器不存在** → 该半空洞 | **遗留一处 scope 问题**：`logdump` 是否可显示 `PtyOut` 内容（第 156 轮登记，待 owner 澄清） |
+| **7** | **AR-04** 热路径禁用 JSON／gRPC | ✅ **已核实，且比要求更严** | 第 158 轮：**整个 Rust 工作区零 JSON 依赖**（不只热路径）；IPC 走 CBOR |
+| **8** | **AR-21** 核心链接边界内不得出现 GPL／AGPL／SSPL | ✅ **已核实，且已被门禁守住** | `K4` 的 `GPL_DENY_TOKENS`（`agpl`/`gpl`/`sspl`）+ `isDeniedName`，`kernel-gates` 8 PASS 中常有此条 |
+
+**结论**：**八条中四条已核实（其中两条已由门禁守住）、四条因対象尚未存在而空洞**。**空洞不是「安全」**——**它们是「尚未可违反」**：**AR-01 与 AR-12 的上半会在 E-P0-2 的第一刀落地时同时变成可违反，而那时需要的是「先写检查，再写代码」**（§6.3 规则 10）。
+
+**第 44 轮按同法复核 `DL` / `SD`**：两簇的**首个失败用例**分别是 `test_DL_ClearOutLeftRightAndTopBottomScrollRegion` 与 `test_SD_BigScrollLeftRightAndTopBottomScrollRegion`（`dl.py:215`、`sd.py:194`），名字里的 **LeftRight** 指向**左右边距**（`DECSLRM` / 使能模式 69）——**同样不在 §3.5 表内**，`set_private_mode` 无 69、`set_scroll_region` 只处理 `CSI r`。→ 这两个失败用例属 **(b) 子集外偏差候选**，**不是核心 DL/SD 错**。
+
+**但不得整簇搬走**：`DL`/`SD` 各有多条用例，我只举证了**首个失败用例**；其余用例（纯上下滚动区域）**仍可能暴露真实核心缺陷**，必须逐条读前言后再定性。**举证到哪一条，就只能豁免到哪一条**——这是 K-04 逐条登记的意义，也是我上一轮把整簇 BS 搬走时差点犯的错。
+**第 45 轮复核 `DECSET` 16 条（按用例名逐个归类，因为该簇是混合的）**：
+
+| 用例 | 归类 | 依据 |
+| --- | --- | --- |
+| `DECAWM_NoLineWrapOnTabWithLeftRightMargin`、`DECAWM_OffRespectsLeftRightMargin`、`DECAWM_OnRespectsLeftRightMargin`、`DECLRMM` | **(b) 子集外** | 左右边距（`DECSLRM` / 模式 69） |
+| `ReverseWraparoundLastCol_BS`、`ReverseWraparound_BS`、`ReverseWraparound_Multi` | **(b) 子集外** | `XTREVWRAP`（模式 45），与第 43 轮 `BS` 同因 |
+| `Allow80To132`、`DECCOLM` | **(b) 子集外** | 132 列切换 = **应用请求 resize**，与 `DECSLPP` 同属「动态 resize + reflow」设计问题 |
+| `ALTBUF`、`OPT_ALTBUF`、`OPT_ALTBUF_CURSOR` | **(a) 真缺陷候选** | 模式 1047 / 1049（切换时清屏 / 保存光标）——第 38 轮的回归测试只覆盖**模式 47**，1047/1049 未覆盖 |
+| `SaveRestoreCursor` | **(a) 真缺陷候选** | `DECSC`/`DECRC` 是核心语义（vttest 也覆盖） |
+| `DECOM`、`DECOM_DECRQCRA`、`MoreFix` | **(a) 待定** | `DECOM`（模式 6）我们已实现，需读前言确认是原点模式与边距/校验和的交互 |
+
+→ **结论**：`DECSET` 不能整簇定性——**约一半是子集外（边距 / 反向回绕 / 132 列），另一半是待查的真缺陷候选**。下一步优先查 **(a) 候选里的 `SaveRestoreCursor`**（核心、最小、vttest 也覆盖），其次 `ALTBUF` 1047/1049 家族。
+**第 46 轮复核 `SaveRestoreCursor`（我在第 45 轮把它列为「(a) 真缺陷候选，因为 DECSC/DECRC 是核心」）—— 又是错的**：`decset.py:565-573` 用的是 **`DECSET(SaveRestoreCursor)`**，即 **DEC 私有模式 1048**（`CSI ? 1048 h/l` 保存/恢复光标），而 `set_private_mode` 只处理 1/6/7/25/47/1047/1049/2004 → 光标未恢复（got `cursor.x()=5` vs expected 2）。**核心 `DECSC`/`DECRC`（`ESC 7`/`ESC 8`）我们本来就实现**，失败源于**未实现的扩展模式 1048** → 归 **(b) 子集外**。
+
+**方法教训已经重复三次**（`BS`→模式 45、`DL`/`SD`→左右边距、`SaveRestoreCursor`→模式 1048）：**逐个读用例是错的粒度**。正确做法是**机械地全量分类**——对每条失败用例，抽取其函数体里用到的 `DECSET/DECRESET/DECRQM` 模式常量（经 `esccmd.py` 解析成数值），与「我们已实现的模式集合」比对，一次性给出 `uses-unimplemented-mode` / `no-extension-mode`。**这项分析已派单**（见 `docs/audit/esctest-triage.md`），**在它完成前，不再逐条读用例**——避免继续用低效且易错的方式产出结论。
+> **A4 的权威分类来源（第 55 轮起）**：**机器产物 `docs/audit/esctest-classification.md`**（由 `tools/conformance/classify-esctest.mjs` 从 `docs/audit/esctest-failing-index.md` 纯变换生成）。**下面的逐簇/逐用例人工结论一律视为「历史归因记录」**——它们保留是为了留下证据链与三次自我更正的教训，**但不再作为当前事实**；引用当前分类请用那张表。 **✅ 流水线首次端到端验证（第 56 轮）**：CHT（`CSI Ps I`）/ CBT（`CSI Ps Z`）已实现（`f40d308`）。**实测（同一正确参数）**：passed **218 → 224（+6）**、failed **308 → 302（−6）**、CHT/CBT 失败 **6 → 1**、substitutions 仍为 0。**预测是「若归因正确则 +6」，实测正好 +6** —— 索引（308/308 定位）→ 分类（81/227）→ 定位 → 修复 → 可测效果，整条链条第一次闭合。**仍余 1 条**：`CHTTests.test_CHT_IgnoresScrollingRegion`（CHT 必须忽略滚动区域）——**未声称已修**，是下一个要读的用例。 **第 57 轮：那剩余的 1 条 CHT 已定性 = 范围问题，不是缺陷**。`cht.py:30-44` 先 `DECSET(DECLRMM)` 再 `DECSLRM(5, 30)`，期望 CHT 被**右边距**夹在 30（got 33）→ 属**左右边距族**（模式 69），按第 53 轮判断为 **(b) 子集外**（`kernel/01` 未登记 DECSLRM）。→ **CHT/CBT 的结论：不依赖左右边距的用例已全部修好；唯一剩余者是需要未登记能力的用例**。**另一处交叉验证**：分类器当初就把这条判成 `uses-unimplemented-mode`（模式 69），与人工复核一致——这是分类表准确性的一次独立确认。 **第 57 轮附带发现（供将来若决定做 DECLRMM 时用）**：`CSI Pl;Pr s` 当前会走进 `csi_dispatch` 的 `b's' if intermediates.is_empty() => save_cursor()`，**即左右边距设置被当成「保存光标」**。现在无害（我们不实现边距），但**一旦决定实现 DECLRMM/DECSLRM，必须先用参数个数区分二者**（DECSLRM 带 2 个参数，DECSC 的 `CSI s` 无参数）——**这是一处真实的序列冲突，不能留给实现者自己发现**。另：工作流**独立**用 `--include "test_(CHT|CBT)_"` 得到 6 passed / 1 failed，与我的全量结论一致——**两条独立方法互证**。 **⚠ 第 61 轮：第四个被推翻的假设（`CUD`/`CUU` 边距钳制）**。我核实了现状（`cursor_up`/`cursor_down` 的区间钳制**只在 `origin()` 开启时生效**），据此把条件改成「光标起始行落在 `[scroll_top, scroll_bottom]` 内」，**并实跑 esctest 验收**：结果是 **224 passed / 302 failed —— 与修复前逐字段相同**，两条用例**照旧失败**（`cud.py:62` 期望 `y=4`、`cuu.py:60` 期望 `y=2`，断言在**行**上，不在钳制上）。**改动已回滚**（不保留一个无法用数字证成、却会改变 CNL/CPL/VPR 行为的行为变更）。**结论：这两条失败的真实原因不是区间钳制**；需要读 `cud.py`/`cuu.py` 的函数体（可能涉及 origin mode 下的 CUP 语义或 DECSTBM 参数），**尚未定位**。**教训与第 38/39/43 轮同源**：**核实了一个机制，不等于核实了它与失败的因果**——「代码看起来该那样」与「改成那样能修好」是两件事，只有后者才值得改。 **第 62 轮：拿到了决定性数据，并确认第 61 轮的回滚是对的**。两条用例的**实际值**：`test_CUD_StopsAtBottomMarginInScrollRegion` **expected y=4，got y=24**；`test_CUU_StopsAtTopMarginInScrollRegion` **expected y=2，got y=1**。**两者都被钳到屏幕边缘（24 / 1），说明我的 `inside` 谓词评估为 false** —— 即**在 `CUD(99)`/`CUU(99)` 执行时，光标并不在我以为的滚动区间内**。而用例正文（`cud.py:53-59` / `cuu.py:51-57`）是 `DECSTBM(2,4)` → `CUP(Point(1,3))` → `CUD/CUU(99)`，**按理光标应在区内**。→ **真正未定位的是「`DECSTBM` + `CUP` 之后，我们的 `scroll_top/scroll_bottom` 与 `cursor_row` 到底是什么」**；下一步应当**直接打印这三个值**（而不是再从语义推理）。**方法教训（第 5 次）**：第 61 轮我先核实机制、再改，但**从未核实「失败时那三个变量的实际取值」**；本轮一拿到实际值（24 / 1）就能立刻判断谓词为假——**下一次遇到这类问题，第一件事是取实际值，不是读语义**。
+>
+> **仍需人判断的三件事（机器无法给出）**：① DECRQM 的 oracle 分歧（**SD-22**）；② 「esctest 全通过」的判定域是子集还是全集（**SD-23**，左右边距 72 条、颜色 40 条都挂在这上面）；③ 在**尚未渲染颜色**时报不报一套 256 色调色板才算诚实的能力声明。
+**由此得到的**前置条件**（第 197 轮，写进本文件以便它在 E-P0-2 开工时被读到）**：
+| 约束 | 第一刀落地后会第一次可违反的方式 | 因此必须先有的检查 |
+| --- | --- | --- |
+| **AR-01** 字符网格不由 WebView 渲染；WebView 不得覆盖原生 IME 浮层 | **一旦 WebView 与原生网格并存**，就有「网格被 WebView 画了」这一可违反状态 | **一条能判定「网格像素由哪一侧产出」的检查**，**须带注入（人为让 WebView 画一格 → 必须报错）与对照** |
+| **AR-12 上半** 脱敏在上下文构建器内完成 | **一旦出现上下文构建器**，就有「secret 未经脱敏进入上下文」这一可违反状态 | **一条对上下文构建器的脱敏检查**——**注入含 secret 的输入 → 必须被脱敏或拒绝；对照：无 secret 输入须原样通过** |
+
+**写法有意与规则 10 同形**：**不是「记得注意 AR-01/AR-12」，而是「它们各自需要一条带注入与对照的检查，且要在代码之前」**——**因为本会话三次抓到「门禁通过但不能失败」，三次都不是有人忘了规则，而是检查写得比它守的东西晚。**
+
+**另：AGENTS §5「不修改历史」的核实（第 209 轮）**：**`docs/roles/` 下 10 个文件（冻结证据）**——**`git log -- docs/roles` 全历史只有**一次提交**触及它们：`a7a7591`（仓库初始化）**。**即：**冻结证据自初始化以来从未被修改过**，包括本会话的全部提交。**
+**与 `HARNESS.md` 的区分（同一轮核实）**：**§5 的原文是「HARNESS 的既有 **AR** 只追加不篡改」**——**保护的是 AR 条目**。**本会话对 HARNESS 的唯一改动（第 194 轮，`ADR-0001…ADR-0027` → `…0028`）是一行**目录清单**，**不是 AR 条目**；而该行的更新本就是既有约定（`git log -L 686,686:HARNESS.md` 显示每次新增 ADR 都会改它）。**因此**：**冻结证据零改动 ✓、HARNESS 只改了一行非 AR 的清单 ✓**——**两条约束都成立。**
+
+**E-P0-2 的第一刀（渲染/UI 宿主）落地时，以下两项检查必须**先于**该切片的代码存在**——**依据 §6.3 规则 10 的反向用法：当一个约束即将第一次变得可违反时，先建它的检查。**
+
+### A4 附：簇级归因的方法教训（第 43 轮更正）
+
+**上一轮我把 `BS` 的 8 条失败列进「(a) 真缺陷（核心 VT，必须修）」，这是错的。** 读 `bs.py:173-189` 的**测试前言**可见：该组用例先 `DECSET(DECAWM)`，再 **`DECSET(XTREVWRAP)`**（xterm 扩展模式 **45**），然后期望 BS 能**反向跨行**回退；而 `set_private_mode` **没有 45 这一支**，光标被夹在第 1 列（实测 got `Point(1,5)`，expected `Point(5,3)`）。**失败由未实现的扩展模式引起，不是核心 BS 语义错** → `BS` 更正为 **(b) 子集外偏差候选**（依据：XTREVWRAP 不在 `kernel/01` §3.5 表内）。
+
+**方法教训（比这条更正更重要）**：esctest 的**簇名按特性分组，不等于根因在核心语义**。判定必须读**用例前言里启用了哪些模式/扩展**，不能从簇名推断。`DL` 7 / `SD` 6 / `DECSET` 16 等簇**必须按同法逐个复核后**才能定性。
+
+**与上一轮注意事项并存（两者都成立）**：「不在 §3.5 表里」**本身**不构成偏差借口（第 42 轮的注意事项），但**当用例前言明确启用了我们未实现的扩展模式时，就有正面证据**指向子集外——这两条不矛盾：前者禁止**推断**豁免，后者要求**举证**豁免。
+> **A4 的可读性维护（第 47 轮自省）**：A4 行经第 36–46 轮已累积大量逐簇更正与三处自我更正，**正在变成一坨难以阅读的补丁堆**——而「缺口被弄丢」正是本登记表要防的事，**表本身变难读就是同一个失败模式的另一种形式**。 **管道现状（第 49–51 轮）**：① 第 1 段已由负责人完成并入库——`tools/conformance/failing-index.mjs` → `docs/audit/esctest-failing-index.md`（**308 条失败用例，308 条定位成功，0 未解析**）；② 第 2 段（**纯变换**：按 `file:line` 读函数体、抽取 `DECSET/DECRESET/DECRQM` 模式、与已实现集合比对并分类）已派单，产物为 `docs/audit/esctest-classification.md`（含三类计数与 **top10 未实现模式号**）。**在那张表落地前，A4 不再新增逐用例人工结论**（前 46 轮已因此撤回三次）。 **分类表已落地（第 52 轮，机器产物）**：`docs/audit/esctest-classification.md`（由 `tools/conformance/classify-esctest.mjs` 生成，纯变换）。**308 条失败分类为：81 条 `uses-unimplemented-mode`（子集外候选）+ 227 条 `no-extension-mode`（核心缺陷候选）**。**最高杠杆单点：模式 69（DECLRMM）一项就占 81 条里的 72 条**；其后是 40×5、45×4、3×4、95×2、41×1、1048×1。**重要限制**：分类器只能看见 `DECSET/DECRESET/DECRQM` 调用，**看不见直接发出的序列**（如 `DECSLRM` 是 `CSI Pl;Pr s`，不是 DECSET 调用），所以 **227 是核心缺陷候选的「上界」，不是定论**——仍需按 K-04 逐条核。 **范围判断：模式 69 / DECSLRM（第 53 轮）**：`kernel/01` **全文 0 次提及** `DECSLRM` / `DECLRMM` / 左右边距（仓库内命中仅来自我方的分析文档与 esctest 用例名）。→ **左右边距未在任何处登记**，既不在 §3.5 扩展子集，也不在核心控制序列清单里。**结论：分类表里那 72 条属 (b) 子集外偏差候选，须按 K-04 登记（依据：未登记）；实现 DECLRMM/DECSLRM 是「超出冻结范围的能力新增」，需要 owner/ADR 决定，不能因为「能让数字变好」而顺手做掉。** **这条恰好是本节最该记住的一句：台账里最大的数字，不等于最大的义务。** 真正的靶子仍是那 **227 条核心缺陷候选（其中 218 条完全不涉及 DECSET）**。 **第 54 轮：从「核心缺陷候选」里挖到第一组真缺陷，同时发现分类器第二处盲区**。① **真缺陷（ECMA-48 标准、oracle 第 1 档）：`CHT`（`CSI Ps I`）与 `CBT`（`CSI Ps Z`）两簇共 6 条** —— `csi_dispatch` 里**既没有 `b'I'` 也没有 `b'Z'`**（`csi_known` 同样未列），所以它们被当成未知序列忽略。这是本项目 G1 台账里**第一条被定位的核心语义缺陷**（此前 SD-19 与 DECALN/HPA/HPR/REP 分别是窗口查询与遗漏序列）。② **分类器盲区（更正第 52 轮的 227）**：它只看 `DECSET/DECRESET/DECRQM`，**看不见 OSC 与直接 CSI** —— 因此 **40 条颜色用例（OSC 4/10/11/12 驱动）与 `BS_ReverseWrap*`（模式 45 驱动、但函数体里只看得见已实现的模式 7）都被错误归入「核心缺陷候选」**。→ **227 这个数应读作「未由 DECSET 调用解释的失败」，其中至少 40 条颜色 + 4 条反向回绕应从核心缺陷中剔除**。
+>
+> **处置**：等 `docs/audit/esctest-triage.md`（机器产物的全量分类）落地后，A4 的**逐用例/逐簇人工结论应被替换为**：
+> 1. **一个指针**指向 triage 表（可复核的机器产物）；
+> 2. **仅保留三类机器无法判定的开放问题**：**(i) SD-22 的 DECRQM oracle 分歧**；**(ii) SD-23 的「esctest 全通过」判定域**（**§8 两条同强度条款中哪一条管辖**：套件 100%，还是 xterm ≥99%+差异登记——第 225 轮改）；**(iii) 颜色查询的能力声明决定**（无渲染时报不报 256 色）；
+> 3. 历史更正**不删除**，但**移入单独小节**（保留证据链），不再与当前结论混排。
+>
+> **在此之前不执行这次重整**：triage 表未落地就想清理，会把唯一可信的分类依据提前删掉。
+### A4 附：第 63 轮——两条测量路径互相矛盾（未解，已排除三种解释）
+
+**证据**：① **直接探针**（在 `cargo test` 里 feed `\x1b[2;4r` → `\x1b[3;1H` → `\x1b[99B`）显示 `region=(1,3)`、光标 `(2,0)` **在区内**；**带上钳制改动后 `CUD(99)` → `(3,0)`，正是期望的 y=4**。② **同一次 esctest 全量**仍报 `expected 4 got 24` / `expected 2 got 1` —— 而**这两个值恰好等于「区间=全屏 0..23」时该改动所产生的输出**。
+
+**已排除**：**(a) 二进制陈旧**（`exe` 的 LastWriteTime 比 `grid.rs` 新，且 `cargo build` 无 `Compiling`）；**(b) CUP 编码不同**（`esccmd.CUP(Point)` → `params=[point.y(), point.x()]` → `CSI 3;1H`，与探针一致）；**(c) 断言读的位置**（两条都断言在 `y()` 上）。
+
+**未解之谜**：**esctest 路径下 `DECSTBM(2,4)` 之后 `scroll_top/scroll_bottom` 到底是什么？** 若为全屏，则两个 got 值同时成立。
+
+**下一步（明确可执行）**：**在真实路径里取数**——让 harness 在 `CUD`/`CUU` 上输出一次性诊断（或让探针走同一条 `--server` 路径），直接打印 esctest 路径下的 region 与光标；**不要在另一个测试里复现序列再跨路径比较**。改动已回滚、探针已删除，证据留在本条。
+### A4 附：第 64 轮——真实路径测量法（本会话最有用的工具）与 CUD/CUU 的半解
+
+**方法**：不必靠 esctest 全量去判断一个改动是否生效，可直接驱动 harness 本体——它的行协议是 `FEED <hex>`：
+
+```powershell
+$s = "FEED 1b5b323b34721b5b333b31481b5b3939421b5b366e`nQUIT`n"   # DECSTBM(2,4); CUP(3;1); CUD(99); DSR
+$s | & .\target\debug\termai-vt-conformance.exe --server
+```
+
+**实测**：改动前 `RESP 1b5b32343b3152`（`\x1b[24;1R`，第 24 行）；改动后 `RESP 1b5b343b3152`（`\x1b[4;1R`，**第 4 行 = 规范要求**）。**已提交**（`f4fe7fe`）。
+
+**同时解释了第 61/63 轮的「无效果」**：那两次 `cargo build` 输出 `Finished ... in 0.04s` 且**没有 `Compiling` 行**——**量的是未含改动的旧二进制**。**教训：`cargo build` 必须看到 `Compiling termai-vt` 才算重建；否则测的是旧产物。**
+
+**仍未解**：同一份 exe 直接 `FEED` 得到第 4 行，但**经适配器跑 esctest 仍是 `got 24`**（passed 仍 224 / failed 302）。**差异在适配器发送的内容或其建立的状态，不在此改动**。**因此那两条用例不声称已修好**；下一步：对单条用例 dump 适配器实际 FEED 的字节。
+### A4 附：第 65 轮——单条用例的 3 秒复现回路（下一轮直接用）
+
+**复现一条失败用例，不必跑 60 秒全量**（注意：`--include` 与 `--v` 都是 **esctest 参数，必须放在 `--` 之后**；适配器自己不认识它们）：
+
+```powershell
+python tools/conformance/upstream/esctest_adapter.py --esctest C:\Users\z5075\AppData\Local\Temp\termai-conformance-upstream\esctest2 `
+  --out target/conformance/dbgcud -- --expected-terminal xterm --xterm-checksum 336 `
+  --include test_CUD_StopsAtBottomMarginInScrollRegion --v 2
+```
+
+**已确认**：单条运行**照样复现**（`0 passed / 1 failed`，`got 24`），所以这个回路可用于快速迭代。
+
+**但 `esctest.log` 里没有线缆字节**（`--v 2` 不含发送序列），所以下一步必须在**适配器边界**取数，二选一：① 临时在 `esctest_adapter.py` 的 `link.feed` 处打印 `data.hex()`（改一行，用完撤）；② 用适配器的 `--harness` 参数指向一个**会 tee stdin 的包装脚本**，再把包的 stdin 落盘。**取到真实 FEED 字节后，与第 64 轮手工 FEED 的 `1b5b323b3472 1b5b333b3148 1b5b393942` 逐字节比对**——差异就是答案。
+### A4 附：第 66 轮——找到了 CUD/CUU 的真因，但修它使总数变差（已回滚，记录权衡）
+
+**真因（已用字节级证据确证）**：适配器的 `feed()` **在每次 FEED 之后都发一条 `RESIZE <cols> <rows>`**（同一尺寸）。而本仓库的 `Grid::resize` **即使尺寸不变也会重建状态、清掉滚动区域**。实测：
+
+```powershell
+# 手工喂入：DECSTBM(2,4) ; CUP(3;1) ; CUD(99) ; DSR
+FEED 1b5b323b3472 / RESIZE 80 24 / FEED 1b5b333b3148 / RESIZE 80 24 / FEED 1b5b393942 / RESIZE 80 24 / FEED 1b5b366e
+# 结果：RESP 1b5b32343b3152  → \x1b[24;1R（第 24 行）＝ esctest 观测到的失败值
+# 去掉中间的 RESIZE：RESP 1b5b343b3152  → \x1b[4;1R（第 4 行）＝ 规范要求
+```
+
+并且**适配器实际发送的字节与手工喂入逐字节相同**（`1b5b323b3472` / `1b5b333b3148` / `1b5b393942` / `1b5b366e`），**唯一差别就是那三条穿插的 `RESIZE`**。→ **滚动区域在测试中途被同尺寸 RESIZE 抹掉**，这就是那两条用例失败的原因，也解释了为什么直接 FEED 是对的、经适配器却错。
+
+**修法与其代价（关键）**：给 `Grid::resize` 加「尺寸未变则直接返回」的守卫——**这在真实路径上确实修好了那两条**（`RESP 1b5b343b3152`），**但全量 esctest 从 224 passed / 302 failed 掉到 205 / 321（−19）**，且新失败的包括 `CUD_ExplicitParam`、`CUU_DefaultParam` 这类**基础用例**。
+
+**解释（假说，需下一轮验证）**：适配器那条「每次 FEED 后 RESIZE」实际上**在充当测试之间的状态重置**；它把滚动区域/保存状态清掉，从而**掩盖了本终端在测试之间不重置状态的泄漏**。一旦同尺寸 RESIZE 变成真 no-op，泄漏暴露，测试互相污染。
+
+**处置**：**守卫已回滚**（`git checkout`）；`kernel-gates` 8 PASS、`cargo test -p termai-vt` 0 失败。**正确的修法不在终端一侧单独完成**：要么① 适配器**只在尺寸变化时**发 RESIZE，并**显式**在用例间重置状态；要么② 终端提供/修正**用例间的复位**（`RIS`/`DECSTR` 是否完整重置滚动区域与保存状态——这本身可能就是缺陷）。**下一轮应从②开始查**：`esctest` 的 `reset()` 发什么、我们是否完整响应。
+### A4 附：第 67 轮——状态泄漏的真因是 **DECSTR 未实现**（已派单）
+
+**证据**：`grid.rs` 只有 RIS（`b'c' => self.reset()`，见 996 行），**没有任何处理 `CSI ! p`（DECSTR）的分支**；而第 66 轮捕获的 esctest 前导字节里**确实有 `1b5b2170` = `\x1b[!p`**。→ **esctest 的用例间复位指令被我们完全忽略**，滚动区域/保存状态因此跨用例泄漏；适配器那条「每次 FEED 后 RESIZE」**一直在替我们做复位**，所以第 66 轮加上 resize no-op 守卫后暴露泄漏、passed 从 224 掉到 205。
+
+**因此正确顺序是**：**先实现 DECSTR**，再让 resize 的 no-op 守卫变得安全。**已按此顺序派单**，并要求它实测**三个数字**（只 DECSTR / 再加守卫 / 与基线 224-302 对比），且**若加守卫后仍低于基线，就只保留 DECSTR**——**不为「实现完整」保留一个让总数变差的改动**。
+
+**这同时是一个独立的核心缺陷**（标准 xterm 控制序列缺失），与 CHT/CBT 同类：**由 esctest 抓到、被分类表归入核心候选、根因明确、可一轮实现**。
+### A4 附：第 68 轮——用真实路径独立确证 DECSTR 是 no-op（并顺带确证第 64 轮的修复生效）
+
+```powershell
+# 控制组：DECSTBM(2,4) ; CUP(3;1) ; CUD(99) ; DSR
+$s  = "FEED 1b5b323b34721b5b333b31481b5b3939421b5b366e`nQUIT`n"
+# 实验组：在 DECSTBM 与 CUP 之间插入 DECSTR（1b5b2170）
+$s2 = "FEED 1b5b323b34721b5b21701b5b333b31481b5b3939421b5b366e`nQUIT`n"
+$s  | & .\target\debug\termai-vt-conformance.exe --server   # RESP 1b5b343b3152  → \x1b[4;1R
+$s2 | & .\target\debug\termai-vt-conformance.exe --server   # RESP 1b5b343b3152  → \x1b[4;1R
+```
+
+**两个判读**：① **控制组给出第 4 行**（区域钳制生效）→ **第 64 轮的 `f4fe7fe` 在真实路径上确实有效**，再次确证；② **插入 `DECSTR` 后结果不变**→ **DECSTR 当前确实是 no-op**，与第 67 轮从代码得出的结论一致（**两条独立方法互证**）。
+
+**一次失败的实验也记下**：最初我把控制组写成「`DECSTBM; CUD(99)`（**漏了 CUP**）」，得到第 24 行——那**不是** DECSTR 的证据，而是**因为 `DECSTBM` 把光标归位到区域外（第 0 行），按第 64 轮的语义「起始在区域外则按屏幕边界」**。**教训：判别性实验必须让两组只差一个变量，否则结论无从谈起**（我第一版两组都差了两个变量）。
+### A4 附：第 70 轮——DECSTR 落地，CUD/CUU 之事收口（**+15 passed**）
+
+**已提交 `1b9656c`**：① 实现 **DECSTR（`CSI ! p`）** 的 `soft_reset()`（**不重用 `reset()`**，因为后者经 `Grid::new` 会清屏）；② 同尺寸 `resize` 变为真 no-op。
+
+**实测（同一调用，对比基线 224 passed / 302 failed）**：
+
+| 组合 | passed | failed |
+| --- | --- | --- |
+| 仅 DECSTR | 223 | 303 |
+| **DECSTR + resize no-op 守卫** | **239** | **287** |
+
+→ **+15 passed / −15 failed**。**第 66/67 轮的假说得到确证**：同尺寸 RESIZE 之所以在**单独**加守卫时让总数变差（224→205），正是因为它一直在**替我们执行未实现的 DECSTR**；DECSTR 一旦存在，守卫从 −19 变成 **+16**。
+
+**真实路径判别对**（同一二进制）：`DECSTBM(2,4); CUP(3;1); CUD(99); DSR` → `\x1b[4;1R`（区域钳制）；中间插入 `DECSTR` → `\x1b[24;1R`（区域回全屏）。**两条都符合规范**。
+
+**仍如实记账**：**单独 DECSTR 比基线差 1 条**（223/303）。保留它是因为它实现了一个**本就缺失的标准序列**，且**正是它让守卫安全**；**成对使用是明确的净收益**。
+
+**权威口径更新为 239 passed / 41 known-bug / 287 failed / substitutions 0。**
+### A4 附：第 72 轮——流水线复跑发现第 70 轮**内含一处回归**（+15 是毛收益，净含 −4）
+
+用第 70 轮的新运行（239 passed / 287 failed）重跑流水线两段（索引 + 分类），得到：
+
+- 失败 **308 → 287**；`uses-unimplemented-mode` **81 → 80**（模式 69：72 → 71）；核心候选 **227 → 207**（其中 **198 条完全不涉及 DECSET**）。
+- **但**：核心候选表里出现 **`CBT_ExplicitParameter`、`CBT_OneTabStopByDefault`、`CHT_ExplicitParameter`、`CHT_OneTabStopByDefault`** —— **这 4 条在第 56 轮修好 CHT/CBT 后是通过的**。
+
+→ **第 70 轮的改动使这 4 条回退**。**第 70 轮的 `+15 passed` 是毛收益：它同时带来 −4。净 +15 仍然成立（239 vs 224），但「+15」这个说法掩盖了一处回归——本条就是更正它。**
+
+**假说（待验证）**：这 4 条依赖**默认制表位**（每 8 列）。此前**适配器每次 FEED 后的同尺寸 RESIZE 会经 `Grid::new` 重建网格**，顺带把制表位恢复为默认——**它在掩盖制表位跨用例泄漏**。第 70 轮把同尺寸 RESIZE 变成真 no-op 之后，泄漏暴露；而 **DECSTR 目前没有重置制表位**（xterm 的 DECSTR 是否重置制表位需查证：RIS 一定重置）。
+
+**下一步（明确）**：查 xterm 的 DECSTR 是否重置制表位；若是，在 `soft_reset()` 里补上（`tab_stops` 恢复为每 8 列），再复跑 esctest 看这 4 条是否回来、总数是否 > 239。**在查明前不要把这 4 条当作「新发现的核心缺陷」**——它们是本会话自己造成的回退。
+### A4 附：第 73 轮——用已有日志做零成本二分：**回退由 resize 守卫造成，与 DECSTR、制表位无关**
+
+不需要再跑 esctest，直接比对已存在的四次运行的日志：
+
+| 运行 | 组合 | CHT/CBT 失败数 | passed |
+| --- | --- | --- | --- |
+| `chtcbt` | 基线（含 CHT/CBT 修复） | **1** | 224 |
+| `decstr1` | **仅 DECSTR** | **1** | 223 |
+| `decstr2` | **DECSTR + resize 守卫** | **5** | 239 |
+| `tabs` | 再加「DECSTR 重置制表位」 | **5** | 239 |
+
+**结论**：① **DECSTR 本身不造成 CHT/CBT 回退**（仍为 1）；② **回退由 resize no-op 守卫造成**（1→5）；③ **补「DECSTR 重置制表位」既不修复也不加分**（239/287 不变，CHT/CBT 仍 5）→ **制表位假说被推翻**（本会话第 5 次），该改动**已回滚**（无实测收益的改动不留）。
+
+**因此 guard 的账应记为**：单独 −19；在 DECSTR 之上 **+16 毛（223→239）**，其中 **−4 落在 CHT/CBT、+20 落在别处**。**净收益为正所以保留**，但**这 −4 的机理仍未定位**。
+
+**下一轮的可执行二分**（每步一次运行）：① 只实现「同尺寸 resize no-op、不加 DECSTR」→ 已知 205；② **只加 DECSTR、把 resize 守卫换成「仅当尺寸变化才重建、同尺寸时仍恢复制表位」**——即**把守卫拆成两部分**，看哪一部分导致 CHT/CBT 回退。**在定位前，CHT/CBT 那 4 条不作为新缺陷登记**。
+### A4 附：第 74 轮——下一个核心候选 **DA（设备属性）**，以及它为何不能直接派单
+
+**事实**：`grid.rs` 里 `b'c'` **只有一处**（第 1015 行，在 `esc_dispatch` 中，是 `ESC c` → RIS）。**`csi_dispatch` 里没有 `CSI c`（DA）分支** → **我们根本不回答设备属性查询**。而 `vte_adapter.rs:627` 把 `b'c'` 列入「已知」→ 于是它**被当作已知序列却毫无处理**（计数与行为不一致，值得顺手记一笔）。
+
+候选表里对应 **4 条**：`DATests.test_DA_0`、`test_DA_NoParameter`、`DA2Tests.test_DA2_0`、`test_DA2_NoParameter`。
+
+**为什么不能直接派单（按第 7 条，负责人必须先判断）**：**回答 DA 等于对外声明「我是谁」**。esctest 以 `--expected-terminal xterm` 运行，**只有当我们声称与 xterm 兼容的设备身份时它才会通过**。而在 AR-20（诚实原则）之下，**为了让一致性套件变绿而声称自己是 xterm，是一个产品/对外契约层面的决定**，不是实现细节——这与颜色查询那件事（SD-23 下的第三问）是同一类问题：**能力声明**。
+
+**需要的判断（交由 owner / 写 ADR）**：TermAI 的 DA/DA2 应报告什么？① 报告自身的真实身份（VT 级别 + 自有扩展），并接受 esctest 这 4 条**按子集读法登记为差异**；② 或声明 xterm 兼容身份（则这 4 条可通过，但**该声明必须有对应的真实兼容度支撑**，否则违背 AR-20）。**在决定之前，这 4 条不派单、也不计入「待修缺陷」。**
+
+**下一个可派单的核心候选**：`DCHTests.test_DCH_WorksOutsideTopBottomMargin`（DCH 是核心编辑功能；从名字看与「上下边距之外也应生效」有关，与第 64 轮修好的 CUU/CUD 边距族相邻）。**先读用例正文再动手**（这是本会话反复得到的教训）。
+### A4 附：第 75 轮——DCH 在单元层正确、esctest 却看到旧内容：**同类差异第二次出现，判定为系统性**
+
+**候选**：`DCHTests.test_DCH_WorksOutsideTopBottomMargin`。**先说被推翻的两条**：读代码后，**(a) `delete_chars` 没有任何滚动区守卫**（所以「只在区域内生效」不成立）、**(b) 空白填充的循环存在且正确**（`end - shift..end`）——**两条直觉都被代码推翻**。
+
+**实测失败的精确值**（`decstr2` 日志）：`At Point(x=1..5, y=1) expected ' ' (0x20) but got 'a','b','c','d','e'` → **DCH 完全没生效**。（注意：因 `--xterm-checksum 336 ≥ 279`，esctest 不做取反，**比较的是原始码位**。）
+
+**单元层探针（`cargo test`，喂同样的字节）**：
+```
+after DECSTBM: cursor=(0, 0) region=(1, 2)
+after CUP:    cursor=(0, 0)
+after DCH:    cursor=(0, 0) row0=""      ← DCH 正确清空了该行
+```
+→ **单元层行为正确，esctest 观测到的却是 DCH 之前的内容。**
+
+**这是同一类差异的第二次**（第一次是第 63–70 轮的 CUD/CUU：单元层 `\x1b[4;1R` 正确、esctest 报 24）。**两次都不是用例特有的**，所以应**判定为适配器/harness 路径上的系统性问题**，而不是继续逐例诊断。**在定位它之前，不要把任何「单元层已正确」的用例当作已修好。**
+
+**下一步（精确、可执行）**：在 harness 处理 `CHECKSUM` 时**打印它当时看到的网格行内容**（用一个环境变量开关，避免污染正常输出）。**这能一举区分两种可能**：① harness 的网格确实与终端产出不一致（则问题在 FEED/RESIZE 的处理顺序或缓冲）；② 网格一致而校验和计算有偏。**这是把「两条路径不一致」这件事本身测量出来的最短路径。**
+### A4 附：第 76 轮——**更正第 75 轮的结论**：不是「harness 与终端不一致」，而是**用例间互相污染**
+
+**两个实验，一个推翻我自己上一轮的判断，一个给出工具。**
+
+**实验一（不需要改代码）**：用 `--server` 行协议**照适配器的样子**重放 DCH 那条用例的序列（每步 FEED 之后都跟一条同尺寸 `RESIZE 80 24`），然后问 harness 单元格 (1,1) 的校验和：
+```
+FEED 6162636465 / RESIZE 80 24 / FEED 1b5b323b3372 / RESIZE 80 24 /
+FEED 1b5b313b3148 / RESIZE 80 24 / FEED 1b5b393950 / RESIZE 80 24 /
+CHECKSUM 1 1 1 1
+→ CHECKSUM 32   ← 空白（0x20）
+```
+→ **harness 的网格是正确的**（DCH 生效了）。**所以第 75 轮「harness 观测与终端产出不一致」的说法不成立，予以更正。**
+
+**实验二（关键）**：把 DCH 那条用例**单独跑**（`--include test_DCH_WorksOutsideTopBottomMargin`）：
+```
+*** 1 test passed, 0 known bugs, 0 tests failed ***
+```
+→ **它单独跑是通过的。** 而在全量里它是失败的。**所以这是用例间的状态污染，既不是 harness 的 bug，也不是 DCH 的缺陷。**
+
+**结论（替换第 75 轮的结论）**：`DECSTR` 已经消掉了很大一部分跨用例泄漏（+15 即来自此），**但并未消掉全部**——本终端仍有状态在用例之间残留。**因此「单元层正确、全量失败」的正确解释是「被前一个用例污染」，不是「两条测量路径不一致」。**
+
+**这给了我们一个便宜而有力的工具**：`--include <用例名>` 单跑。**用法**：凡是全量失败的用例，单跑一遍——**通过 ⇒ 污染；仍失败 ⇒ 真缺陷**。这比继续猜有效得多，**应当作为分诊的标准第一步写进流程**。
+
+**下一步**：① 用 `--include` 批量筛出「污染型」失败（估计数量可观）；② 找出 DECSTR 尚未复位、却被用例间共享的状态（候选：保存的光标/状态、模式、SGR、`saved_*` 系列），补进 `soft_reset()`，每补一批测一次全量。
+### A4 附：第 77 轮——用量化校准「污染」占比：**不是主导因素**
+
+把第 76 轮的 `--include` 判据**按类**施加，与全量失败数对比：
+
+| 类 | 全量失败数 | 单类隔离结果 |
+| --- | --- | --- |
+| `DCHTests` | **4** | **3 passed / 3 failed** → 隔离只挽回 **1** 条 |
+| `DECBITests` | 4 | （本次无输出，见下） |
+| `DECDCTests` | 6 | （本次无输出，见下） |
+
+**判读**：**污染是真实存在的，但在这一类里只占 4 分之 1**——**它不是 287 条失败的主导解释**。结合第 76 轮单跑 DCH 那条通过，可以确认：**污染确实存在、可用 `--include` 逐条识别，但大多数剩余失败仍是真缺陷或子集外序列**。
+
+**这修正了一种诱人的想法**：「既然有污染，那大部分失败可能都是假的」。**数据不支持这个想法**——**287 条里的大部分仍要按真缺陷或范围问题逐条处理**。
+
+**待修的方法问题（留给下一轮）**：`DECBITests` 与 `DECDCTests` 两次调用**没有输出**（很可能 `--include` 的模式匹配不到该类名，或输出目录/参数有误）。**下一次应先验证 `--include` 的模式写法**（用已知会匹配的类名试一次），再批量跑——**否则会得到「0 条失败」这种看似乐观、实为无效的结果**。
+### A4 附：第 78 轮——`DCHTests` 这一类已被**完全解释**，不是可挖的矿脉
+
+隔离运行 `--include DCHTests` 的 3 条失败，**全部是边距类**：
+
+- `test_DCH_DeleteAllWithMargins`、`test_DCH_RespectsMargins` → 上下边距（`DECSTBM`）相关；
+- `test_DCH_DoesNothingOutsideLeftRightMargin` → **左右边距（`DECSLRM` / 模式 69）**，按第 53 轮判断属 **(b) 子集外**（`kernel/01` 未登记 `DECSLRM`）。
+
+**加上第 76 轮已定性的 1 条污染（`test_DCH_WorksOutsideTopBottomMargin`）**，`DCHTests` 的 4 条全量失败**已全部有归属**：**3 条边距族（其中左右边距属子集外）+ 1 条污染**。
+
+**结论与方法收益**：① **DCH 类没有留下未解释的核心缺陷**，不必再投入；② 更重要的是**这套「全量失败 → 隔离 → 归类」的三步法现在被验证可用**：它在一轮内就把一个类**从「4 条失败」推进到「每条都有归属」**；③ 也再次印证模式 69（71 条）是子集外失败的**主要来源**，**在 SD-23 的判定域问题被 owner 追认之前，围绕边距的一切都不该投入**。
+
+**仍待修的方法问题**：`DECBITests`/`DECDCTests` 的隔离运行**依旧无输出**（第 77 轮已记）。**下一轮应先用一个已知能匹配的类名验证 `--include` 的写法**（`DCHTests` 可以），再批量——**空输出必须当作「无效」而不是「0 失败」**。
+### A4 附：第 79 轮——**DECSTR 补全复位 → 253 passed（+14）**，并更新权威口径
+
+`soft_reset()` 原先只复位滚动区域、光标与 `wrap_pending`。本轮补上 xterm DECSTR 同样会复位、**且会跨用例泄漏**的状态：**SGR（字符属性）、保存的光标与 alt 保存光标、字符集、`last_graphic`、光标可见性，以及 DECSTR 负责的模式**（原点模式与插入模式关、自动换行开、光标显示）。
+
+**实测（同一调用）**：
+
+| 阶段 | passed | failed |
+| --- | --- | --- |
+| DECSTR 之前 | 224 | 302 |
+| DECSTR + 同尺寸 resize no-op（`1b9656c`） | 239 | 287 |
+| **补全复位（本轮 `d038ce9`）** | **253** | **273** |
+
+→ **本会话第三次可复现的净增益（+6、+15、+14），且这次的证据最直接**：**在完全不改用例所测序列的前提下，仅仅把用例之间的复位做得更完整，就有 14 条开始通过**——**这是「剩余失败中含跨用例污染」目前最强的证据**。
+
+**口径修正**：第 77 轮我用 `DCHTests` 一类把污染估为「少数」（4 条里 1 条）。**本轮表明那是个偏低的估计**——**单类 DCH 不能外推到全体**。**污染占比仍需用三步法逐类测**（`--include` 单跑），**但那正是下一步该机械做的事**。
+
+**权威口径更新为 253 passed / 41 known-bug / 273 failed / substitutions 0。**
+### A4 附：第 80 轮——复位这条矿脉**本轮无产出**（已回滚），下一步转向三步法批量分诊
+
+继续往 `soft_reset()` 里补状态：**`cursor_style = 0` 与 `combining.clear()`**（构造函数里仅剩的两处可能有意义者；其余字段全是**计数器/遥测**，DECSTR **不应**重置它们）。
+
+**实测：253 passed / 273 failed —— 与补之前逐字段相同。** → **无实测收益，已回滚**（本会话一贯的纪律：不留无法用数字证成的改动）。
+
+**结论**：**「补复位」这条矿脉在第 79 轮产出 +14 之后，本轮已停止产出**。剩余失败**不是**靠继续往 DECSTR 里加东西能消掉的——它们要么是**真缺陷**，要么是**子集外序列**（如模式 69 的 71 条）。
+
+**因此下一步应转向三步法批量分诊**（第 76 轮建立、第 78 轮验证）：对每个有失败的类，`--include <类名>` 单跑，把该类的失败分成「**污染**（单跑通过）/ **真缺陷**（单跑仍失败且不涉未实现模式）/ **子集外**（涉及未实现模式）」三类。**先修 `--include` 的模式写法**（用 `DCHTests` 这类已知能匹配的验证；`DECBITests`/`DECDCTests` 两次无输出，**空输出必须当作无效**）。
+
+**这条路的价值**：它把「273 条失败」变成**三类可分别处置的清单**，而**每一类的修法完全不同**（污染→补复位或修用例间隔离；真缺陷→补实现；子集外→按 K-04 登记并等 SD-23 追认）。
+### A4 附：第 81 轮——**三步法批量分诊：污染约 5%，且第 79 轮的推断不成立（第 7 次自我更正）**
+
+先修好方法问题：`--include` **本身可用**，之前「无输出」是我自己的**过滤写法**造成的（摘要行没被我抓取到）。**教训：空输出必须先怀疑自己的命令，再怀疑被测对象。**
+
+然后按类批量分诊（全量 vs 单类隔离的失败数）：
+
+| 类 | 全量失败 | 单类隔离失败 | 污染数 |
+| --- | --- | --- | --- |
+| `DCHTests` | 4 | 3 | **1** |
+| `DECDCTests` | 6 | 6 | 0 |
+| `DECBITests` | 4 | 4 | 0 |
+| `DA2Tests` | 2 | 2 | 0 |
+| `ICHTests` | 2 | 2 | 0 |
+| `ILTests` | 2 | 2 | 0 |
+| **合计** | **20** | **19** | **1（约 5%）** |
+
+**两条结论**：
+1. **污染确实很小**（这批约 5%）——**这与第 77 轮 `DCHTests` 的估计一致**；
+2. **但第 79 轮我写的「污染占比应当上调」不成立，予以更正。** 第 79 轮的 +14 是真实的（253 是实测），**但它不能再用「污染」来解释**——**这 6 个类在隔离后并无改善**，说明它们的失败不出自「其它类残留」。**那 +14 的来源目前未定位**，可能是：① 样本不代表全体（+14 来自未抽样的类）；② 补的复位改变了**用例内部**的行为（而非跨用例）。**在查清之前，不得再用「+14 证明污染严重」这种说法。**
+
+**下一步**：① 把批量分诊扩到**全部有失败的类**（这是机械工作，脚本已成型）；② 对「隔离仍失败」的类，**再分「真缺陷 / 子集外」**（看是否涉及未实现模式，分类表已有）；③ **单独查 +14 的来源**——把第 79 轮的改动按字段拆开逐项实测（`sgr` / `saved` / `charset_g1` / `modes` / `cursor_visible`），看哪一项带来多少。③ 最有价值：**它能把「哪一类状态在起作用」变成数字**，而不是又一个假说。
+### A4 附：第 103 轮——`A10`（跨段重放）**已核实为准确**，`E-P0-4` 审计闭合
+
+读 `crates/termai-session/src/log.rs` 的签名即可定论：
+
+```rust
+pub fn list_segments(dir: &Path) -> Result<Vec<(u32, PathBuf)>, LogError>   // 第 686 行：能按 id 升序列出所有段
+pub fn replay_window_check(read: &SegmentRead, from_seq: u64, head: u64)   // 第 1039 行：只接收【单个】段
+```
+
+→ **枚举段的能力已经存在（`list_segments`），但重放窗口检查只吃一个段**。所以「**跨段重放未实现**」**准确**——**而且现在能说清缺口的精确形状**：**不是「找不到前面的段」，而是「这个检查不接受段列表」**。另有一条既有测试 `rotation_chains_segments_and_continues_seq`（第 1410 行）证明**轮转已能把段链接起来、seq 跨段单调**——**即：链与序已就绪，重放没跟上**。
+
+**`E-P0-4` 审计至此全部闭合**：A8 ✅（sessiond 只记录 PTY 事件）、A9 ✅（注册表无重建行）、A10 ✅（只吃单段，且缺口形状已明确）。**出口总表四行 + 其主要细节，现已逐条对过代码，只发现过第 98 轮那一处漂移。**
+
+**顺带得到一个可执行的下一步**（若日后做 A10）：`replay_window_check` 增加一个接受**段列表**的变体（或让它按 `list_segments` 的结果在多段上覆盖 `from_seq..head`），**并复用在多段上的既有测试风格**（`rotation_chains_segments_and_continues_seq` 已给出构造多段的写法）。
+
+### A4 附：第 102 轮——`E-P0-4` 的三条细节claim 审计（两条证实、一条留待细读）
+
+按第 98/99 轮的方法，对 **E-P0-4 行**里引用的三条细节做一次代码核对：
+
+| 断言 | 核对方式 | 结果 |
+| --- | --- | --- |
+| **A8**：sessiond **不持有 PTY**，真实生命周期在 `apps/termai` | grep `crates/termai-session/src/*.rs` 的 `pty` | ✅ **准确**：命中全部是**日志/检查点里的记录种类**（`Record::PtyOut` / `Record::PtyIn`），**不是所有权**。`checkpoint.rs:4` 的注释原文：**"spawns and never executes PtyIn (audit index only). A test asserts that statically."** ——**即：sessiond 只索引 PTY 事件，不生成也不消费它们**。 |
+| **A9**：sessiond 重建 P95/P99 的**验收未做** | grep `tools/bench/registry.mjs` 的 `rebuild|recover` → **0 命中** | ✅ **准确**：**bench 注册表里根本没有「重建」这一行**，所以「验收未做」是准确的，不是「做了没记」。 |
+| **A10**：**跨段重放未实现** | grep `termai-session/src/*.rs` 的 `segment` → 145 命中 | ⚠️ **未定**：**segment 机制在检查点里确实存在**（如 `checkpoint.rs:196` 的 `segments.is_empty()`），**但「重放能否跨段」本轮没有细读**。**不作结论**——按纪律，未读的不算核对过。 |
+
+**结论**：**E-P0-4 行的两条主要断言经代码核实为准确**（A8 的所有权划分、A9 的验收缺失），**第三条（A10）留给下一次细读**。**审计至此覆盖了出口总表的全部四行与其主要细节**，未再发现第 98 轮那样的漂移。
+
+**并把一条可复用的判据写下来**：**「某模块是否拥有某资源」要看它是「产生/消费」还是「记录」**——sessiond 对 PTY 的关系是**后者**（journal 的记录种类），**这一点从 64 次 grep 命中里几乎看不出**，必须看注释与用法。**又一次印证：命中数不是证据，用法才是。**
+
+### A4 附：第 82 轮——**分诊粒度必须到「单条用例」**；按类隔离看不见类内污染（第 81 轮的口径需收窄）
+
+第 81 轮我用 `--include <类名>` 隔离，得到「污染约 5%」。**本轮发现这个口径有漏洞**：**按类隔离只能排除「来自其它类的污染」，看不见「同一个类内部、前一条用例留下的污染」。** 所以 5% **只是跨类污染的上界**，**不是污染总量的估计**。
+
+**改为逐条隔离**（`--include <Class.test>`），在 `ICHTests` 上验证：
+
+| 用例 | 单条隔离结果 |
+| --- | --- |
+| `ICHTests.test_ICH_IsNoOpWhenCursorBeginsOutsideScrollRegion` | **仍失败** |
+| `ICHTests.test_ICH_ScrollOffRightMarginInScrollRegion` | **仍失败** |
+
+→ **两条都不是污染**（单条跑仍失败），属**真缺陷或子集外**。**注意第二条的名字里有 `RightMarginInScrollRegion`**，**很可能又是左右边距（模式 69）族**——与第 78 轮 `DCHTests` 的分布一致：**边距族正在成为「子集外」的主要来源**。
+
+**方法修正（写进流程）**：**分诊一律到单条用例**（`--include <Class.test>`），**不要用类名**——类名只能排除跨类污染，会**系统性地低估**污染。第 78 轮 `DCHTests` 的结论之所以正确，正是因为那一次用的是**单条**。
+
+**对第 81 轮结论的影响**：**「污染约 5%」应读作「跨类污染 ≤5%」**；**污染总量的估计重新变为未知**，仍待用逐条分诊测量。**第 79 轮 +14 的解释也仍未定**——但逐条分诊（而非按类）是唯一能查清它的方法。
+### A4 附：第 85 轮——分类表已刷新；发现**两个真正的核心缺陷：`DECSC`/`DECRC`**
+
+**刷新机器产物**（基于 253 passed / 273 failed 的运行）：失败 **287 → 273**；`uses-unimplemented-mode` 80 → **78**（模式 69：71 → **69**）；核心候选 207 → **195**（其中 **186 条完全不涉及 DECSET**）。
+
+**新发现的核心缺陷（`DECSC`/`DECRC`，ECMA-48 标准语义）**，在 `save_restore_cursor.py`：
+
+1. **`test_SaveRestoreCursor_Reset`（62–69 行）**——**DECSTR 必须把「保存的位置」重置为原点 (1,1)，但不得移动光标**：写 `a`（光标到 2,1）→ `DECSC` 记住 → **`DECSTR` 把保存位置重置为 (1,1)** → 写 `b`（落在 2,1）→ `DECRC` 恢复到 (1,1) → 写 `c` → 断言第 1 行是 `"cb"`。
+   → **我第 79 轮补的 `self.saved = SavedCursor::default()` 方向正确但显然未生效**（该用例在 253 的运行里仍失败）。**最可疑处**：`restore_cursor` 是否有「从未保存过则不动」的语义，或 `SavedCursor::default()` 是否等于「家」——**须读代码确认，不要猜**。
+
+2. **`test_SaveRestoreCursor_AltVsMain`（138 行）**——断言 `GetCursorPosition() == Point(2, 3)`，涉及**主/备用缓冲区各自保存位置**。`grid.rs` 里**已有 `saved` 与 `alt_saved` 两个字段**（设计上已区分），**失败说明实际行为与预期不符**（须读用例前言与实现确认）。
+
+**两者都是标准 ECMA-48（`ESC 7`/`ESC 8`）的核心序列**，**不在 §3.5 表内是因为它们属核心**，与 CHT/CBT 同源——**属真缺陷，不是子集外**。
+
+### A4 附：第 99 轮——**交接总表审计完毕：四行里只有 E-P0-1 漂移过（已修），其余三行与证据一致**
+
+逐行核对 P0 出口总表与当前证据：
+
+| 行 | 总表说法 | 与证据是否一致 |
+| --- | --- | --- |
+| **E-P0-1** | 曾写「110 passed / 414 failed」 | ❌ **漂移**（第 39 轮已撤回的伪失败数字）→ **第 98 轮已修**为 **267/41/259/0 + 必备参数 + AR-27 自检** |
+| **E-P0-2** | 未实现：无原生窗口/GPU/IME 宿主；渲染依赖**拿不到 SPDX 证据**（ADR-0015 P3 未知即拒绝）；ADR-0024 只落地零依赖镜像切片 | ✅ **一致**（本会话新增的 VRM/VrmState 属 UI 层切片，不改出口状态） |
+| **E-P0-3** | 未判定：B-10 方法学已落地并自证（`bench:check` ~~7 PASS~~ → **第 257 轮为 8 PASS（ADR-0029 D-4 加 B9）** / ~~`bench:selftest` 54/54~~ → **第 256 轮为 65/65、第 257 轮为 74/74**），**§5 机器无关行的读取路径已落地**，但**实测仍缺**（本机只产得出 H18 与表外对照 C1）、无 RM-A/B/C → 每次打印 `gating numbers produced: 0`（**该 0 第 255 轮起是计算值，不是常量**） | ✅ **一致**（第 97 轮再次确认该数为 NON_GATING） |
+| **E-P0-4** | 部分：`recover_session` + attach 握手 + TAIL_REPLAY 已交付；但 **sessiond 重建 P95/P99 验收未做**、跨段重放未实现、**sessiond 不持有 PTY** | ✅ **一致**（与 A8/A9 登记相符） |
+
+**结论**：**审计只发现一处漂移，已修；其余三行可以直接信任。** 并记下漂移的成因作为教训：**我更正的是细节，没回头改总表**——**总表被引用得最多，也最容易过期**。**因此「改数字时必须同时改总表」应当成为一条固定动作**（与第 86 轮的「验证与提交分离」同类：都是把纪律写成两个独立步骤）。
+
+### A4 附：第 97 轮——**权威口径通过 `AR-27` 可复现性自检**（两次运行逐字段相同）
+
+本会话一直引用 **267 passed / 41 known-bug / 259 failed / substitutions 0**，但**只跑过一次**。`AR-27` 要求**测量先自证可复现**才能用于判定——本轮补上：
+
+| 运行 | passed | known-bug | failed | substitutions |
+| --- | --- | --- | --- | --- |
+| run 1（`htsfull`） | 267 | 41 | 259 | 0 |
+| run 2（`repro`） | **267** | **41** | **259** | **0** |
+
+**并且逐条比对失败集合：完全一致**（`same failing set? True`，**n=259**）。
+
+**结论**：**当前 E-P0-1 的口径是 `AR-27` 意义上的有效测量**——**同一 commit、同一调用、两次运行结果与失败集合均逐字节相同**。因此它可以被引用为「当前水平」，而**不是一次性快照**。
+
+**同时记下两处仍然无效的测量**（保持诚实）：
+- **`tools/bench`**：`gating numbers produced by this run: 0` —— **本机不是 RM-A/RM-C**，故 §5 全部性能数字**一律 NON_GATING**（ADR-0014）。**E-P0-3 的「进 CI」可以在本机完成接线，但「判定」必须等参考机。**
+- **本环境拿不到的**：vttest（`no acceptable cc found in $PATH`）、G1 的**真实语料 oracle**（需 Xvfb + 固定 xterm）、渲染依赖的 **SPDX 证据**（网络受限）。**这些是环境缺口，不是排期缺口**，且**逐条登记在案**。
+
+### A4 附：第 96 轮——把三个待决策项写成**决策简报**（`docs/plan/p0-open-decisions.md`）
+
+第 95 轮判断「剩下的不是没核对、而是要决策」之后，本轮**把决策本身准备好**（选项 / 后果 / 建议 / 依据），使 owner 一次评审即可定案：
+
+| 编号 | 决策 | 阻塞条数 | 建议 | 关键依据 |
+| --- | --- | --- | --- | --- |
+| **D-1** | `SD-23`：HARNESS §7「esctest 全通过」的**判定域**（**§8 两条同强度条款中哪一条管辖**：套件 100%，还是 xterm ≥99%+差异登记——第 225 轮改） | **约 69**（扩展族 41 + 查询 20 + xterm 8），并决定颜色 45 / `XtermWinops` 19 的归属 | **采子集读法（B）** | **A 与自身冻结矛盾**：若「全通过」= 全集，则我方已声明的「OSC 52 读永不实现」使 P0 **在构造上不可能达成** |
+| **D-2** | 颜色查询（`OSC 4/10/11/12`）的**能力声明** | **45** | **P0 保持不应答 + 登记差异** | AR-20：**尚无颜色渲染却报调色板＝无法自证的能力声明** |
+| **D-3** | `DA`/`DA2`/`DECID` 的**设备身份** | **约 4–6** | **报告自身真实身份** | 声称 xterm 兼容的收益（4–6 条）远小于契约风险 |
+
+**并写明 D-1 是总开关**：它决定 D-2/D-3 的结果算「缺陷」还是「已登记偏差」；**建议一次评审同时定 D-1，再据其读法定 D-2/D-3**，以免「同一事物在两张表里归类不同」。
+
+**另两项明确排除在「判定」之外**（属设计/取证，不属判定）：`XtermWinops` 19 条需 **resize + reflow 策略**（连动 kernel/03）；`DECRQM` 25 条需 **xterm 实现或 ctlseqs 条款**（**本环境拿不到**，故保持 Pm=0 不改）。
+
+**这一步的价值**：把「要决策」从**结论**变成**可执行的评审材料**——**决策本身仍不在我单方面权限内**（SD-23 需 `kernel/01` owner；能力声明需产品/UX），但**准备决策材料是负责人的职责**，且它让一次评审就能推进 118+ 条的归属。
+
+### A4 附：第 95 轮——**「核心候选」桶已基本挖尽**；剩下的不是「没核对」，而是「要决策」
+
+把分类表里核心候选按**类**聚合（此表出自 268 条那次运行，**早于 HTS 修复**，故 `TBCTests` 仍显示 4 条）：
+
+| 类 | 条数 | 类别 |
+| --- | --- | --- |
+| `DECRQMTests` | 25 | **oracle 分歧**（SD-22） |
+| `XtermWinopsTests` | 19 | **动态 resize + reflow 设计**（连动 kernel/03） |
+| 颜色三族（`Change*Color` / `Reset*Color`） | 45 | **未登记能力**（OSC 4/10/11/12，需能力声明决定） |
+| `DECRQSS` / `DECDSR` | 20 | **查询类扩展** → K-04 |
+| `DECSERA`/`DECCRA`/`DECSED`/`DECERA`/`DECFRA`/`DECSEL`/`DECIC`/`DECDC`/`DECFI` | 41 | **未登记的 DEC/xterm 扩展** → K-04 |
+| `DECSETTiteInhibitTests` / `XtermSaveTests` | 8 | **xterm 专有**（titeInhibit、save）→ K-04 |
+| `BS` / `CBT` | 5 | 反向回绕（模式 45）与边距族（模式 69） |
+| `TBCTests` | 4 | **本轮已修**（HTS） |
+
+**结论（重要）**：**「195 条核心候选」里没有剩下「尚未核对的核心 ECMA-48 缺陷」**——**每一条都能归入已识别的四类之一**：① **oracle 分歧**（SD-22）；② **未登记扩展/查询类**（K-04，等 SD-23）；③ **未登记能力**（颜色、DA）；④ **需要设计的**（resize + reflow、TiteInhibit）。
+
+**所以下一步不是继续挖用例，而是推进决策与设计**：**(i)** SD-23 判定域（**§8 两条同强度条款中哪一条管辖**：套件 100%，还是 xterm ≥99%+差异登记——第 225 轮改）追认——它一次性决定「扩展族 41 + 查询 20 + 8 = 69 条」是缺陷还是偏差；**(ii)** 颜色与 DA 的**能力声明**决定；**(iii)** `XtermWinops` 的 resize/reflow（19 条，需要 kernel/03 的 reflow 策略）。**继续逐条读用例的边际收益已经很低**——这是本轮的主要判断。
+
+### A4 附：第 94 轮——**HTS 未实现（+9，达 267）**；残余核心候选里确有真缺陷
+
+按第 93 轮的下一步，对**残余的核心编辑语义候选**逐个核对。结果**不是空的**：
+
+| 候选 | 判定 |
+| --- | --- |
+| `ECHTests/EDTests/ELTests.*_respectsISOProtection` | **ISO 保护属性**（DECSCA / 选择性擦除）→ **扩展**，子集外 |
+| **`TBCTests`（4）+ `HTSTests`（1）** | **ECMA-48 核心**（制表位清除/设置）→ **真缺陷** |
+| `RISTests.test_RIS_ResetTitleMode` | RIS 是否重置**标题模式**（扩展）→ 待定 |
+
+**根因**：`csi_dispatch` 里 **`b'g'`（TBC）已实现且正确**（`clear_tab` 的 0/3 分支都对），但 **`esc_dispatch` 里根本没有 `b'H'`（HTS）** → **`ESC H` 被静默忽略**，设了自定义制表位的用例于是落到默认的每 8 列。
+
+**修法**：在 `esc_dispatch` 加 `b'H' => self.set_tab_stop()`，并新增 `set_tab_stop()`（在当前列置位 `tab_stops`）。
+
+**实测**：**258 → 267 passed**（268 → 259 failed），**+9**；`TBC|HTS` 单跑 **5 passed / 0 failed**（另 1 条是 known bug）。**+9 多于这两个类的 5 条**，说明还有其它用例依赖自定义制表位。
+
+**已提交**：`8c0b912`；回归测试 `hts_sets_a_tab_stop_that_the_next_tab_honours` 加入 `cht_cbt.rs`（**9/9**）。**验证与提交已分离执行**（先读数、后提交）。
+
+**意义**：**这证明第 92/93 轮的收敛没有把真缺陷一起收敛掉**——`TBC`/`HTS` 与 `CHT`/`CBT` 同族，都是**核心 ECMA-48 制表序列**，也都**由机器分类表定位**而非人工通读找到。**权威口径更新为 267 passed / 41 known-bug / 259 failed / substitutions 0。**
+
+### A4 附：第 93 轮——`DECFI`/`DECBI`/`DECID` 已定性：**没有新的核心缺陷**
+
+按第 92 轮列出的优先项，读 `esccmd.py` 确认这三个究竟是什么（一条 grep，零成本）：
+
+| 名称 | 定义 | 判定 |
+| --- | --- | --- |
+| **`DECBI`** | `ESC 6`（Index left） | **DEC 扩展**，非 ECMA-48 核心（ECMA-48 的索引是 `ESC D`）→ **(b) 子集外**，按 K-04 登记 |
+| **`DECFI`** | `ESC 9`（Forward index） | 同上 → **(b) 子集外** |
+| **`DECID`** | `esccmd.py` 原文注释：**"Obsolete form of DA"** | **它就是 DA 的过时形式** → 与 `DA`/`DA2` 同属**能力声明**，**等 owner 决定** |
+
+**结论**：**这三个都不构成「新的核心 ECMA-48 缺陷」**——它们**分别落进已经识别好的两个类别**（子集外扩展 / 能力声明）。**第 92 轮提出的「优先核对可能属核心的候选」到此已核完，结果是没有新的核心缺陷。**
+
+**对「190 条核心候选」的进一步收敛**：结合第 92/93 两轮，这个桶里**已识别的构成**是——**未登记的 DEC/xterm 扩展**（矩形操作、插删列、索引、查询类）+ **能力声明**（DA/DA2/DECID）+ **oracle 分歧**（DECRQM 26）+ **未登记能力**（颜色 40）。**尚未逐条核对的是那些「名字看起来像核心编辑语义」的用例**（如 `ED`/`EL`/`IL`/`DCH`/`ICH`/`ECH`/`IND`/`RI`/`NEL`/`CNL`/`CPL`/`VPA`/`HPA`/`HPR`/`REP`/`TBC`/`HTS`），**但其中多数已在早期轮次修好或本就通过**。
+
+**下一步（机械化、可批量）**：对**残余的核心编辑语义类**逐个用第 89 轮的**协议层探针**定性（先取状态，再谈语义），**只对协议层确认有差异者**再走 esctest 计数与修复。**这是本会话最后收敛出来的、唯一还能稳定产出的一步。**
+
+### A4 附：第 92 轮——分类表刷新（268 条）；并指出「190 条核心候选」的构成
+
+按 258 passed / 268 failed 刷新：失败 **273 → 268**；`uses-unimplemented-mode` **78**（模式 69：**69**）；核心候选 **190**（其中 **181 条完全不涉及 DECSET**）。
+
+**对「核心候选」的构成做一个可核对的观察**（第 82 轮修正后的流程要求：先看名字、再读正文、再定性）：
+
+| 类 | 它们是什么 | 是否在 `kernel/01` §3.5 |
+| --- | --- | --- |
+| `DECERA` / `DECFRA` / `DECFI` / `DECIC` / `DECID` / `DECCRA` / `DECDC` / `DECBI` | **xterm/DEC 扩展**（矩形擦除/填充/前进索引/插列/删列/BackIndex 等） | **不在**（未登记） |
+| `DECDSR` / `DECRQSS` | **查询类扩展** | **不在** |
+| `DECRQM`（26 条） | **oracle 分歧**（SD-22） | 序列本身在核心，**判定域有争议** |
+| `DA` / `DA2` | **能力声明**（需 owner 决定） | 序列在核心，**答复内容属产品决定** |
+| 颜色三族（40） | **未登记的能力**（OSC 4/10/11/12） | **不在** |
+
+→ **观察（待逐类核对，不是结论）**：**「190 条核心候选」里可能有相当一部分是「未登记的扩展」**，而**不是「核心 ECMA-48 语义错」**。**这与第 42 轮的注意事项并不矛盾**——那条禁止的是**「不在表里」就自动豁免**；**这里要求的是按第 78 轮的三步法逐类核对**（读前言 → 隔离 → 归类），**只是把「预期会落在哪一类」说清楚，好把有限的核对时间用在最可能是真缺陷的地方**。
+
+**下一步的优先顺序（据上表）**：① **仍属核心语义且未核对者**（例如 `DECFI`/`DECBI` 是否属 ECMA-48 的索引语义、`DECID` 是什么）；② 其余按 K-04 逐条登记，等 **SD-23** 追认判定域。
+
+### A4 附：第 90 轮——**`alt_decsc` 在协议层与套件层都成立（258 passed，+2）**；第 88 轮的「修法无效」是误判
+
+**按第 89 轮的「一行命令复验」执行**：重新应用 `alt_decsc` 修法后，同一条探针给出：
+```
+RESP 1b5b3f34373b312479   →  \x1b[?47;1$y   备用屏已置位
+RESP 1b5b3f34373b322479   →  \x1b[?47;2$y   已回主屏
+RESP 1b5b333b3252         →  \x1b[3;2R      第 3 行第 2 列 = 主屏的保存位置 ✓
+```
+修复前最后一个答复是 `\x1b[7;6R`（备用屏位置）——**修法在协议层成立**。
+
+**套件层实测**：**256 → 258 passed**（268 failed），**且 `DECRCTests` 这一类已无失败**。已提交（`5804742`）。
+
+**第 88 轮的判断是错的，此处更正（第 12 次）**：那一轮我**只用 esctest 的运行结果**就断定「`alt_decsc` 无效」并回滚。**协议层探针证明修法是对的**——**很可能是与第 61–66 轮同一个「陈旧二进制」陷阱**（`cargo build` 输出 `Finished` 而未见 `Compiling` 时，测的是旧产物）。
+
+**流程修正（已写死）**：**改动的有效性一律先在协议层用 `FEED` 探针确认，再跑 esctest 定量**。协议层快、直接、不看 harness 脸色；**esctest 用于计数，不用于定性**。本会话第 89 轮提出、本轮验证——**它同时防住了「陈旧二进制」与「harness 路径差异」这两个反复出现的陷阱**。
+
+**权威口径更新为 258 passed / 41 known-bug / 268 failed / substitutions 0。**
+
+### A4 附：第 89 轮——**探针成功，且不需要新加访问器**：用终端自己的 `DECRQM` 读备用屏状态
+
+**方法（本会话第二个通用探针，值得复用）**：不必写 Rust 测试或加 `is_alt()`，**直接喂 `DECRQM` 查询模式 47**，用终端自己的答复读状态。一条命令即可：
+
+```powershell
+# CUP(2,3) ; DECSC ; DECSET(47) ; DECRQM(47) ; CUP(6,7) ; DECSC ; DECRESET(47) ; DECRQM(47) ; DECRC ; DSR
+$seq = '1b5b333b3248' + '1b37' + '1b5b3f343768' + '1b5b3f34372470' + '1b5b373b3648' + '1b37' + '1b5b3f34376c' + '1b5b3f34372470' + '1b38' + '1b5b366e'
+$s = "FEED $seq`nQUIT`n"; $s | & .\target\debug\termai-vt-conformance.exe --server
+```
+
+**实测（当前 HEAD，即第 88 轮回滚后的状态）**：
+```
+RESP 1b5b3f34373b312479   →  \x1b[?47;1$y   模式 47 已置位（进入备用屏）✓
+RESP 1b5b3f34373b322479   →  \x1b[?47;2$y   模式 47 已复位（回到主屏）✓
+RESP 1b5b373b3652         →  \x1b[7;6R       光标在第 7 行第 6 列
+```
+
+**两条判读**：
+1. **`self.alt` 的置位与清除都是正确的**（两次 `DECRQM` 答复都对）——**第 88 轮「`self.alt` 可能仍为 true」这个嫌疑被排除**；
+2. 最后一次 `DECRC` 给出的是**备用屏的位置**——**这正是当前（回滚后）代码应有行为**：备用屏里的第二次 `DECSC` **覆盖了 `self.saved`**（主屏的保存位置）。
+
+**因此下一步是一个「一行命令」的复验**：**重新应用第 87/88 轮的 `alt_decsc` 修法，然后跑上面这条探针**——**若答案为 `1b5b333b3252`（`\x1b[3;2R`，第 3 行第 2 列，即主屏位置），则修法在协议层成立**（比跑 esctest 更强、更快，且绕开 harness）。**若仍为第 7 行，则问题不在 save/restore 的分支选择**，应转向 `DECREST`/`DECSET` 的路径是否走了另一份状态。
+
+**这也解释了第 88 轮的困惑**：那次我用 esctest 判定「修法无效」，但**没有在协议层确认过**；**先协议层、后套件**，顺序应当反过来。
+
+### A4 附：第 88 轮——`alt_decsc` 独立字段**也没能修好 `AltVsMain`**（已回滚）；下一步是**打印 `self.alt`**
+
+按第 87 轮写明的正确修法实施了：新增独立字段 `alt_decsc`，`save_cursor`/`restore_cursor` 按 `self.alt` 选择，`soft_reset` 一并重置；**编译通过、单元测试全绿**。
+
+**但 `test_SaveRestoreCursor_AltVsMain` 仍失败，且值与修前完全相同**（`expected Point(2,3) but got Point(6,7)`）。**已回滚。**
+
+**已排除的解释**（都查过，不是猜）：`esccmd.ALTBUF = 47`（**已核实**）；`set_private_mode` 的 `47 => set_alt(enable, false, false)`、`1047/1049` 同理（**已核实**）；`set_alt` 在两个分支都正确设置 `self.alt`（**已核实**）；构建确实是新的（`Finished`，无待编译项）。
+
+**剩下的最强嫌疑**：**`restore_cursor` 执行时 `self.alt` 仍为 `true`**（于是它读了备用屏的槽，正是观测到的「返回备用屏位置」）。**但 `DECRESET(47)` 理应把它置回 false**——**所以必须直接取状态，而不是继续推理**。
+
+**下一步（精确、可执行，且用的是本会话已验证有效的方法）**：写一个**临时探针测试**，逐步复现该用例并打印 `grid().alt_buf_state()`（若无访问器则临时加一个只读 `pub fn is_alt(&self) -> bool`）：
+```
+CUP(2,3); DECSC; DECSET(47); print is_alt; CUP(6,7); DECSC; DECRESET(47); print is_alt; DECRC; print cursor
+```
+**该用例的两半都要测**（切回主屏得主屏位置；再切回备用屏得备用位置）。**这能一举定位是 `set_alt` 没清标志、还是 `DECRESET` 没走到 `set_alt`。**
+
+### A4 附：第 87 轮——`AltVsMain` 所需的修法已定位，但**不能复用 `alt_saved`**（改动已回滚）
+
+**用例要求**（`save_restore_cursor.py:120-142`）：**主屏与备用屏各自维护 `DECSC` 保存位置**——主屏 `CUP(2,3)` 后 `DECSC`；切到备用屏 `CUP(6,7)` 后 `DECSC`；切回主屏后 `DECRC` **应得 `Point(2,3)`**（实得 `Point(6,7)`）。xterm 特有行为（DEC 终端无备用屏），`grid.rs` 的注释也写明了这一动机。
+
+**我先尝试的修法（已回滚）**：让 `save_cursor`/`restore_cursor` 按 `self.alt` 选择写入 `saved` 或 `alt_saved`。**结果：该用例仍失败。**
+
+**原因（读代码后确认）**：**`alt_saved` 已被 `set_alt` 占用**——`grid.rs:1636-1642` 在**进入**备用屏时把当前光标存进 `alt_saved`，`1667-1672` 在**退出**（`save_cursor=true`，即模式 1049）时用它恢复。**所以 `alt_saved` 的语义是「1049 进出备用屏的光标」，不是「备用屏里的 DECSC 槽」。** 我的改动既没修好用例，又**有可能破坏 1049 的语义**——**因此回滚是正确的**。
+
+**正确的修法（已写明，下一轮可直接做）**：**新增一个独立字段**（如 `alt_decsc: SavedCursor`）专供备用屏里的 `DECSC`：
+1. `save_cursor`：`if self.alt { self.alt_decsc = saved } else { self.saved = saved }`；
+2. `restore_cursor`：`let saved = if self.alt { self.alt_decsc } else { self.saved }`；
+3. `soft_reset`：**同时**把 `saved` 与 `alt_decsc` 重置为默认（与第 79/86 轮一致）；
+4. **不要碰 `alt_saved`**（它属于 `set_alt`/1049）。
+5. 并补一条单元测试：主屏 `DECSC` → 切备用屏 → `DECSC` → 切回 → `DECRC` 得主屏位置；**再切回备用屏 `DECRC` 得备用屏位置**（覆盖用例的两半）。
+
+**状态**：改动**已回滚**；`cargo test -p termai-vt` **0 失败**；`kernel-gates` **8 PASS / 0 FAIL**。
+
+### A4 附：第 86 轮——**DECSTR 不应移动光标（+3，达 256）**；并记录一次我自己的流程违规
+
+**代码改动（`f6d6c29`）**：`soft_reset()` 原先**把光标归位**。`esctest` 的 `test_SaveRestoreCursor_Reset` 证明这是错的：写 `a`（光标到第 2 列）→ `DECSC` → **`DECSTR`** → 写 `b`——**期望 `b` 落在光标原本所在处，而不是家**；再 `DECRC`、写 `c`，第 1 行应为 `"cb"`。**归位会让 `b` 覆盖 `a`，第 1 行变成 `c`。** 现在只重置「保存的位置」为家，**不动光标**。
+
+**实测：253 → 256 passed（270 failed）**，本会话第 4 次净增益（224→239→253→256）。
+
+**语义存疑如实记下**：xterm 文档常被读作「DECSTR 会把光标归位」，而本次是**依一致性套件的期望**改的。**若日后拿到 xterm 实现与之不符，这一行就是复议点**——**实测收益 +3，但依据是 esctest 的期望，不是 ctlseqs 原文**。
+
+**我的流程违规（必须记下）**：我把**验证与提交写在同一条命令里**，于是 `cargo test` 报 1 条失败、门禁 7 PASS / 1 FAIL 的情况下，**commit 仍然执行了**。失败的是**我自己在第 71 轮写的回归测试** `decstr_homes_the_cursor`——**它把我的错误信念固化成了断言**；本轮已改为「DECSTR 重置保存位置但不移动光标」，**代码不改、测试改**（因为有 esctest 的用例为据）。
+
+**流程修正（写死）**：**验证与提交必须是两个独立步骤**——先跑 `cargo test` + `kernel-gates` 并**读到绿色的输出**，再单独执行 commit。**把两者合并，就等于把「门禁」降级成了「日志」**。
+
+### A4 附：第 83 轮——逐条隔离的累计证据：**污染确实很小（12 条里 1 条）**，多数是真实缺口
+
+按第 82 轮的修正粒度（**单条用例**，不是类名），对 `DECDCTests` 的 6 条失败逐条单跑：
+
+| 用例 | 单条结果 |
+| --- | --- |
+| `test_DECDC_CursorWithinTopBottom` | 仍失败 |
+| `test_DECDC_DefaultParam` | 仍失败 |
+| `test_DECDC_DeleteAll` | 仍失败 |
+| `test_DECDC_DeleteAllWithLeftRightMargins` | 仍失败 |
+| `test_DECDC_DeleteWithLeftRightMargins` | 仍失败 |
+| `test_DECDC_ExplicitParam` | 仍失败 |
+
+→ **6/6 单跑仍失败 → 该类无类内污染**。**注意 `DECDC`（删除列）本身是 xterm 扩展、不在 `kernel/01` §3.5 子集内**，其中 2 条还明确带 `LeftRightMargins` → **整类是「未实现的扩展 + 子集外」，不是缺陷**。
+
+**累计逐条证据（本次会话已测）**：`DCHTests` 4 条中 **1 条污染**；`DECDCTests` 6 条中 **0 条**；`ICHTests` 2 条中 **0 条** → **合计 12 条里 1 条污染（约 8%）**。
+
+**结论（三度收敛到同一答案）**：**污染很小**。第 77 轮（1/4）、第 81 轮（跨类 ≤5%）、本轮（1/12）**三次不同方法都指向「低」**。**因此第 79 轮的 +14 不是污染造成的**——**它更可能是「补的复位改变了用例内部的行为」**（例如 `modes`/`sgr` 的复位让某些用例的**起始条件**符合预期）。**该解释仍需按第 81 轮第③条把改动按字段拆开实测来确认。**
+
+**这也意味着**：**273 条失败的主体是「真实缺口」**（未实现的核心序列 + 未登记的扩展），**不是测量噪声**。**P0 的真实缺口没有被高估——它在被低估**：正因为主体真实，`E-P0-1` 的「未判定」才是诚实的。
+### A4 附：第 84 轮——**按字段拆解：+14 里的 13 条来自「模式复位」，不是污染（第 9 次自我更正）**
+
+把第 79 轮的改动按字段消融（ablation），先测最可能的一项——**`self.modes = MODE_AUTOWRAP | MODE_CURSOR_VISIBLE;`**：
+
+| 变体 | passed | failed |
+| --- | --- | --- |
+| 完整（含模式复位） | **253** | 273 |
+| **去掉模式复位** | **240** | 286 |
+
+→ **模式复位一项就贡献了 13 条**（+14 里的 13）。**其余字段（`sgr`/`saved`/`alt_saved`/`charset_g1`/`last_graphic`/`cursor_visible`）合计约 1 条。**
+
+**这与第 83 轮「污染约 8%」并不矛盾，而是解释了两件事为什么都成立**：**模式泄漏发生在「单条用例内部」**（用例自己先设了模式，随后依赖 DECSTR 把模式复位为默认），**所以单条隔离仍会失败**——**它不是「上一条用例留下的污染」，而是「DECSTR 没有履行复位模式的职责」**。
+
+**因此第 79 轮的 +14 有了确切答案**：**它买到的不是「隔离改善」，而是「DECSTR 的正确性」**——`modes` 复位是标准行为（DECSTR 关闭原点模式与插入模式、打开自动换行、显示光标）。**我第 79 轮把它解释成「污染严重」的证据，是错的，予以更正（第 9 次）。**
+
+**对整体判断的影响**：① **污染仍然很小**（第 77/81/83 轮三度测量一致）；② **273 条失败的主体确实是真实缺口**；③ **`modes` 复位已由本次消融证明价值 13 条**，**它必须保留**（已恢复）。
+
+## B. 尚未闭合的契约 / 规格登记（SD 系列）
+
+| 编号 | 内容 | 状态 |
+| --- | --- | --- |
+| SD-13 | 逐行 LineFlags（ADR-0025） | **已实现并提交**（`67ee7f2`；后续 `bf90bba` 修掉一个真实集成缺口：**flag 单独变化也会 damage 该行**，否则跟随 `GridDelta` 的镜像永远看不到折行链——只有全量快照才会带上它）。**总负责人独立复核**（读码，非复述）：裸 `line_feed()` 只能经两个带注释的包装到达——`line_feed_explicit`（先 `clear_line_flags`）与 `line_feed_wrapped`（先 `mark_line_wrapped`），显式换行/IND/NEL 分别落在 899/942/945；四个行搬移算子（`scroll_up`/`scroll_down`/`insert_lines`/`delete_lines`）全部调用 `rotate_row_flags`；擦除路径（`erase_display`/`erase_line` 等）调用 `clear_line_flags`；`reset` 与 alt-screen 进出调用 `clear_all_line_flags`，alt 用 `saved_row_flags` 保存/恢复。**擦除分支复核（已完成）**：ED/EL 全部经 `erase_cells`，而它在**擦除触及右边缘时**才清 flag（`to >= cols-1`），并写明理由「越过右边缘会移除 wrap 链接本要延续的内容；保持右边缘的部分擦除**有意**不动 flag」。该规则与 ADR-0025 D1 的语义（flag 在「继续到下一行」的那一行）一致，且边界情形有注释——**未发现缺口** |；**待定的小问题**：镜像侧 `apply_snapshot` 对**长度不足的 `row_flags` 采取静默补零**（而非拒绝）——对可丢弃的镜像这是稳妥的，但**ipc 解码器**收到短数组时应当拒绝还是补零，需要一个 owner 明确（契约字段的容错方向不应由两处各自决定）
+| SD-14 | GridDelta 的 scroll 双承载 | 未处置（render 侧已取单一优先级） |
+| SD-15 | GridSnapshot 无 rev → 快照后基线未定义 | 未处置（镜像取「下一个 delta 的 rev 为基线」） |
+| SD-16 | kernel/04 §3.4 首个 Interactive attach 自动授予租约与 AR-03 冲突 | **已裁决**（显式授权优先）；分册待修订 |
+| SD-17 | `proto_range` vs `proto_min/proto_max` | 已接受实现命名；分册待补注 |
+| SD-18 | attach 错误码未登记即暴露 | 已补登；`Corrupt`→`AttachStateInvalid` 切换已完成 |
+| SD-19 | XTWINOPS（`CSI Ps t`）超出 kernel/01 §3.5 子集 | **已重做并落地**（`b772f1e`）：`termai-vt` 回答 `11/13/18/19 t`，`14/15/16 t`（像素类）**故意不答**并写明理由（AR-14）；适配器只代答像素类。**实测**：substitutions **688 → 0**、passed **110 → 117**、failed 414 → 407，两次运行逐字段相同 |
+| SD-20 | esctest 记录值 201 不可复现 | **结论已更正（第 39 轮）**：201 **是可复现的**，当时的「不可复现」来自**调用参数差异**——我的比较运行漏了 `--xterm-checksum 336`，esctest 于是对每格校验和取反，制造出大量伪失败（110/117 对 201/218）。**教训**：测量必须连同**完整调用命令**登记，否则跨次比较无效（见 计划 §6.3 规则 8） |
+| SD-21 | Context 事件 `confidence` 单位未定义（线上 f32 / Log u8） | 未处置；kernel/04 owner 待确认 |
+| SD-01…SD-12 | 见 [m0-spec-defects](../plan/m0-spec-defects.md) / [p0-spec-defects](../plan/p0-spec-defects.md) | M0 部分已由 ADR-0020/0023 处置 |
+
+## C. 流程与治理（不修则 P0 出口缺合法批准人）
+
+| # | 未闭合项 | owner | 说明 |
+| --- | --- | --- | --- |
+| C1 | **TSC 未成立**（OQ-19） | 发起人 | §5/§8 的任何放宽目前**没有合法批准人** |
+| C2 | **CODEOWNERS 双签无法执行**：仓库只有一个所有者；且 GitHub 对未解析的 `@termai/*` **静默忽略** → 规则可能退化为空操作 | 发起人 | E4 目前**不可强制** |
+| C3 | **分支保护未启用** | 发起人 | required checks 无强制力 |
+| C4 | **`ci-cost.json` 与 $3,000/月上限：已落地（第 104–106 轮）**；新增 macOS runner 抬高成本 | T5 | ADR-0014 决策 6；落地前不得声称「CI 成本受控」  **第 104 轮已把实现依据定位到行**：schema 见 docs/spec/06-performance-methodology.md:277（每条流水线输出 ci-cost.json，字段 pipeline / minutes / runner_class / est_usd）；验收见同文件 A-PM-12（文件齐全、月度不超过 3000 美元、自托管不超过 1800、80% 告警、100% 降采样）；口径与单价见 docs/spec/07-engineering-quality-and-release.md:172（月成本约为各流水线单次分钟数乘月运行次数乘该类单价之和，再加签名与出口费用；云托管 Linux 2 核 0.008 美元每分钟、Windows 0.016、macOS 0.08；自托管 0.04 至 0.08 美元每核时）；上限拆分见 ADR-0014 第 235 行（云托管至多 1200、自托管至多 1800、合计 3000）。**因此实现等于按这四项填空加一个读数检查，无需再做设计。**  **第 105 轮已落地「数据一半」**：仓库根新增 `ci-cost.json`（schema 按 spec 06:277，8 条流水线各带 `pipeline`/`minutes_per_run`/`runner_class`/`unit_usd_per_min`/`est_usd_month`；**月估 $281.6，占云上限 23.5%，处于 UNDER_WARN**）。**所有分钟数与月运行次数都在文件里明确标注为「量级假设」而非测量**，并列出未计入项（签名固定费、存储出口、自托管折旧、尚未存在的 12 组合矩阵与 nightly fuzz）。**仍缺「读数检查」**：需要一个脚本校验 schema 齐全、重算总和、并按 80%/100% 阈值判定（A-PM-12）——**在那之前不得声称「CI 成本受控」**。  **第 106 轮：读数检查已落地，C4 的三件套齐全**——`ci-cost.json`（数据）+ `tools/ci-cost/check.mjs`（校验 schema、重算逐条与总额、按 A-PM-12 的 80%/100% 阈值判定）+ **已接入 Windows/Linux 两个 CI job**。**已做负例对照**：把总额改错后检查器 **exit 1**，恢复后 **exit 0**——**不是 always-green**。**仍不等于「成本受控」**：数字仍是**量级假设**（文件内已标注），且 **12 组合矩阵与 nightly fuzz 尚未计入**；这两项落地时**必须重估并重新过阈值**。 |
+| C5 | ~~**macOS arm64 从未真正编译/运行**；**Linux runner 的 K3 与 Node 门禁从未运行**~~ → **已实测通过（第 271 轮）**：CI run **35890840865**（sha `c221807`）**8 个作业全绿**，其中 `macos arm64 (fmt + check + clippy + test)` 与 `linux x64 (kernel K1-K8 + tokens + design static)` **均为 success**；两个 job 各 **10 对 check/selftest 全部 success**（含 `conformance verify`、`conformance suites`、`waivers`） | T5 | 证据 = GitHub Actions run 35890840865；`ci.yml` 的 `[first introduction, UNVERIFIED]` 已按此更新。**注**：这关闭的是「作业未跑过」，**不**关闭 C1–C3（治理前置）|
+| C6 | **季度依赖图 / 半年度技术栈体检** | T5 | spec 07 §3.9；本文件只覆盖 P0 阶段 |
+
+## D. 已按纪律关闭（不再作为未决项）
+
+- **OQ-RND-07**（Grid 字段集归属）：由 ADR-0023 D3 正式冻结；ADR-0025 增字段。
+- **L-12 / L-15**：按「不修改历史」与「设计上不做」关闭（AR-31 补充第 2/3 条）。
+- **G1 的 `R=1.0`**：仅是**当前 275 条语料**的实测，**不是 G1 通过**；任何报告引用它时都必须与 A1/A2/A3 同时出现，否则视为过度声称。

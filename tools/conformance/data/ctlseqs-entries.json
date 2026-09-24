@@ -1,0 +1,2098 @@
+{
+  "counts": {
+    "entries": 208,
+    "raw_entry_lines": 224,
+    "resolved": 208,
+    "unresolved": 0
+  },
+  "entries": [
+    {
+      "doc_line": 432,
+      "id": "apc-pt-st-432",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "APC Pt ST None.",
+      "resolved": true,
+      "resolved_pattern": "APC Pt ST",
+      "seq_hex": "1b5f781b5c"
+    },
+    {
+      "doc_line": 1479,
+      "id": "decstr-1479",
+      "leftover": "",
+      "mnemonic": "DECSTR",
+      "pattern": "CSI ! p",
+      "resolved": true,
+      "resolved_pattern": "CSI ! p",
+      "seq_hex": "1b5b2170"
+    },
+    {
+      "doc_line": 1745,
+      "id": "decrqde-1745",
+      "leftover": "",
+      "mnemonic": "DECRQDE",
+      "pattern": "CSI \" v",
+      "resolved": true,
+      "resolved_pattern": "CSI \" v",
+      "seq_hex": "1b5b2276"
+    },
+    {
+      "doc_line": 644,
+      "id": "xtpushcolors-644",
+      "leftover": "",
+      "mnemonic": "XTPUSHCOLORS",
+      "pattern": "CSI # P",
+      "resolved": true,
+      "resolved_pattern": "CSI # P",
+      "seq_hex": "1b5b2350"
+    },
+    {
+      "doc_line": 651,
+      "id": "xtpopcolors-651",
+      "leftover": "",
+      "mnemonic": "XTPOPCOLORS",
+      "pattern": "CSI # Q",
+      "resolved": true,
+      "resolved_pattern": "CSI # Q",
+      "seq_hex": "1b5b2351"
+    },
+    {
+      "doc_line": 658,
+      "id": "xtreportcolors-658",
+      "leftover": "",
+      "mnemonic": "XTREPORTCOLORS",
+      "pattern": "CSI # R",
+      "resolved": true,
+      "resolved_pattern": "CSI # R",
+      "seq_hex": "1b5b2352"
+    },
+    {
+      "doc_line": 664,
+      "id": "xttitlepos-664",
+      "leftover": "",
+      "mnemonic": "XTTITLEPOS",
+      "pattern": "CSI # S",
+      "resolved": true,
+      "resolved_pattern": "CSI # S",
+      "seq_hex": "1b5b2353"
+    },
+    {
+      "doc_line": 1525,
+      "id": "xtpushsgr-1525",
+      "leftover": "",
+      "mnemonic": "XTPUSHSGR",
+      "pattern": "CSI # p",
+      "resolved": true,
+      "resolved_pattern": "CSI # p",
+      "seq_hex": "1b5b2370"
+    },
+    {
+      "doc_line": 1565,
+      "id": "xtpopsgr-1565",
+      "leftover": "",
+      "mnemonic": "XTPOPSGR",
+      "pattern": "CSI # q",
+      "resolved": true,
+      "resolved_pattern": "CSI # q",
+      "seq_hex": "1b5b2371"
+    },
+    {
+      "doc_line": 1870,
+      "id": "xtpushsgr-1870",
+      "leftover": "",
+      "mnemonic": "XTPUSHSGR",
+      "pattern": "CSI # {",
+      "resolved": true,
+      "resolved_pattern": "CSI # {",
+      "seq_hex": "1b5b237b"
+    },
+    {
+      "doc_line": 1950,
+      "id": "xtpopsgr-1950",
+      "leftover": "",
+      "mnemonic": "XTPOPSGR",
+      "pattern": "CSI # }",
+      "resolved": true,
+      "resolved_pattern": "CSI # }",
+      "seq_hex": "1b5b237d"
+    },
+    {
+      "doc_line": 1736,
+      "id": "decrqupss-1736",
+      "leftover": "",
+      "mnemonic": "DECRQUPSS",
+      "pattern": "CSI & u",
+      "resolved": true,
+      "resolved_pattern": "CSI & u",
+      "seq_hex": "1b5b2675"
+    },
+    {
+      "doc_line": 810,
+      "id": "csi-ps-c-810",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "CSI = Ps c",
+      "resolved": true,
+      "resolved_pattern": "CSI = Ps c",
+      "seq_hex": "1b5b3d3163"
+    },
+    {
+      "doc_line": 733,
+      "id": "xtrmtitle-733",
+      "leftover": "",
+      "mnemonic": "XTRMTITLE",
+      "pattern": "CSI > Pm T",
+      "resolved": true,
+      "resolved_pattern": "CSI > Pm T",
+      "seq_hex": "1b5b3e3154"
+    },
+    {
+      "doc_line": 1707,
+      "id": "xtsmtitle-1707",
+      "leftover": "",
+      "mnemonic": "XTSMTITLE",
+      "pattern": "CSI > Pm t",
+      "resolved": true,
+      "resolved_pattern": "CSI > Pm t",
+      "seq_hex": "1b5b3e3174"
+    },
+    {
+      "doc_line": 850,
+      "id": "xtfmtkeys-850",
+      "leftover": "",
+      "mnemonic": "XTFMTKEYS",
+      "pattern": "CSI > Pp ; Pv f",
+      "resolved": true,
+      "resolved_pattern": "CSI > Pp ; Pv f",
+      "seq_hex": "1b5b3e313b3166"
+    },
+    {
+      "doc_line": 1328,
+      "id": "xtmodkeys-1328",
+      "leftover": "",
+      "mnemonic": "XTMODKEYS",
+      "pattern": "CSI > Pp ; Pv m",
+      "resolved": true,
+      "resolved_pattern": "CSI > Pp ; Pv m",
+      "seq_hex": "1b5b3e313b316d"
+    },
+    {
+      "doc_line": 851,
+      "id": "xtfmtkeys-851",
+      "leftover": "",
+      "mnemonic": "XTFMTKEYS",
+      "pattern": "CSI > Pp f",
+      "resolved": true,
+      "resolved_pattern": "CSI > Pp f",
+      "seq_hex": "1b5b3e3166"
+    },
+    {
+      "doc_line": 1329,
+      "id": "xtmodkeys-1329",
+      "leftover": "",
+      "mnemonic": "XTMODKEYS",
+      "pattern": "CSI > Pp m",
+      "resolved": true,
+      "resolved_pattern": "CSI > Pp m",
+      "seq_hex": "1b5b3e316d"
+    },
+    {
+      "doc_line": 816,
+      "id": "csi-ps-c-816",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "CSI > Ps c",
+      "resolved": true,
+      "resolved_pattern": "CSI > Ps c",
+      "seq_hex": "1b5b3e3163"
+    },
+    {
+      "doc_line": 1404,
+      "id": "csi-ps-n-1404",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "CSI > Ps n",
+      "resolved": true,
+      "resolved_pattern": "CSI > Ps n",
+      "seq_hex": "1b5b3e316e"
+    },
+    {
+      "doc_line": 1464,
+      "id": "xtsmpointer-1464",
+      "leftover": "",
+      "mnemonic": "XTSMPOINTER",
+      "pattern": "CSI > Ps p",
+      "resolved": true,
+      "resolved_pattern": "CSI > Ps p",
+      "seq_hex": "1b5b3e3170"
+    },
+    {
+      "doc_line": 1531,
+      "id": "xtversion-1531",
+      "leftover": "",
+      "mnemonic": "XTVERSION",
+      "pattern": "CSI > Ps q",
+      "resolved": true,
+      "resolved_pattern": "CSI > Ps q",
+      "seq_hex": "1b5b3e3171"
+    },
+    {
+      "doc_line": 1599,
+      "id": "xtshiftescape-1599",
+      "leftover": "",
+      "mnemonic": "XTSHIFTESCAPE",
+      "pattern": "CSI > Ps s",
+      "resolved": true,
+      "resolved_pattern": "CSI > Ps s",
+      "seq_hex": "1b5b3e3173"
+    },
+    {
+      "doc_line": 750,
+      "id": "decst8c-750",
+      "leftover": "",
+      "mnemonic": "DECST8C",
+      "pattern": "CSI ? 5 W Reset tab stops to start with column 9, every 8 columns",
+      "resolved": true,
+      "resolved_pattern": "CSI ? 5 W",
+      "seq_hex": "1b5b3f3557"
+    },
+    {
+      "doc_line": 671,
+      "id": "xtsmgraphics-671",
+      "leftover": "",
+      "mnemonic": "XTSMGRAPHICS",
+      "pattern": "CSI ? Pi ; Pa ; Pv S",
+      "resolved": true,
+      "resolved_pattern": "CSI ? Pi ; Pa ; Pv S",
+      "seq_hex": "1b5b3f313b313b3153"
+    },
+    {
+      "doc_line": 917,
+      "id": "decset-917",
+      "leftover": "",
+      "mnemonic": "DECSET",
+      "pattern": "CSI ? Pm h",
+      "resolved": true,
+      "resolved_pattern": "CSI ? Pm h",
+      "seq_hex": "1b5b3f3168"
+    },
+    {
+      "doc_line": 1068,
+      "id": "decrst-1068",
+      "leftover": "",
+      "mnemonic": "DECRST",
+      "pattern": "CSI ? Pm l",
+      "resolved": true,
+      "resolved_pattern": "CSI ? Pm l",
+      "seq_hex": "1b5b3f316c"
+    },
+    {
+      "doc_line": 1573,
+      "id": "xtrestore-1573",
+      "leftover": "",
+      "mnemonic": "XTRESTORE",
+      "pattern": "CSI ? Pm r",
+      "resolved": true,
+      "resolved_pattern": "CSI ? Pm r",
+      "seq_hex": "1b5b3f3172"
+    },
+    {
+      "doc_line": 1616,
+      "id": "xtsave-1616",
+      "leftover": "",
+      "mnemonic": "XTSAVE",
+      "pattern": "CSI ? Pm s",
+      "resolved": true,
+      "resolved_pattern": "CSI ? Pm s",
+      "seq_hex": "1b5b3f3173"
+    },
+    {
+      "doc_line": 883,
+      "id": "xtqfmtkeys-883",
+      "leftover": "",
+      "mnemonic": "XTQFMTKEYS",
+      "pattern": "CSI ? Pp g",
+      "resolved": true,
+      "resolved_pattern": "CSI ? Pp g",
+      "seq_hex": "1b5b3f3167"
+    },
+    {
+      "doc_line": 1355,
+      "id": "xtqmodkeys-1355",
+      "leftover": "",
+      "mnemonic": "XTQMODKEYS",
+      "pattern": "CSI ? Pp m",
+      "resolved": true,
+      "resolved_pattern": "CSI ? Pp m",
+      "seq_hex": "1b5b3f316d"
+    },
+    {
+      "doc_line": 1513,
+      "id": "decrqm-1513",
+      "leftover": "",
+      "mnemonic": "DECRQM",
+      "pattern": "CSI ? Ps $ p",
+      "resolved": true,
+      "resolved_pattern": "CSI ? Ps $ p",
+      "seq_hex": "1b5b3f312470"
+    },
+    {
+      "doc_line": 620,
+      "id": "decsed-620",
+      "leftover": "",
+      "mnemonic": "DECSED",
+      "pattern": "CSI ? Ps J",
+      "resolved": true,
+      "resolved_pattern": "CSI ? Ps J",
+      "seq_hex": "1b5b3f314a"
+    },
+    {
+      "doc_line": 632,
+      "id": "decsel-632",
+      "leftover": "",
+      "mnemonic": "DECSEL",
+      "pattern": "CSI ? Ps K",
+      "resolved": true,
+      "resolved_pattern": "CSI ? Ps K",
+      "seq_hex": "1b5b3f314b"
+    },
+    {
+      "doc_line": 1054,
+      "id": "mc-1054",
+      "leftover": "",
+      "mnemonic": "MC",
+      "pattern": "CSI ? Ps i",
+      "resolved": true,
+      "resolved_pattern": "CSI ? Ps i",
+      "seq_hex": "1b5b3f3169"
+    },
+    {
+      "doc_line": 1426,
+      "id": "decxcpr-1426",
+      "leftover": "",
+      "mnemonic": "DECXCPR",
+      "pattern": "CSI ? Ps n",
+      "resolved": true,
+      "resolved_pattern": "CSI ? Ps n",
+      "seq_hex": "1b5b3f316e"
+    },
+    {
+      "doc_line": 1818,
+      "id": "decfra-1818",
+      "leftover": "",
+      "mnemonic": "DECFRA",
+      "pattern": "CSI Pc ; Pt ; Pl ; Pb ; Pr $ x",
+      "resolved": true,
+      "resolved_pattern": "CSI Pc ; Pt ; Pl ; Pb ; Pr $ x",
+      "seq_hex": "1b5b313b783b313b313b312478"
+    },
+    {
+      "doc_line": 1833,
+      "id": "decrqcra-1833",
+      "leftover": "",
+      "mnemonic": "DECRQCRA",
+      "pattern": "CSI Pi ; Pg ; Pt ; Pl ; Pb ; Pr * y",
+      "resolved": true,
+      "resolved_pattern": "CSI Pi ; Pg ; Pt ; Pl ; Pb ; Pr * y",
+      "seq_hex": "1b5b313b313b783b313b313b312a79"
+    },
+    {
+      "doc_line": 1481,
+      "id": "decscl-1481",
+      "leftover": "",
+      "mnemonic": "DECSCL",
+      "pattern": "CSI Pl ; Pc \" p",
+      "resolved": true,
+      "resolved_pattern": "CSI Pl ; Pc \" p",
+      "seq_hex": "1b5b313b312270"
+    },
+    {
+      "doc_line": 1595,
+      "id": "decslrm-1595",
+      "leftover": "",
+      "mnemonic": "DECSLRM",
+      "pattern": "CSI Pl ; Pr s",
+      "resolved": true,
+      "resolved_pattern": "CSI Pl ; Pr s",
+      "seq_hex": "1b5b313b3173"
+    },
+    {
+      "doc_line": 645,
+      "id": "xtpushcolors-645",
+      "leftover": "",
+      "mnemonic": "XTPUSHCOLORS",
+      "pattern": "CSI Pm # P",
+      "resolved": true,
+      "resolved_pattern": "CSI Pm # P",
+      "seq_hex": "1b5b312350"
+    },
+    {
+      "doc_line": 652,
+      "id": "xtpopcolors-652",
+      "leftover": "",
+      "mnemonic": "XTPOPCOLORS",
+      "pattern": "CSI Pm # Q",
+      "resolved": true,
+      "resolved_pattern": "CSI Pm # Q",
+      "seq_hex": "1b5b312351"
+    },
+    {
+      "doc_line": 1526,
+      "id": "xtpushsgr-1526",
+      "leftover": "",
+      "mnemonic": "XTPUSHSGR",
+      "pattern": "CSI Pm # p",
+      "resolved": true,
+      "resolved_pattern": "CSI Pm # p",
+      "seq_hex": "1b5b312370"
+    },
+    {
+      "doc_line": 1871,
+      "id": "xtpushsgr-1871",
+      "leftover": "",
+      "mnemonic": "XTPUSHSGR",
+      "pattern": "CSI Pm # {",
+      "resolved": true,
+      "resolved_pattern": "CSI Pm # {",
+      "seq_hex": "1b5b31237b"
+    },
+    {
+      "doc_line": 1859,
+      "id": "decsle-1859",
+      "leftover": "",
+      "mnemonic": "DECSLE",
+      "pattern": "CSI Pm ' {",
+      "resolved": true,
+      "resolved_pattern": "CSI Pm ' {",
+      "seq_hex": "1b5b31277b"
+    },
+    {
+      "doc_line": 911,
+      "id": "sm-911",
+      "leftover": "",
+      "mnemonic": "SM",
+      "pattern": "CSI Pm h",
+      "resolved": true,
+      "resolved_pattern": "CSI Pm h",
+      "seq_hex": "1b5b3168"
+    },
+    {
+      "doc_line": 1062,
+      "id": "rm-1062",
+      "leftover": "",
+      "mnemonic": "RM",
+      "pattern": "CSI Pm l",
+      "resolved": true,
+      "resolved_pattern": "CSI Pm l",
+      "seq_hex": "1b5b316c"
+    },
+    {
+      "doc_line": 1189,
+      "id": "sgr-1189",
+      "leftover": "",
+      "mnemonic": "SGR",
+      "pattern": "CSI Pm m",
+      "resolved": true,
+      "resolved_pattern": "CSI Pm m",
+      "seq_hex": "1b5b316d"
+    },
+    {
+      "doc_line": 1558,
+      "id": "decsca-1558",
+      "leftover": "",
+      "mnemonic": "DECSCA",
+      "pattern": "CSI Ps \" q",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps \" q",
+      "seq_hex": "1b5b312271"
+    },
+    {
+      "doc_line": 1823,
+      "id": "xtchecksum-1823",
+      "leftover": "",
+      "mnemonic": "XTCHECKSUM",
+      "pattern": "CSI Ps # y",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps # y",
+      "seq_hex": "1b5b312379"
+    },
+    {
+      "doc_line": 1502,
+      "id": "decrqm-1502",
+      "leftover": "",
+      "mnemonic": "DECRQM",
+      "pattern": "CSI Ps $ p",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps $ p",
+      "seq_hex": "1b5b312470"
+    },
+    {
+      "doc_line": 1762,
+      "id": "decrqpsr-1762",
+      "leftover": "",
+      "mnemonic": "DECRQPSR",
+      "pattern": "CSI Ps $ w",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps $ w",
+      "seq_hex": "1b5b312477"
+    },
+    {
+      "doc_line": 1901,
+      "id": "decscpp-1901",
+      "leftover": "",
+      "mnemonic": "DECSCPP",
+      "pattern": "CSI Ps $ |",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps $ |",
+      "seq_hex": "1b5b31247c"
+    },
+    {
+      "doc_line": 1993,
+      "id": "decsasd-1993",
+      "leftover": "",
+      "mnemonic": "DECSASD",
+      "pattern": "CSI Ps $ }",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps $ }",
+      "seq_hex": "1b5b31247d"
+    },
+    {
+      "doc_line": 2001,
+      "id": "decssdt-2001",
+      "leftover": "",
+      "mnemonic": "DECSSDT",
+      "pattern": "CSI Ps $ ~",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps $ ~",
+      "seq_hex": "1b5b31247e"
+    },
+    {
+      "doc_line": 1907,
+      "id": "decrqlp-1907",
+      "leftover": "",
+      "mnemonic": "DECRQLP",
+      "pattern": "CSI Ps ' |",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps ' |",
+      "seq_hex": "1b5b31277c"
+    },
+    {
+      "doc_line": 1990,
+      "id": "decic-1990",
+      "leftover": "",
+      "mnemonic": "DECIC",
+      "pattern": "CSI Ps ' }",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps ' }",
+      "seq_hex": "1b5b31277d"
+    },
+    {
+      "doc_line": 1998,
+      "id": "decdc-1998",
+      "leftover": "",
+      "mnemonic": "DECDC",
+      "pattern": "CSI Ps ' ~",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps ' ~",
+      "seq_hex": "1b5b31277e"
+    },
+    {
+      "doc_line": 1800,
+      "id": "decsace-1800",
+      "leftover": "",
+      "mnemonic": "DECSACE",
+      "pattern": "CSI Ps * x",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps * x",
+      "seq_hex": "1b5b312a78"
+    },
+    {
+      "doc_line": 1947,
+      "id": "decsnls-1947",
+      "leftover": "",
+      "mnemonic": "DECSNLS",
+      "pattern": "CSI Ps * |",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps * |",
+      "seq_hex": "1b5b312a7c"
+    },
+    {
+      "doc_line": 1954,
+      "id": "decac-1954",
+      "leftover": "",
+      "mnemonic": "DECAC",
+      "pattern": "CSI Ps ; Pf ; Pb , |",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps ; Pf ; Pb , |",
+      "seq_hex": "1b5b313b313b312c7c"
+    },
+    {
+      "doc_line": 1965,
+      "id": "decatc-1965",
+      "leftover": "",
+      "mnemonic": "DECATC",
+      "pattern": "CSI Ps ; Pf ; Pb , }",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps ; Pf ; Pb , }",
+      "seq_hex": "1b5b313b313b312c7d"
+    },
+    {
+      "doc_line": 728,
+      "id": "xthimouse-728",
+      "leftover": "",
+      "mnemonic": "XTHIMOUSE",
+      "pattern": "CSI Ps ; Ps ; Ps ; Ps ; Ps T",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps ; Ps ; Ps ; Ps ; Ps T",
+      "seq_hex": "1b5b313b313b313b313b3154"
+    },
+    {
+      "doc_line": 1625,
+      "id": "xtwinops-1625",
+      "leftover": "",
+      "mnemonic": "XTWINOPS",
+      "pattern": "CSI Ps ; Ps ; Ps t",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps ; Ps ; Ps t",
+      "seq_hex": "1b5b313b313b3174"
+    },
+    {
+      "doc_line": 609,
+      "id": "cup-609",
+      "leftover": "",
+      "mnemonic": "CUP",
+      "pattern": "CSI Ps ; Ps H",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps ; Ps H",
+      "seq_hex": "1b5b313b3148"
+    },
+    {
+      "doc_line": 846,
+      "id": "hvp-846",
+      "leftover": "",
+      "mnemonic": "HVP",
+      "pattern": "CSI Ps ; Ps f",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps ; Ps f",
+      "seq_hex": "1b5b313b3166"
+    },
+    {
+      "doc_line": 1569,
+      "id": "decstbm-1569",
+      "leftover": "",
+      "mnemonic": "DECSTBM",
+      "pattern": "CSI Ps ; Ps r",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps ; Ps r",
+      "seq_hex": "1b5b313b3172"
+    },
+    {
+      "doc_line": 1842,
+      "id": "decelr-1842",
+      "leftover": "",
+      "mnemonic": "DECELR",
+      "pattern": "CSI Ps ; Pu ' z",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps ; Pu ' z",
+      "seq_hex": "1b5b313b31277a"
+    },
+    {
+      "doc_line": 587,
+      "id": "ich-587",
+      "leftover": "",
+      "mnemonic": "ICH",
+      "pattern": "CSI Ps @",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps @",
+      "seq_hex": "1b5b3140"
+    },
+    {
+      "doc_line": 592,
+      "id": "cuu-592",
+      "leftover": "",
+      "mnemonic": "CUU",
+      "pattern": "CSI Ps A",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps A",
+      "seq_hex": "1b5b3141"
+    },
+    {
+      "doc_line": 597,
+      "id": "cud-597",
+      "leftover": "",
+      "mnemonic": "CUD",
+      "pattern": "CSI Ps B",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps B",
+      "seq_hex": "1b5b3142"
+    },
+    {
+      "doc_line": 599,
+      "id": "cuf-599",
+      "leftover": "",
+      "mnemonic": "CUF",
+      "pattern": "CSI Ps C",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps C",
+      "seq_hex": "1b5b3143"
+    },
+    {
+      "doc_line": 601,
+      "id": "cub-601",
+      "leftover": "",
+      "mnemonic": "CUB",
+      "pattern": "CSI Ps D",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps D",
+      "seq_hex": "1b5b3144"
+    },
+    {
+      "doc_line": 603,
+      "id": "cnl-603",
+      "leftover": "",
+      "mnemonic": "CNL",
+      "pattern": "CSI Ps E",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps E",
+      "seq_hex": "1b5b3145"
+    },
+    {
+      "doc_line": 605,
+      "id": "cpl-605",
+      "leftover": "",
+      "mnemonic": "CPL",
+      "pattern": "CSI Ps F",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps F",
+      "seq_hex": "1b5b3146"
+    },
+    {
+      "doc_line": 607,
+      "id": "cha-607",
+      "leftover": "",
+      "mnemonic": "CHA",
+      "pattern": "CSI Ps G",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps G",
+      "seq_hex": "1b5b3147"
+    },
+    {
+      "doc_line": 612,
+      "id": "cht-612",
+      "leftover": "",
+      "mnemonic": "CHT",
+      "pattern": "CSI Ps I",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps I",
+      "seq_hex": "1b5b3149"
+    },
+    {
+      "doc_line": 614,
+      "id": "ed-614",
+      "leftover": "",
+      "mnemonic": "ED",
+      "pattern": "CSI Ps J",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps J",
+      "seq_hex": "1b5b314a"
+    },
+    {
+      "doc_line": 627,
+      "id": "el-627",
+      "leftover": "",
+      "mnemonic": "EL",
+      "pattern": "CSI Ps K",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps K",
+      "seq_hex": "1b5b314b"
+    },
+    {
+      "doc_line": 638,
+      "id": "il-638",
+      "leftover": "",
+      "mnemonic": "IL",
+      "pattern": "CSI Ps L",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps L",
+      "seq_hex": "1b5b314c"
+    },
+    {
+      "doc_line": 640,
+      "id": "dl-640",
+      "leftover": "",
+      "mnemonic": "DL",
+      "pattern": "CSI Ps M",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps M",
+      "seq_hex": "1b5b314d"
+    },
+    {
+      "doc_line": 642,
+      "id": "dch-642",
+      "leftover": "",
+      "mnemonic": "DCH",
+      "pattern": "CSI Ps P",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps P",
+      "seq_hex": "1b5b3150"
+    },
+    {
+      "doc_line": 662,
+      "id": "su-662",
+      "leftover": "",
+      "mnemonic": "SU",
+      "pattern": "CSI Ps S",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps S",
+      "seq_hex": "1b5b3153"
+    },
+    {
+      "doc_line": 589,
+      "id": "sl-589",
+      "leftover": "",
+      "mnemonic": "SL",
+      "pattern": "CSI Ps SP @",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps SP @",
+      "seq_hex": "1b5b312040"
+    },
+    {
+      "doc_line": 594,
+      "id": "sr-594",
+      "leftover": "",
+      "mnemonic": "SR",
+      "pattern": "CSI Ps SP A",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps SP A",
+      "seq_hex": "1b5b312041"
+    },
+    {
+      "doc_line": 1545,
+      "id": "decscusr-1545",
+      "leftover": "",
+      "mnemonic": "DECSCUSR",
+      "pattern": "CSI Ps SP q",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps SP q",
+      "seq_hex": "1b5b312071"
+    },
+    {
+      "doc_line": 1720,
+      "id": "decswbv-1720",
+      "leftover": "",
+      "mnemonic": "DECSWBV",
+      "pattern": "CSI Ps SP t",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps SP t",
+      "seq_hex": "1b5b312074"
+    },
+    {
+      "doc_line": 1739,
+      "id": "decsmbv-1739",
+      "leftover": "",
+      "mnemonic": "DECSMBV",
+      "pattern": "CSI Ps SP u",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps SP u",
+      "seq_hex": "1b5b312075"
+    },
+    {
+      "doc_line": 726,
+      "id": "sd-726",
+      "leftover": "",
+      "mnemonic": "SD",
+      "pattern": "CSI Ps T",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps T",
+      "seq_hex": "1b5b3154"
+    },
+    {
+      "doc_line": 753,
+      "id": "ech-753",
+      "leftover": "",
+      "mnemonic": "ECH",
+      "pattern": "CSI Ps X",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps X",
+      "seq_hex": "1b5b3158"
+    },
+    {
+      "doc_line": 755,
+      "id": "cbt-755",
+      "leftover": "",
+      "mnemonic": "CBT",
+      "pattern": "CSI Ps Z",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps Z",
+      "seq_hex": "1b5b315a"
+    },
+    {
+      "doc_line": 757,
+      "id": "sd-757",
+      "leftover": "",
+      "mnemonic": "SD",
+      "pattern": "CSI Ps ^",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps ^",
+      "seq_hex": "1b5b315e"
+    },
+    {
+      "doc_line": 761,
+      "id": "hpa-761",
+      "leftover": "",
+      "mnemonic": "HPA",
+      "pattern": "CSI Ps `",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps `",
+      "seq_hex": "1b5b3160"
+    },
+    {
+      "doc_line": 764,
+      "id": "hpr-764",
+      "leftover": "",
+      "mnemonic": "HPR",
+      "pattern": "CSI Ps a",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps a",
+      "seq_hex": "1b5b3161"
+    },
+    {
+      "doc_line": 767,
+      "id": "rep-767",
+      "leftover": "",
+      "mnemonic": "REP",
+      "pattern": "CSI Ps b",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps b",
+      "seq_hex": "1b5b3162"
+    },
+    {
+      "doc_line": 769,
+      "id": "csi-ps-c-769",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "CSI Ps c",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps c",
+      "seq_hex": "1b5b3163"
+    },
+    {
+      "doc_line": 841,
+      "id": "vpa-841",
+      "leftover": "",
+      "mnemonic": "VPA",
+      "pattern": "CSI Ps d",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps d",
+      "seq_hex": "1b5b3164"
+    },
+    {
+      "doc_line": 843,
+      "id": "vpr-843",
+      "leftover": "",
+      "mnemonic": "VPR",
+      "pattern": "CSI Ps e",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps e",
+      "seq_hex": "1b5b3165"
+    },
+    {
+      "doc_line": 877,
+      "id": "tbc-877",
+      "leftover": "",
+      "mnemonic": "TBC",
+      "pattern": "CSI Ps g",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps g",
+      "seq_hex": "1b5b3167"
+    },
+    {
+      "doc_line": 1047,
+      "id": "mc-1047",
+      "leftover": "",
+      "mnemonic": "MC",
+      "pattern": "CSI Ps i",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps i",
+      "seq_hex": "1b5b3169"
+    },
+    {
+      "doc_line": 1383,
+      "id": "dsr-1383",
+      "leftover": "",
+      "mnemonic": "DSR",
+      "pattern": "CSI Ps n",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps n",
+      "seq_hex": "1b5b316e"
+    },
+    {
+      "doc_line": 1536,
+      "id": "decll-1536",
+      "leftover": "",
+      "mnemonic": "DECLL",
+      "pattern": "CSI Ps q",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps q",
+      "seq_hex": "1b5b3171"
+    },
+    {
+      "doc_line": 1788,
+      "id": "decreqtparm-1788",
+      "leftover": "",
+      "mnemonic": "DECREQTPARM",
+      "pattern": "CSI Ps x",
+      "resolved": true,
+      "resolved_pattern": "CSI Ps x",
+      "seq_hex": "1b5b3178"
+    },
+    {
+      "doc_line": 1895,
+      "id": "xtreportsgr-1895",
+      "leftover": "",
+      "mnemonic": "XTREPORTSGR",
+      "pattern": "CSI Pt ; Pl ; Pb ; Pr # |",
+      "resolved": true,
+      "resolved_pattern": "CSI Pt ; Pl ; Pb ; Pr # |",
+      "seq_hex": "1b5b783b313b313b31237c"
+    },
+    {
+      "doc_line": 1855,
+      "id": "decera-1855",
+      "leftover": "",
+      "mnemonic": "DECERA",
+      "pattern": "CSI Pt ; Pl ; Pb ; Pr $ z",
+      "resolved": true,
+      "resolved_pattern": "CSI Pt ; Pl ; Pb ; Pr $ z",
+      "seq_hex": "1b5b783b313b313b31247a"
+    },
+    {
+      "doc_line": 1891,
+      "id": "decsera-1891",
+      "leftover": "",
+      "mnemonic": "DECSERA",
+      "pattern": "CSI Pt ; Pl ; Pb ; Pr $ {",
+      "resolved": true,
+      "resolved_pattern": "CSI Pt ; Pl ; Pb ; Pr $ {",
+      "seq_hex": "1b5b783b313b313b31247b"
+    },
+    {
+      "doc_line": 1776,
+      "id": "decefr-1776",
+      "leftover": "",
+      "mnemonic": "DECEFR",
+      "pattern": "CSI Pt ; Pl ; Pb ; Pr ' w",
+      "resolved": true,
+      "resolved_pattern": "CSI Pt ; Pl ; Pb ; Pr ' w",
+      "seq_hex": "1b5b783b313b313b312777"
+    },
+    {
+      "doc_line": 1583,
+      "id": "deccara-1583",
+      "leftover": "",
+      "mnemonic": "DECCARA",
+      "pattern": "CSI Pt ; Pl ; Pb ; Pr ; Pm $ r",
+      "resolved": true,
+      "resolved_pattern": "CSI Pt ; Pl ; Pb ; Pr ; Pm $ r",
+      "seq_hex": "1b5b783b313b313b313b312472"
+    },
+    {
+      "doc_line": 1726,
+      "id": "decrara-1726",
+      "leftover": "",
+      "mnemonic": "DECRARA",
+      "pattern": "CSI Pt ; Pl ; Pb ; Pr ; Pm $ t",
+      "resolved": true,
+      "resolved_pattern": "CSI Pt ; Pl ; Pb ; Pr ; Pm $ t",
+      "seq_hex": "1b5b783b313b313b313b312474"
+    },
+    {
+      "doc_line": 1755,
+      "id": "deccra-1755",
+      "leftover": "",
+      "mnemonic": "DECCRA",
+      "pattern": "CSI Pt ; Pl ; Pb ; Pr ; Pp ; Pt ; Pl ; Pp $ v",
+      "resolved": true,
+      "resolved_pattern": "CSI Pt ; Pl ; Pb ; Pr ; Pp ; Pt ; Pl ; Pp $ v",
+      "seq_hex": "1b5b783b313b313b313b313b783b313b312476"
+    },
+    {
+      "doc_line": 1592,
+      "id": "csi-s-1592",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "CSI s",
+      "resolved": true,
+      "resolved_pattern": "CSI s",
+      "seq_hex": "1b5b73"
+    },
+    {
+      "doc_line": 1734,
+      "id": "decrqupss-1734",
+      "leftover": "",
+      "mnemonic": "DECRQUPSS",
+      "pattern": "CSI u",
+      "resolved": true,
+      "resolved_pattern": "CSI u",
+      "seq_hex": "1b5b75"
+    },
+    {
+      "doc_line": 478,
+      "id": "decrqss-478",
+      "leftover": "",
+      "mnemonic": "DECRQSS",
+      "pattern": "DCS $ q Pt ST",
+      "resolved": true,
+      "resolved_pattern": "DCS $ q Pt ST",
+      "seq_hex": "1b502471781b5c"
+    },
+    {
+      "doc_line": 510,
+      "id": "xtgetxres-510",
+      "leftover": "",
+      "mnemonic": "XTGETXRES",
+      "pattern": "DCS + Q Pt ST",
+      "resolved": true,
+      "resolved_pattern": "DCS + Q Pt ST",
+      "seq_hex": "1b502b51781b5c"
+    },
+    {
+      "doc_line": 535,
+      "id": "xtsettcap-535",
+      "leftover": "",
+      "mnemonic": "XTSETTCAP",
+      "pattern": "DCS + p Pt ST",
+      "resolved": true,
+      "resolved_pattern": "DCS + p Pt ST",
+      "seq_hex": "1b502b70781b5c"
+    },
+    {
+      "doc_line": 545,
+      "id": "xtgettcap-545",
+      "leftover": "",
+      "mnemonic": "XTGETTCAP",
+      "pattern": "DCS + q Pt ST",
+      "resolved": true,
+      "resolved_pattern": "DCS + q Pt ST",
+      "seq_hex": "1b502b71781b5c"
+    },
+    {
+      "doc_line": 3229,
+      "id": "dcs-pa-pb-ph-q-3229",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "DCS Pa ; Pb ; Ph q",
+      "resolved": true,
+      "resolved_pattern": "DCS Pa ; Pb ; Ph q",
+      "seq_hex": "1b50313b313b3171"
+    },
+    {
+      "doc_line": 3262,
+      "id": "dcs-pm-p-pr-pr-st-3262",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "DCS Pm p Pr..Pr ST",
+      "resolved": true,
+      "resolved_pattern": "DCS Pm p Pr..Pr ST",
+      "seq_hex": "1b503170311b5c"
+    },
+    {
+      "doc_line": 455,
+      "id": "decaupss-455",
+      "leftover": "",
+      "mnemonic": "DECAUPSS",
+      "pattern": "DCS Ps ! u Pt ST",
+      "resolved": true,
+      "resolved_pattern": "DCS Ps ! u Pt ST",
+      "seq_hex": "1b50312175781b5c"
+    },
+    {
+      "doc_line": 503,
+      "id": "decrsps-503",
+      "leftover": "",
+      "mnemonic": "DECRSPS",
+      "pattern": "DCS Ps $ t Pt ST",
+      "resolved": true,
+      "resolved_pattern": "DCS Ps $ t Pt ST",
+      "seq_hex": "1b50312474781b5c"
+    },
+    {
+      "doc_line": 438,
+      "id": "decudk-438",
+      "leftover": "",
+      "mnemonic": "DECUDK",
+      "pattern": "DCS Ps ; Ps | Pt ST",
+      "resolved": true,
+      "resolved_pattern": "DCS Ps ; Ps | Pt ST",
+      "seq_hex": "1b50313b317c781b5c"
+    },
+    {
+      "doc_line": 302,
+      "id": "decdhl-302",
+      "leftover": "",
+      "mnemonic": "DECDHL",
+      "pattern": "ESC # 3",
+      "resolved": true,
+      "resolved_pattern": "ESC # 3",
+      "seq_hex": "1b2333"
+    },
+    {
+      "doc_line": 304,
+      "id": "decdhl-304",
+      "leftover": "",
+      "mnemonic": "DECDHL",
+      "pattern": "ESC # 4",
+      "resolved": true,
+      "resolved_pattern": "ESC # 4",
+      "seq_hex": "1b2334"
+    },
+    {
+      "doc_line": 306,
+      "id": "decswl-306",
+      "leftover": "",
+      "mnemonic": "DECSWL",
+      "pattern": "ESC # 5",
+      "resolved": true,
+      "resolved_pattern": "ESC # 5",
+      "seq_hex": "1b2335"
+    },
+    {
+      "doc_line": 308,
+      "id": "decdwl-308",
+      "leftover": "",
+      "mnemonic": "DECDWL",
+      "pattern": "ESC # 6",
+      "resolved": true,
+      "resolved_pattern": "ESC # 6",
+      "seq_hex": "1b2336"
+    },
+    {
+      "doc_line": 310,
+      "id": "decaln-310",
+      "leftover": "",
+      "mnemonic": "DECALN",
+      "pattern": "ESC # 8",
+      "resolved": true,
+      "resolved_pattern": "ESC # 8",
+      "seq_hex": "1b2338"
+    },
+    {
+      "doc_line": 312,
+      "id": "esc-312",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC % @",
+      "resolved": true,
+      "resolved_pattern": "ESC % @",
+      "seq_hex": "1b2540"
+    },
+    {
+      "doc_line": 314,
+      "id": "esc-g-314",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC % G",
+      "resolved": true,
+      "resolved_pattern": "ESC % G",
+      "seq_hex": "1b2547"
+    },
+    {
+      "doc_line": 316,
+      "id": "esc-c-316",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC ( C",
+      "resolved": true,
+      "resolved_pattern": "ESC ( C",
+      "seq_hex": "1b2843"
+    },
+    {
+      "doc_line": 370,
+      "id": "esc-c-370",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC ) C",
+      "resolved": true,
+      "resolved_pattern": "ESC ) C",
+      "seq_hex": "1b2943"
+    },
+    {
+      "doc_line": 373,
+      "id": "esc-c-373",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC * C",
+      "resolved": true,
+      "resolved_pattern": "ESC * C",
+      "seq_hex": "1b2a43"
+    },
+    {
+      "doc_line": 376,
+      "id": "esc-c-376",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC + C",
+      "resolved": true,
+      "resolved_pattern": "ESC + C",
+      "seq_hex": "1b2b43"
+    },
+    {
+      "doc_line": 379,
+      "id": "esc-c-379",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC - C",
+      "resolved": true,
+      "resolved_pattern": "ESC - C",
+      "seq_hex": "1b2d43"
+    },
+    {
+      "doc_line": 391,
+      "id": "esc-c-391",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC . C",
+      "resolved": true,
+      "resolved_pattern": "ESC . C",
+      "seq_hex": "1b2e43"
+    },
+    {
+      "doc_line": 394,
+      "id": "decbi-394",
+      "leftover": "",
+      "mnemonic": "DECBI",
+      "pattern": "ESC / C",
+      "resolved": true,
+      "resolved_pattern": "ESC / C",
+      "seq_hex": "1b2f43"
+    },
+    {
+      "doc_line": 397,
+      "id": "decbi-397",
+      "leftover": "",
+      "mnemonic": "DECBI",
+      "pattern": "ESC 6",
+      "resolved": true,
+      "resolved_pattern": "ESC 6",
+      "seq_hex": "1b36"
+    },
+    {
+      "doc_line": 399,
+      "id": "decsc-399",
+      "leftover": "",
+      "mnemonic": "DECSC",
+      "pattern": "ESC 7",
+      "resolved": true,
+      "resolved_pattern": "ESC 7",
+      "seq_hex": "1b37"
+    },
+    {
+      "doc_line": 401,
+      "id": "decrc-401",
+      "leftover": "",
+      "mnemonic": "DECRC",
+      "pattern": "ESC 8",
+      "resolved": true,
+      "resolved_pattern": "ESC 8",
+      "seq_hex": "1b38"
+    },
+    {
+      "doc_line": 403,
+      "id": "decfi-403",
+      "leftover": "",
+      "mnemonic": "DECFI",
+      "pattern": "ESC 9",
+      "resolved": true,
+      "resolved_pattern": "ESC 9",
+      "seq_hex": "1b39"
+    },
+    {
+      "doc_line": 3340,
+      "id": "esc-3340",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC :",
+      "resolved": true,
+      "resolved_pattern": "ESC :",
+      "seq_hex": "1b3a"
+    },
+    {
+      "doc_line": 3342,
+      "id": "esc-3342",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC ;",
+      "resolved": true,
+      "resolved_pattern": "ESC ;",
+      "seq_hex": "1b3b"
+    },
+    {
+      "doc_line": 3397,
+      "id": "esc-3397",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC <",
+      "resolved": true,
+      "resolved_pattern": "ESC <",
+      "seq_hex": "1b3c"
+    },
+    {
+      "doc_line": 405,
+      "id": "deckpam-405",
+      "leftover": "",
+      "mnemonic": "DECKPAM",
+      "pattern": "ESC =",
+      "resolved": true,
+      "resolved_pattern": "ESC =",
+      "seq_hex": "1b3d"
+    },
+    {
+      "doc_line": 407,
+      "id": "deckpnm-407",
+      "leftover": "",
+      "mnemonic": "DECKPNM",
+      "pattern": "ESC >",
+      "resolved": true,
+      "resolved_pattern": "ESC >",
+      "seq_hex": "1b3e"
+    },
+    {
+      "doc_line": 3403,
+      "id": "esc-a-3403",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC A",
+      "resolved": true,
+      "resolved_pattern": "ESC A",
+      "seq_hex": "1b41"
+    },
+    {
+      "doc_line": 3405,
+      "id": "esc-b-3405",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC B",
+      "resolved": true,
+      "resolved_pattern": "ESC B",
+      "seq_hex": "1b42"
+    },
+    {
+      "doc_line": 3407,
+      "id": "esc-c-3407",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC C",
+      "resolved": true,
+      "resolved_pattern": "ESC C",
+      "seq_hex": "1b43"
+    },
+    {
+      "doc_line": 3330,
+      "id": "esc-can-3330",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC CAN",
+      "resolved": true,
+      "resolved_pattern": "ESC CAN",
+      "seq_hex": "1b18"
+    },
+    {
+      "doc_line": 163,
+      "id": "esc-d-163",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC D",
+      "resolved": true,
+      "resolved_pattern": "ESC D",
+      "seq_hex": "1b44"
+    },
+    {
+      "doc_line": 166,
+      "id": "esc-e-166",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC E",
+      "resolved": true,
+      "resolved_pattern": "ESC E",
+      "seq_hex": "1b45"
+    },
+    {
+      "doc_line": 3319,
+      "id": "esc-enq-3319",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC ENQ",
+      "resolved": true,
+      "resolved_pattern": "ESC ENQ",
+      "seq_hex": "1b05"
+    },
+    {
+      "doc_line": 3327,
+      "id": "esc-etb-3327",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC ETB",
+      "resolved": true,
+      "resolved_pattern": "ESC ETB",
+      "seq_hex": "1b17"
+    },
+    {
+      "doc_line": 3317,
+      "id": "esc-etx-3317",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC ETX",
+      "resolved": true,
+      "resolved_pattern": "ESC ETX",
+      "seq_hex": "1b03"
+    },
+    {
+      "doc_line": 409,
+      "id": "ris-409",
+      "leftover": "",
+      "mnemonic": "RIS",
+      "pattern": "ESC F",
+      "resolved": true,
+      "resolved_pattern": "ESC F",
+      "seq_hex": "1b46"
+    },
+    {
+      "doc_line": 3321,
+      "id": "esc-ff-3321",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC FF",
+      "resolved": true,
+      "resolved_pattern": "ESC FF",
+      "seq_hex": "1b0c"
+    },
+    {
+      "doc_line": 3334,
+      "id": "esc-fs-3334",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC FS",
+      "resolved": true,
+      "resolved_pattern": "ESC FS",
+      "seq_hex": "1b1c"
+    },
+    {
+      "doc_line": 3413,
+      "id": "esc-g-3413",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC G",
+      "resolved": true,
+      "resolved_pattern": "ESC G",
+      "seq_hex": "1b47"
+    },
+    {
+      "doc_line": 169,
+      "id": "esc-h-169",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC H",
+      "resolved": true,
+      "resolved_pattern": "ESC H",
+      "seq_hex": "1b48"
+    },
+    {
+      "doc_line": 3417,
+      "id": "esc-i-3417",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC I",
+      "resolved": true,
+      "resolved_pattern": "ESC I",
+      "seq_hex": "1b49"
+    },
+    {
+      "doc_line": 3419,
+      "id": "esc-j-3419",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC J",
+      "resolved": true,
+      "resolved_pattern": "ESC J",
+      "seq_hex": "1b4a"
+    },
+    {
+      "doc_line": 3421,
+      "id": "esc-k-3421",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC K",
+      "resolved": true,
+      "resolved_pattern": "ESC K",
+      "seq_hex": "1b4b"
+    },
+    {
+      "doc_line": 172,
+      "id": "esc-m-172",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC M",
+      "resolved": true,
+      "resolved_pattern": "ESC M",
+      "seq_hex": "1b4d"
+    },
+    {
+      "doc_line": 175,
+      "id": "esc-n-175",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC N",
+      "resolved": true,
+      "resolved_pattern": "ESC N",
+      "seq_hex": "1b4e"
+    },
+    {
+      "doc_line": 179,
+      "id": "esc-o-179",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC O",
+      "resolved": true,
+      "resolved_pattern": "ESC O",
+      "seq_hex": "1b4f"
+    },
+    {
+      "doc_line": 183,
+      "id": "esc-p-183",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC P",
+      "resolved": true,
+      "resolved_pattern": "ESC P",
+      "seq_hex": "1b50"
+    },
+    {
+      "doc_line": 3325,
+      "id": "esc-si-3325",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC SI",
+      "resolved": true,
+      "resolved_pattern": "ESC SI",
+      "seq_hex": "1b0f"
+    },
+    {
+      "doc_line": 3323,
+      "id": "esc-so-3323",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC SO",
+      "resolved": true,
+      "resolved_pattern": "ESC SO",
+      "seq_hex": "1b0e"
+    },
+    {
+      "doc_line": 286,
+      "id": "s7c1t-286",
+      "leftover": "",
+      "mnemonic": "S7C1T",
+      "pattern": "ESC SP F",
+      "resolved": true,
+      "resolved_pattern": "ESC SP F",
+      "seq_hex": "1b2046"
+    },
+    {
+      "doc_line": 291,
+      "id": "s8c1t-291",
+      "leftover": "",
+      "mnemonic": "S8C1T",
+      "pattern": "ESC SP G",
+      "resolved": true,
+      "resolved_pattern": "ESC SP G",
+      "seq_hex": "1b2047"
+    },
+    {
+      "doc_line": 296,
+      "id": "esc-sp-l-296",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC SP L",
+      "resolved": true,
+      "resolved_pattern": "ESC SP L",
+      "seq_hex": "1b204c"
+    },
+    {
+      "doc_line": 298,
+      "id": "esc-sp-m-298",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC SP M",
+      "resolved": true,
+      "resolved_pattern": "ESC SP M",
+      "seq_hex": "1b204d"
+    },
+    {
+      "doc_line": 300,
+      "id": "decdhl-300",
+      "leftover": "",
+      "mnemonic": "DECDHL",
+      "pattern": "ESC SP N",
+      "resolved": true,
+      "resolved_pattern": "ESC SP N",
+      "seq_hex": "1b204e"
+    },
+    {
+      "doc_line": 3332,
+      "id": "esc-sub-3332",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC SUB",
+      "resolved": true,
+      "resolved_pattern": "ESC SUB",
+      "seq_hex": "1b1a"
+    },
+    {
+      "doc_line": 186,
+      "id": "esc-v-186",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC V",
+      "resolved": true,
+      "resolved_pattern": "ESC V",
+      "seq_hex": "1b56"
+    },
+    {
+      "doc_line": 189,
+      "id": "esc-w-189",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC W",
+      "resolved": true,
+      "resolved_pattern": "ESC W",
+      "seq_hex": "1b57"
+    },
+    {
+      "doc_line": 192,
+      "id": "esc-x-192",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC X",
+      "resolved": true,
+      "resolved_pattern": "ESC X",
+      "seq_hex": "1b58"
+    },
+    {
+      "doc_line": 3423,
+      "id": "esc-y-ps-ps-3423",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC Y Ps Ps",
+      "resolved": true,
+      "resolved_pattern": "ESC Y Ps Ps",
+      "seq_hex": "1b593131"
+    },
+    {
+      "doc_line": 195,
+      "id": "da-195",
+      "leftover": "",
+      "mnemonic": "DA",
+      "pattern": "ESC Z",
+      "resolved": true,
+      "resolved_pattern": "ESC Z",
+      "seq_hex": "1b5a"
+    },
+    {
+      "doc_line": 198,
+      "id": "esc-198",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC [",
+      "resolved": true,
+      "resolved_pattern": "ESC [",
+      "seq_hex": "1b5b"
+    },
+    {
+      "doc_line": 201,
+      "id": "esc-201",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC \\",
+      "resolved": true,
+      "resolved_pattern": "ESC \\",
+      "seq_hex": "1b5c"
+    },
+    {
+      "doc_line": 204,
+      "id": "esc-204",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC ]",
+      "resolved": true,
+      "resolved_pattern": "ESC ]",
+      "seq_hex": "1b5d"
+    },
+    {
+      "doc_line": 207,
+      "id": "esc-207",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC ^",
+      "resolved": true,
+      "resolved_pattern": "ESC ^",
+      "seq_hex": "1b5e"
+    },
+    {
+      "doc_line": 210,
+      "id": "esc-210",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC _",
+      "resolved": true,
+      "resolved_pattern": "ESC _",
+      "seq_hex": "1b5f"
+    },
+    {
+      "doc_line": 3352,
+      "id": "esc-3352",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC `",
+      "resolved": true,
+      "resolved_pattern": "ESC `",
+      "seq_hex": "1b60"
+    },
+    {
+      "doc_line": 3354,
+      "id": "esc-a-3354",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC a",
+      "resolved": true,
+      "resolved_pattern": "ESC a",
+      "seq_hex": "1b61"
+    },
+    {
+      "doc_line": 3356,
+      "id": "esc-b-3356",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC b",
+      "resolved": true,
+      "resolved_pattern": "ESC b",
+      "seq_hex": "1b62"
+    },
+    {
+      "doc_line": 412,
+      "id": "ris-412",
+      "leftover": "",
+      "mnemonic": "RIS",
+      "pattern": "ESC c",
+      "resolved": true,
+      "resolved_pattern": "ESC c",
+      "seq_hex": "1b63"
+    },
+    {
+      "doc_line": 3360,
+      "id": "esc-d-3360",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC d",
+      "resolved": true,
+      "resolved_pattern": "ESC d",
+      "seq_hex": "1b64"
+    },
+    {
+      "doc_line": 3362,
+      "id": "esc-h-3362",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC h",
+      "resolved": true,
+      "resolved_pattern": "ESC h",
+      "seq_hex": "1b68"
+    },
+    {
+      "doc_line": 3364,
+      "id": "esc-i-3364",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC i",
+      "resolved": true,
+      "resolved_pattern": "ESC i",
+      "seq_hex": "1b69"
+    },
+    {
+      "doc_line": 3366,
+      "id": "esc-j-3366",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC j",
+      "resolved": true,
+      "resolved_pattern": "ESC j",
+      "seq_hex": "1b6a"
+    },
+    {
+      "doc_line": 3368,
+      "id": "esc-k-3368",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC k",
+      "resolved": true,
+      "resolved_pattern": "ESC k",
+      "seq_hex": "1b6b"
+    },
+    {
+      "doc_line": 414,
+      "id": "esc-l-414",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC l",
+      "resolved": true,
+      "resolved_pattern": "ESC l",
+      "seq_hex": "1b6c"
+    },
+    {
+      "doc_line": 417,
+      "id": "ls2-417",
+      "leftover": "",
+      "mnemonic": "LS2",
+      "pattern": "ESC m",
+      "resolved": true,
+      "resolved_pattern": "ESC m",
+      "seq_hex": "1b6d"
+    },
+    {
+      "doc_line": 419,
+      "id": "ls2-419",
+      "leftover": "",
+      "mnemonic": "LS2",
+      "pattern": "ESC n",
+      "resolved": true,
+      "resolved_pattern": "ESC n",
+      "seq_hex": "1b6e"
+    },
+    {
+      "doc_line": 421,
+      "id": "ls3-421",
+      "leftover": "",
+      "mnemonic": "LS3",
+      "pattern": "ESC o",
+      "resolved": true,
+      "resolved_pattern": "ESC o",
+      "seq_hex": "1b6f"
+    },
+    {
+      "doc_line": 3372,
+      "id": "esc-p-3372",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC p",
+      "resolved": true,
+      "resolved_pattern": "ESC p",
+      "seq_hex": "1b70"
+    },
+    {
+      "doc_line": 3374,
+      "id": "esc-q-3374",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC q",
+      "resolved": true,
+      "resolved_pattern": "ESC q",
+      "seq_hex": "1b71"
+    },
+    {
+      "doc_line": 3376,
+      "id": "esc-r-3376",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC r",
+      "resolved": true,
+      "resolved_pattern": "ESC r",
+      "seq_hex": "1b72"
+    },
+    {
+      "doc_line": 3378,
+      "id": "esc-s-3378",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC s",
+      "resolved": true,
+      "resolved_pattern": "ESC s",
+      "seq_hex": "1b73"
+    },
+    {
+      "doc_line": 3380,
+      "id": "esc-t-3380",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "ESC t",
+      "resolved": true,
+      "resolved_pattern": "ESC t",
+      "seq_hex": "1b74"
+    },
+    {
+      "doc_line": 423,
+      "id": "ls3r-423",
+      "leftover": "",
+      "mnemonic": "LS3R",
+      "pattern": "ESC |",
+      "resolved": true,
+      "resolved_pattern": "ESC |",
+      "seq_hex": "1b7c"
+    },
+    {
+      "doc_line": 425,
+      "id": "ls2r-425",
+      "leftover": "",
+      "mnemonic": "LS2R",
+      "pattern": "ESC }",
+      "resolved": true,
+      "resolved_pattern": "ESC }",
+      "seq_hex": "1b7d"
+    },
+    {
+      "doc_line": 427,
+      "id": "ls1r-427",
+      "leftover": "",
+      "mnemonic": "LS1R",
+      "pattern": "ESC ~",
+      "resolved": true,
+      "resolved_pattern": "ESC ~",
+      "seq_hex": "1b7e"
+    },
+    {
+      "doc_line": 2010,
+      "id": "osc-ps-pt-bel-2010",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "OSC Ps ; Pt BEL",
+      "resolved": true,
+      "resolved_pattern": "OSC Ps ; Pt BEL",
+      "seq_hex": "1b5d313b7807"
+    },
+    {
+      "doc_line": 2012,
+      "id": "osc-ps-pt-st-2012",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "OSC Ps ; Pt ST",
+      "resolved": true,
+      "resolved_pattern": "OSC Ps ; Pt ST",
+      "seq_hex": "1b5d313b781b5c"
+    },
+    {
+      "doc_line": 2278,
+      "id": "pm-pt-st-2278",
+      "leftover": "",
+      "mnemonic": "",
+      "pattern": "PM Pt ST",
+      "resolved": true,
+      "resolved_pattern": "PM Pt ST",
+      "seq_hex": "1b5e781b5c"
+    }
+  ],
+  "source": {
+    "bytes": 164037,
+    "name": "ctlseqs.txt",
+    "sha256": "364c1c1987c85b1c1135e57a93e9008054f46d09a338de8dcc66ea9a7c613709",
+    "url": "",
+    "xterm_patch": "411",
+    "xterm_updated": "2026/08/23"
+  }
+}
