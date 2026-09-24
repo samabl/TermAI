@@ -26,7 +26,7 @@ HARNESS §7 对 P0 的出口标准是四条，本文只做拆解，**不得改�
 | 设计 token 门禁 | PASS | `npm run tokens:check`（M0 收口记录，本计划不重复声称） |
 | 设计静态门禁 S1–S10 | PASS | `npm run design:check:static` |
 | M0 垂直链路 | 已交付且端到端 6/6 通过（含原生 ConPTY 修复轮） | `docs/plan/m0-delivery-report.md` §3.1 / §6.2 |
-| CI 平台矩阵 | **偏差**：全部作业仍只跑 `windows-latest` | `.github/workflows/ci.yml` 头注释「DEVIATION TO TRACK」 |
+| CI 平台矩阵 | ~~**偏差**：全部作业仍只跑 `windows-latest`~~ → **已闭合（第 271 轮实测）**：CI 共 **8 个作业**（Windows kernel / linux x64 / macos arm64 / design / tokens / rust / windows build / design-baseline），run **35890840865**（sha `c221807`）**全绿** | `.github/workflows/ci.yml`；GitHub Actions run 35890840865 |
 
 > **读法**：K1–K8 全绿只证明「M0 切片没有撒谎」，**不构成 P0 出口。**四项待决策见 `docs/plan/p0-open-decisions.md`**（D-1 判定域、D-2 颜色能力声明、D-3 设备身份、D-4 §8.2 测量归属）——**它们各自阻塞一批失败或一项验收，且决定权不在实现者****。E-P0-1…E-P0-4 四条中三条为未判定/未实现（见 §1），这是本计划存在的原因。
 
