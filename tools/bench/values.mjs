@@ -18,6 +18,7 @@
 // gating=true; H18 (governed no) is not a gate, so declaring gating=true there is a binding violation.
 
 import * as R from './registry.mjs';
+import * as REL from './reliability.mjs';
 
 export const REPORTED = 'reported';
 export const NOT_REPORTED = 'not_reported';
@@ -96,7 +97,10 @@ export function collectValues(reportFiles) {
       gating.push({ source: e.source, id: id, value: m.value });
     }
     if (!row) {
-      unbound.push({ source: e.source, id: id });
+      // A metric that names a reliability row (HARNESS section 8.2 / kernel/06 section 3.10) is
+      // bound by its OWN registry further down; it is not "not bound to a section 5 row", which
+      // would be a misleading label for a correctly registered measurement.
+      if (!reliabilityRow(id)) unbound.push({ source: e.source, id: id });
       continue;
     }
     for (const p of bindMetric(m, row)) problems.push(p + ' (' + e.source + ')');
@@ -174,4 +178,119 @@ export function reportedIds(valueSet) {
 
 export function notReportedIds(valueSet) {
   return (valueSet.rows || []).filter(function (r) { return r.status === NOT_REPORTED; }).map(function (r) { return r.id; });
+}
+
+// --------------------------------------------------- reliability rows (HARNESS 8.2 / kernel/06 3.10)
+//
+// ADR-0029 D-4 split the registries: H1..H19 live in registry.mjs (transcribed from HARNESS
+// section 5 and re-derived by B1/B3), and the AR-26 item 4 reliability rows live in
+// reliability.mjs (re-derived from kernel/06 section 3.10 by B9). Reading the values out of a
+// report has to follow that split, so the binding below is deliberately a separate function
+// rather than a branch inside bindMetric(): a reliability metric never claims a section 5 row,
+// and a section 5 metric never claims a reliability row.
+
+// A metric id that names a reliability row, e.g. reliability.sessiond_rebuild.p95 -> R1.
+export function reliabilityRow(metricId) {
+  for (const r of REL.RELIABILITY_MAPPING) if (r.metric === metricId) return r;
+  return null;
+}
+
+// Literal contract comparison (unit / gate / statistic must equal the reliability registry,
+// which B9 re-derives from the section 3.10 text on every run) plus the one honesty rule
+// section 3.10 adds on top of it: on a host with no registered reference machine the row may
+// not be presented as a gate number at all. kernel/06 section 3.10「本机状态」/ ADR-0014 iron
+// law 5: no RM-A -> INCONCLUSIVE / NON_GATING, never PASS, and `gating: true` is a false claim.
+export function bindReliabilityMetric(metric, row, host) {
+  const problems = [];
+  if (metric.unit !== row.unit) {
+    problems.push(row.id + ': unit mismatch -- kernel/06 3.10 registers "' + row.unit + '" but the report says "' + String(metric.unit) + '"');
+  }
+  if (metric.gate !== row.gate) {
+    problems.push(row.id + ': gate mismatch -- the reliability registry says ' + row.gate + ' but the report says ' + String(metric.gate));
+  }
+  if (metric.statistic !== row.statistic) {
+    problems.push(row.id + ': statistic mismatch -- kernel/06 3.10 registers ' + row.statistic + ' but the report says ' + String(metric.statistic));
+  }
+  if (host && host.gating === false) {
+    if (metric.gating === true) {
+      problems.push(row.id + ': the metric declares gating=true while this host has no registered reference machine; ADR-0014 iron law 5 forbids presenting it as a gate number');
+    } else if (metric.verdict !== 'INCONCLUSIVE' && metric.verdict !== 'NON_GATING') {
+      problems.push(row.id + ': verdict ' + String(metric.verdict) + ' on a host with no registered RM-A; kernel/06 3.10「本机状态」+ ADR-0014 iron law 5 require INCONCLUSIVE / NON_GATING, never PASS');
+    }
+  }
+  return problems;
+}
+
+// reportFiles: [{ rel, json, parseError }]; host: { gating, state, reason } from
+// lib.classifyMachine. A row the read report does not carry is REPORTED as NOT_REPORTED, never
+// silently dropped (the same rule the section 5 value set follows).
+export function collectReliabilityValues(reportFiles, host) {
+  const files = (reportFiles || []).filter(function (f) { return f && f.json && !f.parseError; });
+  const entries = [];
+  for (const f of files) {
+    const metrics = Array.isArray(f.json.metrics) ? f.json.metrics : [];
+    for (const m of metrics) entries.push({ source: f.rel, metric: m });
+  }
+
+  const problems = [];
+  const found = [];
+  const unbound = [];
+  for (const e of entries) {
+    const id = String(e.metric.metric);
+    const row = reliabilityRow(id);
+    if (!row) {
+      // Fail-closed: a reliability.* metric this registry does not know is named, not dropped.
+      if (/^reliability\./.test(id)) unbound.push({ source: e.source, id: id });
+      continue;
+    }
+    for (const p of bindReliabilityMetric(e.metric, row, host)) problems.push(p + ' (' + e.source + ')');
+    found.push({
+      id: row.id,
+      status: REPORTED,
+      label: row.label,
+      metric: row.metric,
+      owner: row.owner,
+      carrier: row.carrier,
+      machine: row.machine,
+      unit: row.unit,
+      gate: row.gate,
+      gateOp: row.gateOp,
+      statistic: row.statistic,
+      value: e.metric.value,
+      verdict: e.metric.verdict,
+      gating: e.metric.gating === true,
+      samples: e.metric.samples,
+      runs: e.metric.runs,
+      madOverMedian: e.metric.madOverMedian,
+      source: e.source,
+    });
+  }
+
+  const rows = REL.RELIABILITY_MAPPING.map(function (r) {
+    for (const v of found) if (v.id === r.id) return v;
+    return {
+      id: r.id,
+      status: NOT_REPORTED,
+      label: r.label,
+      metric: r.metric,
+      owner: r.owner,
+      carrier: r.carrier,
+      machine: r.machine,
+      unit: r.unit,
+      gate: r.gate,
+      gateOp: r.gateOp,
+      statistic: r.statistic,
+      reason: 'no metric named ' + r.metric + ' in the read report(s)',
+    };
+  });
+
+  return {
+    expected: REL.RELIABILITY_MAPPING.map(function (r) { return r.id; }),
+    rows: rows,
+    problems: problems,
+    unbound: unbound,
+    sources: files.map(function (f) { return f.rel; }),
+    reported: rows.filter(function (r) { return r.status === REPORTED; }).map(function (r) { return r.id; }),
+    missing: rows.filter(function (r) { return r.status === NOT_REPORTED; }).map(function (r) { return r.id; }),
+  };
 }

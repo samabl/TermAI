@@ -11,3 +11,4 @@ pub mod engine;
 pub mod host;
 pub mod link;
 pub mod registry;
+pub mod restore;

@@ -14,8 +14,9 @@
 node tools/bench/check.mjs              # 运行 B1-B7 + B9（npm run bench:check）
 node tools/bench/check.mjs --selftest   # 注入故障，证明判定逻辑不是恒绿（npm run bench:selftest）
 node tools/bench/check.mjs --json       # 仅输出机器可读 JSON
-node tools/bench/check.mjs --report <p> # 校验 schema（B8）**并读取其中的值**，把每个 metric 绑定到它的 §5 行
+node tools/bench/check.mjs --report <p> # 校验 schema（B8）**并读取其中的值**，把每个 metric 绑定到它的 §5 行或可靠性行（R1/R2）
 node tools/bench/check.mjs --machine <p># 显式声明本机为已登记的 RM-A / RM-C（默认不声明）
+node tools/bench/sessiond-rebuild.mjs   # 【产出】驱动 apps/sessiond 的重建路径 N 次，算 P95/P99，写出 R1/R2 报告（AR-26 第 4 条 / kernel/06 §3.10）
 ```
 
 退出码：`0` = PASS，`1` = FAIL。缺失的报告文件是显式 `SKIP`，绝不静默 PASS。
@@ -28,8 +29,9 @@ node tools/bench/check.mjs --machine <p># 显式声明本机为已登记的 RM-A
 | `registry.mjs` | HARNESS §5 的机器可读登记：H1…H19（19 条）+ 表外对照 C1；每条含 owner / 测量定义落点 / 门禁载体 / 是否 kernel/06 管辖 / 指标族 / 参考机；`mappingIntegrity()` 做缺号与重复校验 |
 | `reliability.mjs` | **HARNESS §8.2 可靠性时序的独立登记**（ADR-0029 D-4）：`R1` = sessiond 重建 P95 ≤2000ms、`R2` = P99 ≤5000ms（ms / 族 frame / 机器 RM-A / owner kernel/06）；每条含测量定义 / 载体 / kernel/06 §3.10 锚点；`reliabilityIntegrity()` 做**独立口径**的完整性校验（恰好两行、无缺号、无重复、每条有 owner / carrier / 测量定义），**不复用** `MAPPING_ROW_COUNT` / `OUT_OF_TABLE_IDS` |
 | `fixtures.mjs` | **合成逻辑夹具（不是测量值）**：只用于把状态机推过每个分支，绝不当结果上报、绝不与基线比对 |
-| `values.mjs` | **值的读取与呈现**（D-6 第 ②–④ 步）：把报告里的每个 metric **绑定到它声称的 §5 行**（unit / gate 必须等于 registry 的转录）；机器无关行的「未报告」是**显式**的；`gatingNumbersProduced` 从读取到的值计算 |
-| `check.mjs` | 门禁入口 B1–B9 + `--selftest` 74 条注入（第 257 轮：ADR-0029 D-4 加 B9 的 5 注入 + 3 对照 + 1 真实树基线；~~65 条（第 256 轮）~~） |
+| `values.mjs` | **值的读取与呈现**（D-6 第 ②–④ 步）：把报告里的每个 metric **绑定到它声称的 §5 行**（unit / gate 必须等于 registry 的转录）；机器无关行的「未报告」是**显式**的；`gatingNumbersProduced` 从读取到的值计算。**同一文件另设**可靠性行的读取（`reliabilityRow` / `bindReliabilityMetric` / `collectReliabilityValues`）：metric 指名 R1/R2 时 unit / gate / statistic 必须等于 `RELIABILITY_MAPPING`，且**本机无参考机时只允许 `INCONCLUSIVE` / `NON_GATING`**（写成 `PASS` 或声明 `gating:true` 即违规） |
+| `sessiond-rebuild.mjs` | **产出（producer）**：驱动 `apps/sessiond` 的重建路径（`sessiond::restore::rebuild_session`）每个 Run N 次，记录**每次重建的墙钟时间**，按 kernel/06 §3.2 frame 行 + K-02 三层口径算 Run 内 P95/P99、报告值取 N≥10 Run 的**中位数**，写出 §3.7 形状的 `bench-report.json`；本机无参考机 ⇒ 两行一律 `INCONCLUSIVE` / `gating:false`，**绝不 PASS** |
+| `check.mjs` | 门禁入口 B1–B9 + `--selftest` 78 条注入（本轮为可靠性行绑定加 2 注入 + 2 对照；~~74 条（第 257 轮）~~） |
 
 ## 门禁 B1–B9
 
@@ -42,7 +44,7 @@ node tools/bench/check.mjs --machine <p># 显式声明本机为已登记的 RM-A
 | B5 | 指纹确定性 | 同输入同哈希；41 个叶子字段**逐个**改动都改变哈希；键序无关 | kernel/06 §3.4、§3.7 |
 | B6 | §3.1 状态机分支覆盖 | 6 条对照分支 + 21 条故障分支全部产出文档规定的裁决 | kernel/06 §3.1 |
 | B7 | 机器绑定诚实边界 | 无参考机时必须 NON_GATING / INCONCLUSIVE 且产出 0 个门禁数字 | ADR-0014 铁律 5、kernel/06 §6、AR-31 第 8 条 | **⚠ 第 202 轮注**：**「产出 0 个门禁数字」这一条目前是**恒真**的——`gatingNumbersProduced` 是 `check.mjs:672` 的**字面常量 0**，没有任何代码从结果计算它（第 188/189 轮核实）。** `B7` 的另外两条判据是活的（机器分类、无指纹情形）。**因此本行描述的是**要求**，不是**当下被强制的事实**；把计数器做成计算值是 `docs/plan/p0-open-decisions.md` D-6 的第 ④ 步。** **✅ 第 255 轮：该步已完成**——`gatingNumbersProduced` 现由 `values.mjs` 读取到的 metric 计算（声明 `gating:true` 者计入），注入一个产出 gating 数字的行会被 `B7` 判 FAIL；该注入与对照已进 `bench:selftest`（63/63）。**
-| B8 | 报告 schema 校验 **+ §5 行绑定**（`--report`，或树中存在报告时） | ① 对 bench-report.json 做 §3.7 校验；② 每个 metric 若指名某个 §5 行，其 `unit` / `gate` 必须等于 registry 的转录（否则 FAIL）；③ 机器无关行的「未报告」显式列出；文件不存在则 SKIP | kernel/06 §3.7、spec 07 §3.8.2、HARNESS §5 |
+| B8 | 报告 schema 校验 **+ §5 行绑定 + 可靠性行绑定**（`--report`，或树中存在报告时） | ① 对 bench-report.json 做 §3.7 校验；② 每个 metric 若指名某个 §5 行，其 `unit` / `gate` 必须等于 registry 的转录（否则 FAIL）；③ 机器无关行的「未报告」显式列出；文件不存在则 SKIP；④ 每个 metric 若指名 R1/R2，其 `unit` / `gate` / `statistic` 必须等于 `RELIABILITY_MAPPING`（B9 每次从 kernel/06 §3.10 正文重新推导），且**本机无参考机时该行只允许 `INCONCLUSIVE` / `NON_GATING`**——写成 `PASS` 或声明 `gating:true` 即 FAIL | kernel/06 §3.7、spec 07 §3.8.2、HARNESS §5、kernel/06 §3.10、ADR-0029 D-4 |
 | B9 | 可靠性登记完整性（HARNESS §8.2 / kernel/06 §3.10） | 每次从 kernel/06 §3.10 正文**重新推导** P95 / P99 门禁数（2000 / 5000 ms）；核对 `RELIABILITY_MAPPING` 与正文（指标名 / 门禁 / 族 / 机器绑定）；`reliabilityIntegrity()` 报错、正文不再含该契约、或登记与正文不一致 → FAIL；并断言 `SECTION5_MAPPING` 仍恰好 19 行、B1/B3 仍 PASS，且 `reliability.mjs` 的可执行代码（去注释后）未引用 §5 的登记口径 | ADR-0029 D-4、kernel/06 §3.10、AR-26 第 4 条 |
 
 ## 可靠性时序登记与门禁 B9（ADR-0029 D-4 / kernel/06 §3.10）
@@ -59,6 +61,29 @@ HARNESS §8.2 的「sessiond 重建 P95 ≤2s / P99 ≤5s」（AR-26 第 4 条�
 | 本机状态 | 无 RM-A → 本节任何数值一律 `INCONCLUSIVE` / `NON_GATING`；判定人待 TSC（kernel/06 §3.10「本机状态」） |
 
 第 257 轮 B9 的自证：`--selftest` 为它加了 5 条注入（重复行、缺 R2、缺 owner、门禁数与正文不符、正文不再含 §3.10）+ 3 条对照，另加 1 条真实树基线——`bench:selftest` 由 **65/65** 变为 **74/74**。
+
+## sessiond 重建的产出与读取（AR-26 第 4 条 / kernel/06 §3.10）
+
+HARNESS §8.2 的「sessiond 重建 P95 ≤2s / P99 ≤5s」此前只有**登记**（`reliability.mjs` + B9），没有产出：`docs/audit/debt-p0.md` A9 记的就是这一步。本轮把它补齐，且**只补在允许的路径内**（`apps/sessiond/**`、`tools/bench/**`），`SECTION5_MAPPING` 与 B1/B3 一字未动。
+
+| 环节 | 落点 |
+| --- | --- |
+| **机制**（必须先成立） | `apps/sessiond/src/restore.rs` 的 `rebuild_session()`：Log 读取 → checkpoint 窗口 → VT 尾回放到**全新引擎**；`apps/sessiond/tests/session_rebuild.rs` 断言**重建后的屏幕与重建前逐字节相等**（`GridSnapshot` 整体相等 + `canonical_bytes()` 相等 + digest 相等 + 逐行 `row_text` 相等），**断言等值而不是阈值**——这一半不允许 flaky |
+| **计时** | `apps/sessiond/examples/rebuild_bench.rs`：对同一个确定性 Log 夹具做 N 次重建，每次记录 `rebuild_session` + `GRID_SNAPSHOT` 快照 + digest 的墙钟时间；等值比较在**计时窗口之外**做，夹具的偏置不进读数 |
+| **统计量** | kernel/06 §3.10 + §3.2 frame 行 + K-02 三层：样本（每次重建）→ Run 内 `p95`/`p99` → 报告值 = **N≥10 个 Run 统计量的中位数**；报告里的 `runStat: "median"`、`runs`、`samples` 三层同出。**插值规则**文档未规定，本工具用最近秩（`⌈p·n⌉` 个最小值）并在 `method` 里明说，不把选择留成隐含约定 |
+| **Run 定义** | kernel/06 §3.10 本行标 `origin:'reading'`：一次 sessiond 重建 = 客户端重连 / attach 起 → 可用的 `GRID_SNAPSHOT`（含 digest）为止的**服务端可观测段** |
+| **样本下限** | §3.10 要求 **Run 内 ≥1e4 样本**才报 P99；产出默认 `--samples 10000`，低于下限时 `method` 与 stdout 都会写明「在参考机上该 Run 会是 `INVALID(INSUFFICIENT_SAMPLES)`」，不静默降格 |
+| **机器绑定** | 本机无 RM-A 指纹 ⇒ `INCONCLUSIVE(REFERENCE_MACHINE_UNAVAILABLE)` + `gating:false`（kernel/06 §3.10「本机状态」+ ADR-0014 铁律 5）；§3.1 第 1 步同样会拒绝（`INVALID(FP_MISSING)`），两条路都到不了 PASS |
+| **报告落点** | 默认写 `target/bench-reports/sessiond-rebuild-report.json`（**gitignore 区**，且不被 `discoverReports()` 扫描），因此 `bench:check` 的默认输出仍是 `summary: 8 PASS`；要看这些行必须显式 `--report <path>` |
+| **门禁读取** | `check.mjs --report <p>` 会把 R1/R2 连同值、门禁、统计量、样本数、Run 数、MAD/中位数一起打印；本机非门禁时逐行标 `INCONCLUSIVE`。**新增判定**：R1/R2 在无参考机的本机写成 `PASS` 或声明 `gating:true` ⇒ B8 / B7 FAIL |
+| **夹具** | `sessiond::restore::fixture::write_session_log()`：用**真实 sessiond 代码路径**（`Registry::feed_pty_out`）写出确定性 Log（SGR + CJK + 组合符 + 换行折行 + CUP 覆盖 + OSC 标题），时间戳与段头全为 0，因此同一场景跨 Run 字节相同（D0 场景冻结：`log_sha256` + `state_digest` 逐 Run 相同才判 PASS） |
+
+**已知边界（AR-20，必须如实说）**：
+
+1. 可测的是**无 checkpoint 的全量重放**路径。`CheckpointRef` 那条分支需要 CAS 内容存储，而 `apps/sessiond/src/registry.rs` 的 `EngineReplay::restore` 目前是 M0 适配器（报告一次还原尝试，并不从 CAS 载入字节）——所以带 checkpoint 的 Log **尚不可忠实重建**；夹具断言 `checkpoints == 0`，驱动遇到 `resumed_from.is_some()` 直接拒绝对外发布读数。
+2. `recover_session` 只回放 `PtyOut`，**不回放 `Resize`**，因此跨终端尺寸的 Log 也不可忠实重建；夹具只用一个尺寸。
+3. 本机**不是 RM-A**：这两行永远是 `INCONCLUSIVE` / `NON_GATING`。要成为门禁数字，必须在 RM-A（T0、独占、指纹已登记）上跑同一命令并给出指纹。
+4. 场景是**参数化的**（默认 Log 500 行 / ~45KB）；换场景即换数字，报告 `metrics[].method` 与 `runner` 里都写了场景参数与机器状态。
 
 ## bench-report 字段对照（kernel/06 §3.7 逐字）
 
@@ -208,9 +233,12 @@ runner / commit / toolchain / ts + 顶层 commit）逐字保留」）。任一�
 
 ## 未完成项 / 下一步
 
-- **产出门禁数字**：需要 RM-A（计算类：H1、H5、H6、H7、H8、H9、H10、H11）与 RM-C
+- **产出门禁数字**：需要 RM-A（计算类：H1、H5、H6、H7、H8、H9、H10、H11，以及 §8.2 的 R1/R2 重建行）与 RM-C
   （显示 / 延迟类：H2、H3、H4），并且内核侧 `cargo xtask bench` 落地（M0 未实现）。
   在此之前，本工具的输出一律 `INCONCLUSIVE(REFERENCE_MACHINE_UNAVAILABLE)`。
+- **sessiond 重建行（R1/R2）**：机制断言与测量产出都已落地（见上一节）；**仍缺**参考机指纹与 T0 独占，
+  以及 `CheckpointRef` / `Resize` 两条分支的忠实重放（需要 CAS 内容存储与「按 Resize 分段重放」）。
+  因此 E-P0-4 的「≤2s / ≤5s」目前**不能说已完成**：本机数字不是门禁级证据。
 - **§5 机器无关行的值**：读取路径已落地（D-6 第 ②–④ 步）；本机可产出者只有 **H18** 与**表外对照 C1**，
   其余行如实 `NOT REPORTED`（H17 需浏览器层、H19 需 RM-C 像素渲染）。
 - **H1–H19 的实测**：本工具只校验「测量定义已登记且与正文一致」，不执行任何一项测量

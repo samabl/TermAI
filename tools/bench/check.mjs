@@ -17,6 +17,8 @@
 //   B5 machine-fingerprint determinism                 (same input same hash; any field change changes it)
 //   B6 kernel/06 3.1 state machine branch coverage     (synthetic logic fixtures, not measurements)
 //   B7 machine-binding honesty boundary                (ADR-0014: no RM-A / RM-C -> no gate number)
+//   B8 bench-report schema + section 5 / reliability row binding   (--report; the gate that reads
+//      R1/R2 and, on a host with no reference machine, refuses to let them read as PASS)
 //   B9 reliability mapping integrity                  (ADR-0029 D-4 / kernel/06 3.10; own mapping, B1/B3 untouched)
 //
 // What this tool does NOT do: it does not measure anything. Production numbers come from
@@ -713,11 +715,17 @@ function gatingStatus(root, explicitMachinePath, reportSet) {
     fingerprintSha256: attested && attested.valid ? B.computeFingerprintSha256(attested.json) : null,
   };
   const cls = B.classifyMachine(machine);
+  // The reliability rows (HARNESS 8.2 / kernel/06 3.10) are read with the SAME host context
+  // that decides the honesty boundary, so a report cannot present R1/R2 as gate numbers on a
+  // host that has no reference machine. This is a read, not a measurement: check.mjs still
+  // runs no benchmark of its own.
+  const reliabilityValues = V.collectReliabilityValues(reportSet.all, cls);
   return {
     fingerprints: fingerprints,
     reports: reports,
     reportSet: reportSet,
     values: values,
+    reliabilityValues: reliabilityValues,
     attested: attested,
     machine: machine,
     gating: cls.gating,
@@ -778,6 +786,31 @@ function summarize(gates) {
 
 // D-6 step 3: present the values. A machine-free section 5 row that the report does not carry is
 // printed as NOT REPORTED with its owner and carrier -- it is never silently omitted.
+// D-6 step 3: present the values. A machine-free section 5 row that the report does not carry is
+// printed as NOT REPORTED with its owner and carrier -- it is never silently omitted. The
+// reliability rows (HARNESS 8.2 / kernel/06 3.10) get their own listing for the same reason, with
+// their own registry: a value there is never a section 5 number.
+function formatReliability(reliability) {
+  if (!reliability) return [];
+  const lines = [];
+  if (!reliability.sources.length) {
+    lines.push('reliability rows (HARNESS 8.2 / kernel/06 3.10): 0 of ' + reliability.expected.length + ' reported (' + reliability.expected.join(', ') + '); no bench-report.json was read -- produce one with `node tools/bench/sessiond-rebuild.mjs`');
+  } else {
+    lines.push('reliability rows (HARNESS 8.2 / kernel/06 3.10; read from ' + reliability.sources.join(', ') + '):');
+  }
+  for (const r of reliability.rows) {
+    if (r.status === V.REPORTED) {
+      lines.push('  ' + r.id + ' = ' + r.value + ' ' + String(r.unit) + '  [' + String(r.verdict) + '; registry gate ' + r.gateOp + ' ' + r.gate + ' ' + r.unit + '; statistic ' + String(r.statistic) + '; samples ' + String(r.samples) + ' x ' + String(r.runs) + ' run(s); MAD/median ' + (typeof r.madOverMedian === 'number' ? (r.madOverMedian * 100).toFixed(3) + '%' : 'n/a') + '; owner ' + r.owner + '; machine ' + r.machine + '; source ' + r.source + ']');
+    } else if (reliability.sources.length) {
+      lines.push('  ' + r.id + ' NOT REPORTED -- ' + r.reason + '  [metric ' + r.metric + '; owner ' + r.owner + '; carrier ' + r.carrier + ']');
+    }
+  }
+  for (const u of reliability.unbound) {
+    lines.push('  reliability metric not registered in RELIABILITY_MAPPING: ' + u.id + ' (' + u.source + ')');
+  }
+  return lines;
+}
+
 function formatValues(values) {
   if (!values) return [];
   const sources = values.sources || [];
@@ -810,6 +843,7 @@ function formatHuman(report) {
     for (const n of g.notes) lines.push('      ' + n);
   }
   for (const v of formatValues(report.values)) lines.push(v);
+  for (const v of formatReliability(report.reliability)) lines.push(v);
   lines.push('honesty boundary: ' + report.gating.state + ' (' + report.gating.reason + ')');
   lines.push('  ' + report.gating.detail);
   lines.push('  gating numbers produced by this run: ' + report.gating.gatingNumbersProduced);
@@ -831,6 +865,7 @@ function buildReport(root, gates, status) {
     root: root,
     authority: 'AR-24.3 / AR-27 / AR-30 / AR-31; docs/spec/kernel/06-performance-methodology.md section 1-3; ADR-0014',
     values: status.values,
+    reliability: status.reliabilityValues,
     result: failed.length === 0 ? 'PASS' : 'FAIL',
     counts: c,
     gating: {
@@ -1008,6 +1043,56 @@ function runSelftest(root) {
 
   st.check('control: gate B9 on the real tree passes', gateB9(root, docs).status === STATUS.PASS, gateB9(root, docs).detail);
 
+  // --- reliability row binding (HARNESS 8.2 / kernel/06 3.10, ADR-0029 D-4). Reading R1/R2 out
+  //     of a report is new judgement, so it gets its own control and injections here. The rows
+  //     come from RELIABILITY_MAPPING itself, so a fixture can never drift from the contract B9
+  //     re-derives from the document. A schema-valid report keeps the failure attributable: if
+  //     the schema were also broken, a red B8 would prove nothing about the new rule.
+  const r1 = REL.findReliability('R1');
+  const r2 = REL.findReliability('R2');
+  const nonRmHost = B.classifyMachine({ fingerprintRecorded: false });
+
+  const relReport = function (row, value, verdict, gating) {
+    const r = F.syntheticReport({ metric: row.metric, value: value, unit: row.unit, gate: row.gate, verdict: verdict });
+    r.metrics[0].statistic = row.statistic;
+    r.metrics[0].samples = 10000;
+    r.metrics[0].runs = 10;
+    r.metrics[0].runStat = 'median';
+    r.metrics[0].gating = gating === true;
+    r.flatProjection.samples = 10000;
+    return r;
+  };
+  const relReportSet = function (rel, json) {
+    return { discovered: [], explicit: { rel: rel, exists: true, json: json, parseError: null }, all: [{ rel: rel, json: json, parseError: null }] };
+  };
+  const relStatusFor = function (set) {
+    const values = V.collectValues(set.all);
+    return Object.assign({}, status, {
+      reportSet: set,
+      values: values,
+      reliabilityValues: V.collectReliabilityValues(set.all, nonRmHost),
+      gatingNumbersProduced: values.gatingNumbersProduced,
+      gatingSources: values.gating,
+    });
+  };
+
+  const relGoodJson = relReport(r1, 1.42, 'INCONCLUSIVE', false);
+  const relGoodStatus = relStatusFor(relReportSet('synthetic-rel-good.json', relGoodJson));
+  const relGoodGate = gateB8(relGoodStatus);
+  st.check('control: a schema-valid R1 report reading INCONCLUSIVE binds and passes B8 with the row presented', relGoodStatus.reliabilityValues.problems.length === 0 && relGoodStatus.reliabilityValues.reported.join(',') === 'R1' && relGoodGate.status === STATUS.PASS, relGoodGate.status + ' ' + relGoodGate.detail);
+
+  const relPassJson = relReport(r1, 1.42, 'PASS', false);
+  const relPassStatus = relStatusFor(relReportSet('synthetic-rel-pass.json', relPassJson));
+  const relPassGate = gateB8(relPassStatus);
+  st.check('inject: an R1 report claiming PASS on a host with no reference machine makes B8 fail for that reason', B.validateBenchReport(relPassJson).ok === true && relPassStatus.reliabilityValues.problems.length === 1 && /never PASS/.test(relPassStatus.reliabilityValues.problems[0]) && relPassGate.status === STATUS.FAIL && relPassGate.notes.some(function (n) { return /never PASS/.test(n); }), relPassStatus.reliabilityValues.problems.join(' | ') || 'no problem reported');
+
+  const relGatingJson = relReport(r2, 2.10, 'INCONCLUSIVE', true);
+  const relGatingStatus = relStatusFor(relReportSet('synthetic-rel-gating.json', relGatingJson));
+  st.check('inject: a reliability metric declaring gating=true is counted and makes B7 fail', relGatingStatus.gatingNumbersProduced === 1 && gateB7(root, relGatingStatus).status === STATUS.FAIL, 'counter=' + relGatingStatus.gatingNumbersProduced + ', B7=' + gateB7(root, relGatingStatus).status);
+
+  const relMissingStatus = relStatusFor(relReportSet('synthetic-rel-missing.json', relGoodJson));
+  st.check('control: a reliability row the report does not carry is named as NOT REPORTED, never silently omitted', relMissingStatus.reliabilityValues.missing.join(',') === 'R2' && gateB8(relMissingStatus).notes.some(function (n) { return /not reported \(explicit, never silently omitted\): R2/.test(n); }), 'missing=' + relMissingStatus.reliabilityValues.missing.join(','));
+
   // --- state-machine faults
   const caseResults = runCases();
   for (const r of caseResults) {
@@ -1099,10 +1184,11 @@ function parseArgs(argv) {
   return out;
 }
 
-// B8: schema validation plus the D-6 value binding. It runs when --report points at a file or when a
+// B8: schema validation plus the D-6 value binding, extended to the reliability rows
+// (HARNESS 8.2 / kernel/06 3.10, ADR-0029 D-4). It runs when --report points at a file or when a
 // report is discovered; with neither it is an explicit SKIP, never a silent PASS.
 function gateB8(status) {
-  const TITLE = 'bench-report schema validation + section 5 row binding';
+  const TITLE = 'bench-report schema validation + section 5 and reliability row binding';
   const set = status.reportSet;
   const targets = set.explicit ? [set.explicit] : set.discovered;
   if (!targets.length) {
@@ -1133,8 +1219,25 @@ function gateB8(status) {
   notes.push('not reported (explicit, never silently omitted): ' + (missing.length ? missing.join(', ') : 'none'));
   if (status.values.controls.length) notes.push('out-of-table control value(s): ' + status.values.controls.map(function (c) { return c.id; }).join(', '));
   if (status.values.gatingNumbersProduced) notes.push('gating number(s) presented: ' + status.values.gatingNumbersProduced + ' (B7 fails on a non-reference host)');
+
+  // The reliability rows are judged by their own registry (B9 re-derives the thresholds from
+  // kernel/06 3.10), and on this host they may only ever come out INCONCLUSIVE / NON_GATING.
+  const rel = status.reliabilityValues;
+  if (rel) {
+    for (const p of rel.problems) problems.push('reliability row binding: ' + p);
+    for (const u of rel.unbound) problems.push('reliability row binding: ' + u.id + ' (' + u.source + ') carries a reliability. prefix but is not registered in RELIABILITY_MAPPING (kernel/06 3.10)');
+    notes.push('reliability row(s) carrying a value: ' + (rel.reported.length ? rel.reported.join(', ') : 'none') + ' of ' + rel.expected.join(', '));
+    if (rel.sources.length && rel.missing.length) notes.push('reliability row(s) not reported (explicit, never silently omitted): ' + rel.missing.join(', '));
+    for (const r of rel.rows) {
+      if (r.status !== V.REPORTED) continue;
+      notes.push('  ' + r.id + ' (' + r.metric + ') = ' + r.value + ' ' + r.unit + ' [' + r.verdict + '; registry gate ' + r.gateOp + ' ' + r.gate + ' ' + r.unit + '; statistic ' + r.statistic + '; gating=' + r.gating + ']');
+    }
+    if (!status.gating) {
+      notes.push('host binding: no registered reference machine, so R1/R2 are INCONCLUSIVE / NON_GATING and no value may be read as a gate number (ADR-0014 iron law 5 / kernel/06 3.10)');
+    }
+  }
   if (problems.length) return gate('B8', TITLE, STATUS.FAIL, problems.length + ' problem(s)', problems.slice(0, 12));
-  return gate('B8', TITLE, STATUS.PASS, "report satisfies kernel/06 3.4 / 3.7 and every metric that names a section 5 row carries that row's registered unit and gate", notes);
+  return gate('B8', TITLE, STATUS.PASS, "report satisfies kernel/06 3.4 / 3.7, every metric that names a section 5 row carries that row's registered unit and gate, and every reliability metric matches kernel/06 3.10 + the machine binding", notes);
 }
 
 // --------------------------------------------------- B9 reliability mapping integrity (ADR-0029 D-4)
