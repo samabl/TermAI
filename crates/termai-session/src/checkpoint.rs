@@ -22,6 +22,19 @@ pub trait GridReplay {
     fn restore(&mut self, ckpt: &Checkpoint) -> bool;
     /// Replay raw VT bytes into the grid. This is the only mutation recovery performs.
     fn feed_raw(&mut self, bytes: &[u8]);
+    /// Apply a geometry change (`Record::Resize`, kernel/04 section 3.2.3, retention class P0)
+    /// **at the position the record occupies in the Log**, i.e. between two
+    /// [`GridReplay::feed_raw`] calls. Bytes logged after a resize must replay at the geometry
+    /// the live session held when it wrote them: ignoring this call - or applying only the last
+    /// `Resize` - silently rebuilds a resized session at the wrong size (debt-p0 A24 item 2).
+    ///
+    /// The default does nothing, which is only correct for a sink that owns no grid geometry
+    /// (an audit sink, or a unit-test double). A sink whose `digest()` is compared against a
+    /// live screen **must** override this; the daemon's rebuild path does, in
+    /// `apps/sessiond/src/restore.rs`.
+    fn resize(&mut self, cols: u16, rows: u16) {
+        let _ = (cols, rows);
+    }
     /// Digest of the current grid (blake3 of GridSnapshot canonical bytes).
     fn digest(&self) -> [u8; 32];
 }
@@ -268,9 +281,18 @@ pub fn recover_session(
 
     let mut raw_replayed = 0usize;
     for r in all.iter().skip(start) {
-        if let Record::PtyOut { bytes, .. } = &r.record {
-            replay.feed_raw(bytes);
-            raw_replayed += 1;
+        match &r.record {
+            Record::PtyOut { bytes, .. } => {
+                replay.feed_raw(bytes);
+                raw_replayed += 1;
+            }
+            // A `Resize` is applied where it sits in the Log - not once at the end and not
+            // only the last one: the records after it must replay at the new geometry, so
+            // that a session resized mid-Log rebuilds to the screen it actually ended with
+            // (debt-p0 A24 item 2). `pane` is ignored like everywhere else in recovery, and
+            // `px_w`/`px_h` carry no cell state, so only `cols`/`rows` drive the grid.
+            Record::Resize { cols, rows, .. } => replay.resize(*cols, *rows),
+            _ => {}
         }
         meta.apply(&r.record);
     }
@@ -326,6 +348,8 @@ mod tests {
         text: String,
         restore_text: String,
         restore_ok: bool,
+        /// Geometry applied by `resize`, in call order (debt-p0 A24: order is the point).
+        sizes: Vec<(u16, u16)>,
     }
 
     impl Default for FakeGrid {
@@ -334,6 +358,7 @@ mod tests {
                 text: String::new(),
                 restore_text: String::new(),
                 restore_ok: true,
+                sizes: Vec::new(),
             }
         }
     }
@@ -353,6 +378,9 @@ mod tests {
         }
         fn feed_raw(&mut self, bytes: &[u8]) {
             self.text.push_str(&String::from_utf8_lossy(bytes));
+        }
+        fn resize(&mut self, cols: u16, rows: u16) {
+            self.sizes.push((cols, rows));
         }
         fn digest(&self) -> [u8; 32] {
             Self::digest_of(&self.text)
@@ -402,6 +430,19 @@ mod tests {
             1,
         )
         .unwrap();
+        // Resize inside the checkpointed window: its effect is part of the state the
+        // checkpoint restores, so recovery must NOT replay it.
+        w.append(
+            &Record::Resize {
+                pane: 0,
+                cols: 132,
+                rows: 43,
+                px_w: 0,
+                px_h: 0,
+            },
+            2,
+        )
+        .unwrap();
         w.append(
             &Record::CheckpointRef {
                 ckpt_id: 42,
@@ -409,7 +450,7 @@ mod tests {
                 offset: 100,
                 grid_digest: FakeGrid::digest_of("BEFORE"),
             },
-            2,
+            3,
         )
         .unwrap();
         w.append(
@@ -420,7 +461,7 @@ mod tests {
                 source: Source::Agent,
                 lease_id: 1,
             },
-            3,
+            4,
         )
         .unwrap();
         w.append(
@@ -428,7 +469,30 @@ mod tests {
                 pane: 0,
                 bytes: b"AFTER".to_vec(),
             },
-            4,
+            5,
+        )
+        .unwrap();
+        // Two resizes inside the replay window: both must be applied, in Log order.
+        w.append(
+            &Record::Resize {
+                pane: 0,
+                cols: 100,
+                rows: 30,
+                px_w: 0,
+                px_h: 0,
+            },
+            6,
+        )
+        .unwrap();
+        w.append(
+            &Record::Resize {
+                pane: 0,
+                cols: 60,
+                rows: 20,
+                px_w: 0,
+                px_h: 0,
+            },
+            7,
         )
         .unwrap();
         w.flush(FlushMode::FsyncFull).unwrap();
@@ -446,9 +510,93 @@ mod tests {
             "only records after the checkpoint replay"
         );
         assert_eq!(grid.text, "BEFOREAFTER");
+        assert_eq!(
+            grid.sizes,
+            vec![(100, 30), (60, 20)],
+            "only the replay window's resizes are applied, and in Log order"
+        );
         assert_eq!(out.meta.input_events, 1, "PtyIn is indexed, never executed");
         assert!(!out.tail_truncated);
         assert!(out.digest_verified);
+    }
+
+    #[test]
+    fn resize_records_replay_in_log_order_at_the_point_they_occur() {
+        // The failure this pins down (debt-p0 A24 item 2): recovery used to replay only
+        // `PtyOut`, so a resized session rebuilt at its spawn geometry. Applying only the
+        // last `Resize` would also pass a "final size" check while putting every byte before
+        // it at the wrong width, so the assertion is on the ordered call log, not the size.
+        let dir = tmp_dir("resize-order");
+        let mut w = SegmentWriter::create(&dir, 0, 0, [0u8; 8], 1, 0).unwrap();
+        w.append(
+            &Record::PtyOut {
+                pane: 0,
+                bytes: b"head".to_vec(),
+            },
+            1,
+        )
+        .unwrap();
+        w.append(
+            &Record::Resize {
+                pane: 0,
+                cols: 100,
+                rows: 30,
+                px_w: 800,
+                px_h: 600,
+            },
+            2,
+        )
+        .unwrap();
+        w.append(
+            &Record::PtyOut {
+                pane: 0,
+                bytes: b"-middle".to_vec(),
+            },
+            3,
+        )
+        .unwrap();
+        w.append(
+            &Record::Resize {
+                pane: 0,
+                cols: 61,
+                rows: 17,
+                px_w: 0,
+                px_h: 0,
+            },
+            4,
+        )
+        .unwrap();
+        w.append(
+            &Record::PtyOut {
+                pane: 0,
+                bytes: b"-tail".to_vec(),
+            },
+            5,
+        )
+        .unwrap();
+        w.append(
+            &Record::Resize {
+                pane: 0,
+                cols: 80,
+                rows: 24,
+                px_w: 0,
+                px_h: 0,
+            },
+            6,
+        )
+        .unwrap();
+        w.flush(FlushMode::FsyncFull).unwrap();
+        drop(w);
+
+        let mut grid = FakeGrid::default();
+        let out = recover_session(&dir, &mut grid).unwrap();
+        assert_eq!(grid.text, "head-middle-tail", "PtyOut order is unchanged");
+        assert_eq!(
+            grid.sizes,
+            vec![(100, 30), (61, 17), (80, 24)],
+            "every Resize replays once, in Log order, including the trailing one"
+        );
+        assert_eq!(out.raw_replayed, 3);
     }
 
     #[test]

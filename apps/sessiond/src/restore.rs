@@ -20,14 +20,24 @@
 //!   is still the M0 adapter that reports a restore attempt rather than loading bytes from
 //!   CAS - so a Log carrying a `CheckpointRef` is *not* faithfully rebuildable yet. The
 //!   fixture below asserts it writes no checkpoint, and the bench driver refuses to publish
-//!   timings for a Log whose recovery resumed from one;
-//! * `Resize` records are not replayed by [`termai_session::checkpoint::recover_session`]
-//!   (only `PtyOut` bytes are), so a Log spanning several terminal sizes is not faithfully
-//!   rebuildable either. The fixture keeps one size.
+//!   timings for a Log whose recovery resumed from one. **This gap is still open** (debt-p0
+//!   A24 item 1);
+//! * `Resize` records **are** replayed, in Log order: recovery hands every `Record::Resize`
+//!   to the replay sink at the point it occupies in the Log
+//!   ([`termai_session::checkpoint::GridReplay::resize`], which [`ResizeAwareReplay`] below
+//!   overrides), so a session resized mid-Log rebuilds at the geometry it actually ended with
+//!   and the bytes logged after a resize replay at the size the live session held when it
+//!   wrote them (debt-p0 A24 item 2). Two limits remain on that, and both are asserted rather
+//!   than papered over: the geometry a session *spawned* with is not itself a Log record, so
+//!   the caller still supplies it ([`rebuild_session`]'s `cols`/`rows`), and a `Resize` only
+//!   drives the grid through its `cols`/`rows` - `px_w`/`px_h` carry no cell state. The
+//!   mechanism test (`tests/session_rebuild.rs`) covers a mid-Log resize, a trailing one and
+//!   the no-resize control; the *timing* fixture deliberately keeps one size, so no timing
+//!   number claims to cover a resize.
 
 use std::path::Path;
 
-use termai_session::checkpoint::{recover_session, RecoverOutcome};
+use termai_session::checkpoint::{recover_session, Checkpoint, GridReplay, RecoverOutcome};
 use termai_session::log::LogError;
 
 use crate::engine::VtEngine;
@@ -52,6 +62,34 @@ impl Rebuilt {
     }
 }
 
+/// The rebuild's replay sink: [`EngineReplay`] plus the `Resize` half of the contract.
+///
+/// [`crate::registry::EngineReplay`] leaves [`GridReplay::resize`] at its default (a sink that
+/// owns no geometry), which is not enough here: a session that was resized mid-Log can only be
+/// rebuilt by a sink that applies `Resize` where it sits in the Log (debt-p0 A24 item 2). This
+/// wrapper forwards the geometry to the same `TerminalEngine::resize` the daemon's own resize
+/// path calls (`broker::on_resize`), so the rebuild repeats the session's operation exactly;
+/// everything else delegates, so there is one definition of restore/feed/digest semantics.
+struct ResizeAwareReplay<'a>(EngineReplay<'a>);
+
+impl GridReplay for ResizeAwareReplay<'_> {
+    fn restore(&mut self, ckpt: &Checkpoint) -> bool {
+        self.0.restore(ckpt)
+    }
+
+    fn feed_raw(&mut self, bytes: &[u8]) {
+        self.0.feed_raw(bytes);
+    }
+
+    fn resize(&mut self, cols: u16, rows: u16) {
+        self.0 .0.resize(cols, rows);
+    }
+
+    fn digest(&self) -> [u8; 32] {
+        self.0.digest()
+    }
+}
+
 /// Rebuild one session's screen from the Session Log in `dir`.
 ///
 /// The window AR-26 item 4 times is one call of this function plus the snapshot/digest the
@@ -61,13 +99,19 @@ impl Rebuilt {
 /// Log plus VT replay, so the call is repeatable on the same directory - which is what makes
 /// the timing measurement possible at all.
 ///
+/// `cols`/`rows` are the geometry the live engine was **created** with (the size the daemon
+/// spawned the session at). The Log's `Resize` records then carry the rebuild from there to
+/// the geometry the session actually ended with, in Log order; a session that was never
+/// resized rebuilds at exactly `cols`x`rows`. Passing a size other than the spawn geometry
+/// cannot be repaired by this function - see the module docs on `Resize` replay.
+///
 /// # Errors
 /// Returns the Log layer's error when the directory holds no segment
 /// ([`LogError::NoSegments`]) or a segment cannot be read/decoded.
 pub fn rebuild_session(dir: &Path, cols: u16, rows: u16) -> Result<Rebuilt, LogError> {
     let mut engine = VtEngine::new(cols, rows);
     let outcome = {
-        let mut replay = EngineReplay(&mut engine, [0u8; 32]);
+        let mut replay = ResizeAwareReplay(EngineReplay(&mut engine, [0u8; 32]));
         recover_session(dir, &mut replay)?
     };
     Ok(Rebuilt { engine, outcome })
@@ -86,6 +130,10 @@ pub fn rebuild_session(dir: &Path, cols: u16, rows: u16) -> Result<Rebuilt, LogE
 /// * every byte and every timestamp is derived from the line counter, so two fixture runs
 ///   produce byte-identical segments (the D0 property kernel/06 section 3.6 requires: same
 ///   scene -> same hash);
+/// * [`write_session_log_with_resizes`] splices `Resize` records in at chosen points and
+///   resizes the *live* engine at exactly those points - the operation order the daemon's
+///   resize path uses (`broker::on_resize`: resize the engine, then append the record) - so a
+///   resized fixture's "before" screen is still the live session's own screen;
 /// * it asserts nothing about timing. Only equality.
 pub mod fixture {
     use std::path::{Path, PathBuf};
@@ -104,11 +152,13 @@ pub mod fixture {
     pub struct LogFixture {
         /// Directory holding the segment(s).
         pub dir: PathBuf,
-        /// Terminal width the session ran with.
+        /// Terminal width the live session was **created** with (what the rebuild is passed).
         pub cols: u16,
-        /// Terminal height the session ran with.
+        /// Terminal height the live session was **created** with.
         pub rows: u16,
-        /// The screen the live session held (what the rebuild has to reproduce).
+        /// The screen the live session held (what the rebuild has to reproduce). Once `Resize`
+        /// records were replayed this is the geometry the session *ended* with, which is why it
+        /// - not `cols`/`rows` - is the comparison's authority.
         pub state: GridSnapshot,
         /// blake3 digest of `state.canonical_bytes()`.
         pub digest: [u8; 32],
@@ -120,6 +170,8 @@ pub mod fixture {
         pub pty_out_records: usize,
         /// Bytes carried by the `PtyOut` records.
         pub pty_out_bytes: u64,
+        /// `Resize` records (recovery replays these too, in Log order).
+        pub resize_records: usize,
         /// `PtyIn` records (indexed for audit, never executed by recovery).
         pub input_events: usize,
         /// Segment files on disk.
@@ -129,6 +181,45 @@ pub mod fixture {
         pub checkpoints: usize,
         /// sha256 over the segment bytes (the D0 scene hash).
         pub log_sha256: [u8; 32],
+    }
+
+    /// One deterministic geometry change to splice into the fixture's Log.
+    ///
+    /// Recovery replays `Resize` where it sits in the Log (debt-p0 A24 item 2), so a fixture
+    /// that is supposed to exercise that path has to place the record - and resize the live
+    /// engine - at a chosen point of the byte script.
+    #[derive(Clone, Copy, Debug)]
+    pub struct ResizeAt {
+        /// Feed this many script bytes first, then apply the resize. [`ResizeAt::at_end`] uses
+        /// a sentinel that sorts after every real offset.
+        after_bytes: usize,
+        /// New width (`cols` of the `Resize` record).
+        pub cols: u16,
+        /// New height (`rows` of the `Resize` record).
+        pub rows: u16,
+    }
+
+    impl ResizeAt {
+        /// A resize that lands once `after_bytes` of the script have been written. It lands at
+        /// the first `PtyOut` chunk boundary at or after that offset, never inside a record.
+        #[must_use]
+        pub const fn after_bytes(after_bytes: usize, cols: u16, rows: u16) -> Self {
+            Self {
+                after_bytes,
+                cols,
+                rows,
+            }
+        }
+
+        /// A resize that lands after the last byte of the script, i.e. at the tail of the Log.
+        #[must_use]
+        pub const fn at_end(cols: u16, rows: u16) -> Self {
+            Self {
+                after_bytes: usize::MAX,
+                cols,
+                rows,
+            }
+        }
     }
 
     /// Map a registry failure onto the Log error type. A registry rejection here means the
@@ -178,6 +269,13 @@ pub mod fixture {
         out
     }
 
+    /// Length in bytes of the deterministic script [`write_session_log`] feeds, so a caller
+    /// can place a [`ResizeAt`] at a derived fraction of the Log instead of a magic offset.
+    #[must_use]
+    pub fn script_len(cols: u16, rows: u16, lines: usize) -> usize {
+        script(cols, rows, lines).len()
+    }
+
     /// Write one deterministic session to `dir` and return its Log metadata plus the screen
     /// the live session held.
     ///
@@ -194,6 +292,27 @@ pub mod fixture {
         rows: u16,
         lines: usize,
     ) -> Result<LogFixture, LogError> {
+        write_session_log_with_resizes(dir, cols, rows, lines, &[])
+    }
+
+    /// [`write_session_log`] with deterministic `Resize` records spliced into the Log.
+    ///
+    /// Each [`ResizeAt`] lands at a `PtyOut` chunk boundary, and the **live** engine is
+    /// resized at exactly that point (`ResizeAwareReplay` replays the record at the same
+    /// point), so `LogFixture::state` is the screen of a session that really was resized
+    /// there. The record is appended after the engine resize, which is the order the daemon's
+    /// resize path uses (`broker::on_resize`); pixel geometry is written as `0` because the
+    /// rebuild reads only `cols`/`rows`.
+    ///
+    /// # Errors
+    /// As [`write_session_log`].
+    pub fn write_session_log_with_resizes(
+        dir: &Path,
+        cols: u16,
+        rows: u16,
+        lines: usize,
+        resizes: &[ResizeAt],
+    ) -> Result<LogFixture, LogError> {
         std::fs::create_dir_all(dir)?;
         // created_at_unix_ns = 0 and a zero chain prefix keep the segment bytes a pure
         // function of the script (D0: same scene -> same hash).
@@ -209,8 +328,21 @@ pub mod fixture {
         let mut ts = 1_000_000_u64;
         let mut pty_out_records = 0_usize;
         let mut pty_out_bytes = 0_u64;
+
+        // Sorted by offset (stable), so resizes with the same offset keep the caller's order
+        // and `at_end` (usize::MAX) sorts after every real offset.
+        let mut pending: Vec<ResizeAt> = resizes.to_vec();
+        pending.sort_by_key(|r| r.after_bytes);
+
         let mut at = 0_usize;
         while at < script.len() {
+            while let Some(r) = pending.first() {
+                if at < r.after_bytes {
+                    break;
+                }
+                let r = pending.remove(0);
+                apply_resize(&mut registry, id, r, &mut ts)?;
+            }
             let step = 1024 + (at * 37) % 3072;
             let end = (at + step).min(script.len());
             registry
@@ -220,6 +352,11 @@ pub mod fixture {
             pty_out_bytes += (end - at) as u64;
             ts += 1_000_000;
             at = end;
+        }
+        // Whatever is left is `at_end` (or an offset the last chunk step overshot): apply it
+        // after the final `PtyOut`, i.e. at the tail of the Log.
+        for r in pending {
+            apply_resize(&mut registry, id, r, &mut ts)?;
         }
 
         // One CAP-1 gated stdin event: the Log carries a digest, never the bytes. Recovery
@@ -252,6 +389,11 @@ pub mod fixture {
             .iter()
             .filter(|r| matches!(r.record, Record::CheckpointRef { .. }))
             .count();
+        let resize_records = read
+            .records
+            .iter()
+            .filter(|r| matches!(r.record, Record::Resize { .. }))
+            .count();
         let input_events = read
             .records
             .iter()
@@ -268,10 +410,40 @@ pub mod fixture {
             records: read.records.len(),
             pty_out_records,
             pty_out_bytes,
+            resize_records,
             input_events,
             segments: 1,
             checkpoints,
             log_sha256: log::sha256_of(&raw),
         })
+    }
+
+    /// Append one `Resize` record and resize the live engine, in that order - the daemon's own
+    /// resize path order (`broker::on_resize`: `engine.resize`, then `writer.append`). A
+    /// missing session here means the fixture is wrong, which is reported as malformed input.
+    fn apply_resize(
+        registry: &mut Registry,
+        id: SessionId,
+        r: ResizeAt,
+        ts: &mut u64,
+    ) -> Result<(), LogError> {
+        let entry = registry.get_mut(id).ok_or(LogError::Malformed(
+            "deterministic fixture session vanished",
+        ))?;
+        entry.engine.resize(r.cols, r.rows);
+        entry.writer.append(
+            &Record::Resize {
+                pane: 0,
+                cols: r.cols,
+                rows: r.rows,
+                // No pixel geometry: `px_w`/`px_h` carry no cell state, and the rebuild only
+                // reads `cols`/`rows` (see the module docs).
+                px_w: 0,
+                px_h: 0,
+            },
+            *ts,
+        )?;
+        *ts += 1_000_000;
+        Ok(())
     }
 }

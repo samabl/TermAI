@@ -90,7 +90,7 @@ HARNESS §8.2 的「sessiond 重建 P95 ≤2s / P99 ≤5s」此前只有**登记
 **已知边界（AR-20，必须如实说）**：
 
 1. 可测的是**无 checkpoint 的全量重放**路径。`CheckpointRef` 那条分支需要 CAS 内容存储，而 `apps/sessiond/src/registry.rs` 的 `EngineReplay::restore` 目前是 M0 适配器（报告一次还原尝试，并不从 CAS 载入字节）——所以带 checkpoint 的 Log **尚不可忠实重建**；夹具断言 `checkpoints == 0`，驱动遇到 `resumed_from.is_some()` 直接拒绝对外发布读数。
-2. `recover_session` 只回放 `PtyOut`，**不回放 `Resize`**，因此跨终端尺寸的 Log 也不可忠实重建；夹具只用一个尺寸。
+2. `Resize` 分支**已闭合**：`recover_session` 现在按 Log 顺序把每条 `Record::Resize` 交给回放槽（`GridReplay::resize`；sessiond 的 rebuild 路径由 `apps/sessiond/src/restore.rs` 的 `ResizeAwareReplay` 实现），机制测试 `apps/sessiond/tests/session_rebuild.rs` 覆盖「Log 中段的 resize」「Log 末尾的 resize」「无 resize 对照」以及「resize 必须作用在它所在的位置，而不是只作用于最终尺寸」。**但计时夹具仍只用一个尺寸**，因此 R1/R2 的读数不覆盖 resize（`docs/audit/debt-p0.md` A24 第 2 条闭合、第 1 条仍开放）。
 3. 本机**不是 RM-A**：这两行永远是 `INCONCLUSIVE` / `NON_GATING`。要成为门禁数字，必须在 RM-A（T0、独占、指纹已登记）上跑同一命令并给出指纹。
 4. 场景是**参数化的**（默认 Log 500 行 / ~45KB）；换场景即换数字，报告 `metrics[].method` 与 `runner` 里都写了场景参数与机器状态。
 
@@ -274,7 +274,8 @@ runner / commit / toolchain / ts + 顶层 commit）逐字保留」）。任一�
   （显示 / 延迟类：H2、H3、H4），并且内核侧 `cargo xtask bench` 落地（M0 未实现）。
   在此之前，本工具的输出一律 `INCONCLUSIVE(REFERENCE_MACHINE_UNAVAILABLE)`。
 - **sessiond 重建行（R1/R2）**：机制断言与测量产出都已落地（见上一节）；**仍缺**参考机指纹与 T0 独占，
-  以及 `CheckpointRef` / `Resize` 两条分支的忠实重放（需要 CAS 内容存储与「按 Resize 分段重放」）。
+  以及 `CheckpointRef` 分支的忠实重放（需要 CAS 内容存储）：**这一条仍缺**。`Resize` 分支已落地
+  （`recover_session` 按 Log 顺序回放 `Resize`，见上一节第 2 条），但计时夹具仍只用一个尺寸。
   因此 E-P0-4 的「≤2s / ≤5s」目前**不能说已完成**：本机数字不是门禁级证据。
 - **§5 机器无关行的值**：读取路径已落地（D-6 第 ②–④ 步）；本机可产出者现在是 **H18**、**H12**（见上一节，
   `node tools/bench/input-bytes.mjs`）与**表外对照 C1**，其余行如实 `NOT REPORTED`（H17 需浏览器层、
