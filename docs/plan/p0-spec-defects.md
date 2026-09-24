@@ -124,6 +124,18 @@
 - **本 P0 处置**：**跟随 registry**（它是被 B1/B3 每次从文档重新校验的转录），并让缺席显式化；**不自行改判**机器归属。
 - **需要的动作**：kernel/06 owner 区分并写明两个概念——① **测量机器**（§3.4：H17 / H19 的像素测量在 RM-C 上做）；② **门禁判定归属**（§3.9：判定载体是 `tools/design-gates`）。若维持 registry 的 `machine: none`，应在 §3.9 的 H17 / H19 行明文写出「`machine: none` 指判定归属，测量仍在 RM-C」；否则应把 registry 改为 `RM-C` 并同步 `evaluate()` 的读法。
 
+## SD-25｜kernel/01 §3.9 写 esctest 的「版本与 SHA-256 记入 `suites.toml`」，而仓库里既没有该文件，也没有那个 SHA-256
+
+- **证据**：`docs/spec/kernel/01-vt-conformance.md:279`（§3.9「运行方式」）写「esctest 以钉定 revision 运行（Python 驱动 + pyte 参考解释器），**版本与 SHA-256 记入 `suites.toml`**」。而实现是 `tools/conformance/suites.json`（`schema: termai-conformance-suites/1`；`suites[0].pinned_revision = 2798f12149a19c3295e9b4853ab2da4b2eff1b2b`），由 `tools/conformance/check-suites.mjs` 逐字段校验、由 `tools/conformance/esctest-report.mjs` 读取并按其 `invocation` 重构运行命令。仓库内 **`suites.toml` 零命中**（`git ls-files "*suites.toml*"` 为空、工作树按名检索也为空），唯一命中的清单是 `tools/conformance/suites.json`（`git ls-files "*suites.json*"` 只有这一条）。
+- **同一句话还有第二个、更实的缺口**：该清单**没有 SHA-256 字段**——它记的是 **40 位 git revision**（`pinned_revision`，`check-suites.mjs:50` 强制其为 40 位小写 sha）。全仓库与 esctest 相关的 sha256 记录**只有 vttest tarball 那一条**（`tools/conformance/upstream/README.md:54-55`，与 esctest 无关）。即 §3.9 要求的「版本与 SHA-256」里，**SHA-256 这一半在当前实现中没有落点**。
+- **影响**：一处文档命名漂移 + 一处**未落地的证据要求**，两者都会让读者按 §3.9 去用不存在的产物。命名层面：读者会去找一个不存在的文件，或另建一份 `suites.toml`——**一旦出现第二份钉定表，两次运行钉的 revision 可能分叉，而分叉之后的 esctest 数字不可比**（§6.3 规则 8；SD-20 的「记录值不可复现」正是同一族事故）。证据层面：`pinned_revision` 只钉 **commit**，不钉**本地检出是否被改过**；§3.9 承诺的 SHA-256 才是那一层。当前实现只钉到 revision。
+- **本 P0 处置**：**采纳实现命名**（`suites.json`），按 **SD-17 先例**（`proto_range` vs `proto_min` / `proto_max`：接受实现命名、登记本条、由 spec owner 补注）处置，**不改实现**——`suites.json` 是 `check-suites.mjs` 与 `esctest-report.mjs` 共同读取的唯一真源，改名或分表会牵动两个已接线的工具而无收益。**SHA-256 那一半不冒充已落地**：登记为「spec 要求尚未实现」，由 owner 决定是**删去该措辞**还是**补一个新的、机器校验的落点**；本 P0 **不自行新增字段**（那会改动 `suites.json` 的 schema 与 CI 契约，超出登记范围）。
+- **需要的动作**：**要改的是 spec 文本，不是实现**。`kernel/01` §3.9 owner 按下列原文替换该句并补注（这段脚注即本条要求的全部修正）：
+
+  > 脚注（SD-25）：esctest 的钉定 revision 记入 `tools/conformance/suites.json`（`schema: termai-conformance-suites/1`，`suites[].pinned_revision`，40 位 git sha，由 `node tools/conformance/check-suites.mjs` 校验）；本分册早期版本写作 `suites.toml`，仓库内从无该文件。命名以实现为准（同 SD-17 的处置）。检出内容的 SHA-256 **当前未记录在任何清单中**，因此不得按本条声称本地检出已被逐字节钉住。
+
+  若 owner 选择保留「SHA-256」这一要求，则须先决定它的**载体与校验者**（新增字段？新工具？仅记录在证据目录？），再回填该脚注；**在载体确定前不得声称检出内容可校验**。
+
 ## 处置总表
 
 | 编号 | 落点 | 类型 | 本 P0 处置 | 需要动作 |
@@ -133,6 +145,7 @@
 | SD-11 | kernel/06 §3.2 | 定义缺失 | 按与 H2 共用注入流读作 `isTail`/≥1e5，标为**读数** | kernel/06 owner 确认或改判 |
 | SD-12 | kernel/06 §3.4/§6 | 原因码越界 | 标 `origin:'extension'` 并写明推导链 | owner 认可后并入枚举 |
 | SD-24 | kernel/06 §3.4 vs registry H17/H19 | 机器归属两义 | 跟随 registry；缺席显式 `NOT REPORTED`；不自行改判 | kernel/06 owner 区分「测量机器」与「判定归属」并写明 |
+| SD-25 | kernel/01 §3.9 vs `tools/conformance/suites.json` | 命名漂移 + 证据要求未落地 | 采纳实现命名（SD-17 先例），**不改实现**；SHA-256 不冒充已落地 | kernel/01 §3.9 owner 把 `suites.toml` 改为 `suites.json` 并补 SD-25 脚注（检出 SHA-256 无载体，须先定载体） |
 
 ## 与前序登记的关系
 

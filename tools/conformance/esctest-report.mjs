@@ -12,6 +12,13 @@
 //     (null) with an explicit note instead of inventing a split.
 //   * ADR-0029 D-2 (static capability exclusions): tests whose class prefix is declared
 //     statically absent (OSC 4/10/11/12 = color-query) are excluded_by_capability, NOT failures.
+//   * A20 / ADR-0030 errata 2 (reverse-wrap patch level): the reconstructed esctest command must
+//     carry --xterm-reverse-wrap <n> taken from suites.json invocation.xterm_reverse_wrap. esctest
+//     defaults to 0 there, which makes ReverseWraparound() return private mode 45 and judges
+//     pre-2023 semantics, so a command that omits the flag reproduces DIFFERENT numbers than the
+//     report prints next to it (plan section 6.3 rule 8; SD-20). When the manifest does not
+//     declare the field the flag is still printed, with an explicit NOT-DECLARED placeholder:
+//     the command is never silently short enough to look complete and reproducible.
 //
 // Usage:
 //   node tools/conformance/esctest-report.mjs --log <esctest.log> [--suites tools/conformance/suites.json]
@@ -30,6 +37,13 @@ const DEFAULT_SUITES = path.join(HERE, 'suites.json');
 const DEFAULT_SUITE = 'esctest2';
 const DEFAULT_LOG = path.join(ROOT, 'target', 'conformance', 'lvl1-new', 'esctest.log');
 const SCHEMA = 'termai-esctest-report/1';
+
+// A20: the reverse-wrap flag is never omitted from a reconstructed command. Keeping the flag name,
+// the manifest field name and the not-declared placeholder as constants lets --selftest assert on
+// the same strings the report prints (injection + control, plan section 6.3 rule 10).
+const REVERSE_WRAP_FLAG = '--xterm-reverse-wrap';
+const REVERSE_WRAP_FIELD = 'invocation.xterm_reverse_wrap';
+const REVERSE_WRAP_NOT_DECLARED = 'NOT-DECLARED';
 
 // Exact shapes confirmed against target/conformance/lvl1-new/esctest.log:
 //   *** 103 tests passed, 378 known bugs, 86 TESTS FAILED ***
@@ -222,6 +236,34 @@ function buildReport(text, manifest, suiteName) {
   };
 }
 
+// A20: resolve invocation.xterm_reverse_wrap into the argument the reconstructed command carries.
+// A declared integer is used verbatim. When the field is absent (or not an integer) the flag is
+// still emitted with an explicit NOT-DECLARED placeholder, so copy-pasting the printed command
+// fails loudly instead of quietly running esctest with its default 0 - which is a different ruler.
+function reverseWrapArg(suite) {
+  const inv = suite && typeof suite.invocation === 'object' && suite.invocation !== null ? suite.invocation : {};
+  const v = inv.xterm_reverse_wrap;
+  if (Number.isInteger(v)) {
+    return {
+      declared: true,
+      value: v,
+      text: String(v),
+      note: REVERSE_WRAP_FIELD + ' is declared; esctest is told the pinned terminal\'s patch level ' +
+        'instead of defaulting to 0 (ADR-0030 errata 2).',
+    };
+  }
+  return {
+    declared: false,
+    value: null,
+    text: REVERSE_WRAP_NOT_DECLARED,
+    note: REVERSE_WRAP_FIELD + ' is NOT declared in the manifest, so ' + REVERSE_WRAP_FLAG + ' ' +
+      REVERSE_WRAP_NOT_DECLARED + ' above is a placeholder and not a value. esctest would default ' +
+      'to 0, ReverseWraparound() would return private mode 45, and the expectations would be ' +
+      'pre-383 (a different ruler, ADR-0030 errata 2). The printed command is NOT reproducible ' +
+      'until the manifest declares the field.',
+  };
+}
+
 function reconstructEsctestCommand(suite, logAbs) {
   const inv = suite.invocation || {};
   const parts = [
@@ -232,6 +274,7 @@ function reconstructEsctestCommand(suite, logAbs) {
     '--expected-terminal', String(inv.expected_terminal),
     '--xterm-checksum', String(inv.xterm_checksum),
     '--max-vt-level', String(inv.claimed_vt_level),
+    REVERSE_WRAP_FLAG, reverseWrapArg(suite).text,
   ];
   return parts.join(' ');
 }
@@ -266,6 +309,11 @@ function humanReport(rep) {
   L.push('');
   L.push('esctest command (reconstructed from suites.json invocation + log location):');
   L.push('  ' + rep.esctest_command_reconstructed);
+  L.push('esctest reverse-wrap (A20 / ADR-0030 errata 2): ' +
+    (rep.esctest_reverse_wrap.declared
+      ? rep.esctest_reverse_wrap.flag + ' ' + rep.esctest_reverse_wrap.rendered
+      : 'NOT DECLARED - ' + rep.esctest_reverse_wrap.flag + ' ' + rep.esctest_reverse_wrap.rendered + ' is a placeholder'));
+  L.push('  ' + rep.esctest_reverse_wrap.note);
   L.push('report command:');
   L.push('  ' + rep.report_command);
   for (const note of rep.parse.notes) L.push('parse note: ' + note);
@@ -371,6 +419,41 @@ function selftest() {
       real ? 'eligible=' + real.eligible + ' passed=' + real.passed + ' failed_real=' + real.failed_real.count : 'no report');
   }
 
+  // (d) A20 injection: a manifest that does NOT declare invocation.xterm_reverse_wrap must make the
+  // reconstructed command say so explicitly. esctest would then default to 0 and judge pre-383
+  // semantics, so a silently shorter command reproduces different numbers than the report prints.
+  const selftestLog = path.join(ROOT, 'target', 'conformance', 'selftest', 'esctest.log');
+  const bareManifest = JSON.parse(JSON.stringify(manifest));
+  let bareCmd = null;
+  let bareErr = null;
+  try {
+    const bareSuite = findSuite(bareManifest, DEFAULT_SUITE);
+    delete bareSuite.invocation.xterm_reverse_wrap;
+    bareCmd = reconstructEsctestCommand(bareSuite, selftestLog);
+  } catch (e) { bareErr = e; }
+  check('inject (A20): a manifest without ' + REVERSE_WRAP_FIELD + ' makes the reconstructed command say ' + REVERSE_WRAP_NOT_DECLARED,
+    !!bareCmd && bareCmd.indexOf(REVERSE_WRAP_FLAG + ' ' + REVERSE_WRAP_NOT_DECLARED) >= 0,
+    bareErr ? bareErr.message : (bareCmd || 'no command'));
+  check('inject (A20): that command does not silently look complete (' + REVERSE_WRAP_FLAG + ' is still named, with a placeholder value)',
+    !!bareCmd && bareCmd.indexOf(REVERSE_WRAP_FLAG) >= 0,
+    bareCmd ? 'flag present, value is the explicit placeholder' : 'no command');
+
+  // (e) A20 control: the real manifest declares the patch level, so the flag must carry that value -
+  // and the declared and undeclared reconstructions must differ, or the field is not reaching the
+  // command at all (which is exactly what A20 found).
+  let declaredRw = null;
+  let declaredCmd = null;
+  let declaredErr = null;
+  try {
+    const realSuite = findSuite(manifest, DEFAULT_SUITE);
+    declaredRw = realSuite.invocation ? realSuite.invocation.xterm_reverse_wrap : null;
+    declaredCmd = reconstructEsctestCommand(realSuite, selftestLog);
+  } catch (e) { declaredErr = e; }
+  check('control (A20): the manifest declares ' + REVERSE_WRAP_FIELD + ' ' + declaredRw + ' and the command carries ' + REVERSE_WRAP_FLAG + ' ' + declaredRw,
+    !!declaredCmd && Number.isInteger(declaredRw) &&
+      declaredCmd.indexOf(REVERSE_WRAP_FLAG + ' ' + declaredRw) >= 0 && declaredCmd !== bareCmd,
+    declaredErr ? declaredErr.message : (declaredCmd || 'no command'));
+
   console.log('  injected faults caught: ' + (total - missed) + '/' + total);
   if (missed) { console.log('result: FAIL - ' + missed + ' check(s) did not fire; the classifier is not trustworthy'); return 1; }
   console.log('result: PASS - every injection was caught and the controls hold; the assertions are not always-green');
@@ -410,8 +493,17 @@ function main() {
     suite: o.suite,
   };
   rep.report_command = ['node', rel(process.argv[1])].concat(process.argv.slice(2)).join(' ');
+  const rw = reverseWrapArg(suite);
   rep.esctest_command_reconstructed = reconstructEsctestCommand(suite, logAbs);
-  rep.esctest_command_source = 'reconstructed from suites.json invocation + the log location; the --esctest checkout path is the repository convention target/conformance/esctest2, not a suites.json field';
+  rep.esctest_reverse_wrap = {
+    flag: REVERSE_WRAP_FLAG,
+    field: REVERSE_WRAP_FIELD,
+    declared: rw.declared,
+    value: rw.value,
+    rendered: rw.text,
+    note: rw.note,
+  };
+  rep.esctest_command_source = 'reconstructed from suites.json invocation + the log location; the --esctest checkout path is the repository convention target/conformance/esctest2, not a suites.json field; ' + REVERSE_WRAP_FLAG + ' is taken from ' + REVERSE_WRAP_FIELD + ' and is printed as the explicit placeholder ' + REVERSE_WRAP_NOT_DECLARED + ' when the manifest does not declare it, never omitted (A20 / ADR-0030 errata 2)';
 
   const out = o.json ? JSON.stringify(rep, null, 2) : humanReport(rep);
   console.log(out);
