@@ -48,6 +48,14 @@ impl TerminalEngine for VtEngine {
     fn digest(&self) -> [u8; 32] {
         *blake3::hash(&self.term.snapshot().canonical_bytes()).as_bytes()
     }
+
+    /// The emulator's answers to the application's terminal queries (DSR/CPR). The daemon's
+    /// pty pump writes every returned byte back to the pty: a pseudoconsole application issues
+    /// `ESC[6n` during startup and waits for the reply, so without this write-back the child
+    /// never proceeds (kernel/02 section 3.1; the same path `apps/termai` runs).
+    fn take_responses(&mut self) -> Vec<Vec<u8>> {
+        self.term.take_responses()
+    }
 }
 
 impl std::fmt::Debug for VtEngine {
@@ -87,5 +95,25 @@ mod tests {
         let s = e.snapshot();
         assert_eq!((s.cols, s.rows), (40, 5));
         assert_eq!(s.cells.len(), 200);
+    }
+
+    #[test]
+    fn a_cursor_position_query_is_answered_and_answered_once() {
+        // The pty pump depends on this: if the engine did not answer ESC[6n, or answered it
+        // again on the next feed, a pseudoconsole application would hang or receive a stale
+        // report. Grid line 497-511 is where the reply is produced.
+        let mut e = VtEngine::new(80, 24);
+        e.feed(b"\x1b[6n");
+        let answers = e.take_responses();
+        assert_eq!(answers.len(), 1, "one query, one answer: {answers:?}");
+        assert!(
+            answers[0].starts_with(b"\x1b[") && answers[0].ends_with(b"R"),
+            "the answer must be a cursor position report: {:?}",
+            answers[0]
+        );
+        assert!(
+            e.take_responses().is_empty(),
+            "draining must not leave the answer queued for a second write"
+        );
     }
 }
