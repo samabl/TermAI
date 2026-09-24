@@ -172,6 +172,17 @@ P0 只启用三条现有团队线，其余（T3 Agent / T4 生态）在 P2/P3 �
 
 **本轮新增的登记**：**A20**（`esctest-report.mjs` 打印的「可复现命令」漏 `--xterm-reverse-wrap`，**复现不了它自己印的数字**；同处 `kernel/01:279` 的 `suites.toml` 与实现的 `suites.json` 命名漂移）；**A3 原因更正**；**A6 关闭**；**A4/首屏口径更正**；**A8 在守护进程层闭合**。详见 [debt-p0.md](../audit/debt-p0.md)。
 
+#### Wave 4 回报（第 272 轮后半：三刀 + 一次 CI 事故的完整闭环）
+
+| 编号 | 工作流 | 状态 | 已验证证据（总负责人亲自实跑） | 未验证边界（诚实） |
+| --- | --- | --- | --- | --- |
+| **W4-A** | K-04 单一列宽权威 + S6/S7 测试可移植（E-P0-2 前置） | **完成**（`a9f2a55`） | `crates/termai-vt/src/width.rs` 新增公开 `measure_scalar`/`measure`，`grid.rs:914` 改为调用它（`unicode-width` 只剩一处可达）；`termai-render` 声明 `termai-vt` 并把**生产**绑定换成 `VtWidthSource`，dev 依赖替身删除；K4 允许边加 `termai-render -> termai-vt`（ADR-0027 D2 已登记）并带**注入 + 对照**，`--selftest` **30/30 → 32/32**；新测试证明「渲染端口与网格自身花的列数在 ASCII/CJK/组合/emoji-ZWJ/VS16/tab/ESC 上一致」。总负责人实跑：`kernel-gates` 8 PASS、`conformance` **68/68** | 统一到**逐标量**规则后，「👩‍💻 = 4 列」这类 ZWJ/VS16 **序列宽度语义未变**（改它属 VT 语义变更）→ 登记为 **A25**；不产像素，故不移动 E-P0-2/E-P0-3 |
+| **W4-B** | GPU 离屏像素路径 + 网格对齐（H19/RP-05）测量机制 | **完成**（`99cbd26`） | `termai-gpu::{offscreen,align}`：离屏目标 + cell-quad 管线（WGSL 精确灰度覆盖）+ 回读 + 从像素重建边缘的测量；本机 **T0（DX12 硬件）** 实测四档 DPI 最差偏差 **0.0103 / 0.0096 / 0.0090 / 0.0077 px**（小数格子 7.8×16.25…15.6×32.5），注入 0.75px 位移能报 **EXCEEDED**；GPU vs CPU 覆盖镜像 ≤1/255，并**抓到真实合成缺陷**（放大 1px 的四边形在 `blend: None` 下会擦掉邻格已写像素） | **不是 H19 门禁数字**：`gate_eligible=false`（无钉定驱动指纹）→ 即便 T0 也 NON_GATING；图案是矩形而非字形位图 → 测的是几何半边（见 **A23**） |
+| **W4-C** | AR-26 第 4 条（sessiond 重建 P95/P99）的机制与测量实现 | **完成**（`ddc627a`） | `restore.rs` 重建路径 + `session_rebuild.rs` 屏幕**逐字段相等**验收；`tools/bench/sessiond-rebuild.mjs` 按 kernel/06 §3.10 出 R1/R2；新增门禁 **B8** 与注入 + 对照，`bench:selftest` **74/74 → 78/78**。**总负责人独立复跑** `bench:check --report …` → **[B8] PASS、9 PASS**；**R1 = 1.953ms（≤2000）、R2 = 2.314ms（≤5000）、100,020 次重建全部相等** | 两行仍 **INCONCLUSIVE / NON_GATING**（无 RM-A 指纹）；检查点保真缺口（无 CAS、`recover_session` 只重放 `PtyOut`）登记为 **A24**；E-P0-4 仍「部分」（见 A9） |
+| **W4-D** | CI 全红 → 定位 → 修复 → 全绿（本轮的**方法论价值最高**的一段） | **完成**（`6911c9e`、`eabbd92`） | **三段式**：① 我先把 CI 的**可观测性缺口**修掉（`6911c9e`：两个 unix 作业的测试步骤在失败时把用例名转成 `::error::` 注解，而注解**匿名可读**）——**没有这一步，后面两步都做不到**；② 注解立刻给出唯一失败用例 `sessiond::host::tests::the_probed_backend_can_open_and_close_a_session`（macOS 与 Linux 各一条）；③ 读码确认真因是 **Unix `spawn_forkpty` 无就绪握手**：父进程可在子进程 `setsid()` 前返回，`kill(-pgid)` 以 `ESRCH` 失败**且结果被丢弃**，子进程存活 → 这是**真实的生产孤儿泄漏**，AR-30 第 2 条在 Unix 上被证伪。修复 `eabbd92`（PTY-READY-1 握手 + PTY-KILL-1 组/pid 兜底 + 三条 Unix 验收测试） | **CI 已全绿**：run **35948532691**（PR）/ **35948528067**（push），sha `eabbd92`，**7 成功 + 1 按设计跳过**。**残留**：注解不替代日志（Linux 侧只有 2000 字符 tail）；`design:selftest` 的间歇红灯（A21）本轮通过但**未定性** |
+
+**这一段的方法论收获（写给下一个会话）**：本轮我在同一个问题上**连续两次给出了错误的根因**——先是 `pty_lifecycle` 的 `TREE_PROCESSES`（被证据推翻：该文件从一开始就按平台 cfg 门控），再是 shaping 的字体依赖（部分为真：它确实红了 macOS，但修完仍红）。**两次都不是「没查」，而是「只查了一半就下结论」**（§6.3 规则 11 的原始教训在这里第二次应验）。**真正终结猜测的不是更聪明的推理，而是先把「失败用例名可达」这件事做成基础设施**（W4-D ①），然后让证据自己说话。**推论**：当诊断能力缺失时，正确的第一动作是**补诊断能力**，而不是继续加深推理。
+
 #### G1 首轮实测（W1-B harness，总负责人独立复跑）
 
 命令：`npm run conformance`（= `node tools/conformance/run.mjs`）。**这是未判定 → 有数字的第一步**，但**不是 G1 通过**。
