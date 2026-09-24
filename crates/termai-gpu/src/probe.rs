@@ -114,19 +114,48 @@ impl ProbeReport {
 /// T0 -> T1 -> T2 -> T3 and take the first available backend).
 #[must_use]
 pub fn probe() -> ProbeReport {
+    select_adapter().report
+}
+
+/// One adapter selection: the report plus the wgpu handles it was derived from.
+///
+/// `instance` and `adapter` are `None` exactly when the probe could not produce an adapter, and the
+/// report then says why. The instance is handed back with the adapter so that a caller which builds
+/// a device keeps the whole selection alive, and so that adapter selection is not duplicated
+/// anywhere else in the crate (offscreen rendering is the only other consumer today).
+pub(crate) struct AdapterSelection {
+    /// The classification the probe would report.
+    pub(crate) report: ProbeReport,
+    /// The instance the adapter was enumerated from, when one could be created.
+    pub(crate) instance: Option<wgpu::Instance>,
+    /// The best adapter, when one was enumerated.
+    pub(crate) adapter: Option<wgpu::Adapter>,
+}
+
+/// Enumerate adapters once and pick the best, keeping the wgpu handles alongside the report.
+pub(crate) fn select_adapter() -> AdapterSelection {
     let platform = Platform::host();
 
     if wgpu::Instance::enabled_backend_features().is_empty() {
-        return ProbeReport::unavailable(ProbeUnavailable::NoBackendFeature, platform);
+        return AdapterSelection {
+            report: ProbeReport::unavailable(ProbeUnavailable::NoBackendFeature, platform),
+            instance: None,
+            adapter: None,
+        };
     }
 
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let Some(adapters) = block_on(instance.enumerate_adapters(wgpu::Backends::all())) else {
-        return ProbeReport::unavailable(ProbeUnavailable::EnumerationNotReady, platform);
+        return AdapterSelection {
+            report: ProbeReport::unavailable(ProbeUnavailable::EnumerationNotReady, platform),
+            instance: None,
+            adapter: None,
+        };
     };
 
-    let mut selected: Option<(Classification, AdapterReport)> = None;
-    for adapter in &adapters {
+    let adapter_count = adapters.len();
+    let mut selected: Option<(Classification, AdapterReport, wgpu::Adapter)> = None;
+    for adapter in adapters {
         let info = adapter.get_info();
         let report = AdapterReport::from_info(&info);
         let classification = classify_detailed(&Capability {
@@ -138,29 +167,37 @@ pub fn probe() -> ProbeReport {
             }),
         });
         let better = match &selected {
-            Some((current, _)) => classification.level < current.level,
+            Some((current, _, _)) => classification.level < current.level,
             None => true,
         };
         if better {
-            selected = Some((classification, report));
+            selected = Some((classification, report, adapter));
         }
     }
 
     match selected {
-        Some((classification, adapter)) => ProbeReport {
-            classification,
+        Some((classification, adapter_report, adapter)) => AdapterSelection {
+            report: ProbeReport {
+                classification,
+                adapter: Some(adapter_report),
+                adapter_count,
+                unavailable: None,
+            },
+            instance: Some(instance),
             adapter: Some(adapter),
-            adapter_count: adapters.len(),
-            unavailable: None,
         },
-        None => ProbeReport {
-            classification: classify_detailed(&Capability {
-                platform,
+        None => AdapterSelection {
+            report: ProbeReport {
+                classification: classify_detailed(&Capability {
+                    platform,
+                    adapter: None,
+                }),
                 adapter: None,
-            }),
+                adapter_count: 0,
+                unavailable: None,
+            },
+            instance: Some(instance),
             adapter: None,
-            adapter_count: 0,
-            unavailable: None,
         },
     }
 }
@@ -183,7 +220,8 @@ pub fn is_reference_driver(info: &wgpu::AdapterInfo) -> bool {
 /// within MAX_PROBE_POLLS.
 ///
 /// A no-op waker is correct here because the wgpu future does not park: it completes
-/// synchronously on the first poll on native targets. The bound is the safety net.
+/// synchronously on the first poll on native targets. The bound is the safety net. Offscreen
+/// rendering reuses this for `request_device`, so no async runtime enters the crate.
 ///
 /// `Waker::noop()` would be shorter but is only stable since Rust 1.85, while this workspace's
 /// MSRV is 1.75; `std::task::Wake` + `Waker::from` has been stable since 1.51 and needs no
@@ -195,7 +233,7 @@ impl Wake for NoopWake {
     fn wake_by_ref(self: &Arc<Self>) {}
 }
 
-fn block_on<F: Future>(future: F) -> Option<F::Output> {
+pub(crate) fn block_on<F: Future>(future: F) -> Option<F::Output> {
     let mut future = pin!(future);
     let waker = Waker::from(Arc::new(NoopWake));
     let mut context = Context::from_waker(&waker);
