@@ -811,13 +811,26 @@ function formatReliability(reliability) {
   return lines;
 }
 
+// How a reported row that is NOT one of the machine-free rows (registry machine "none" AND
+// governed "no") is bound. H12 is the first row in this position: a HARNESS section 5 release gate
+// whose registry `machine` is "none" (byte equality involves no reference machine) while its
+// `governed` is "partial" (ADR-0029 D-6: method from kernel/06, corpus and lane from kernel/05 +
+// G1/G2). Saying "not a machine gate" about it would be wrong on both counts, so the label says
+// exactly what it is, and the reader still learns that ADR-0029 D-5 keeps it out of the
+// machine-bound gating counter.
+function valueBindingLabel(row) {
+  if (row.machine === 'none' && row.governed === 'no') return 'not a gate row (registry governed: no)';
+  if (row.machine === 'none') return 'machine-free section 5 gate row (registry machine: none, governed: ' + row.governed + '); judged on this host, never counted as a machine-bound gate number (ADR-0029 D-5)';
+  return 'machine ' + row.machine;
+}
+
 function formatValues(values) {
   if (!values) return [];
   const sources = values.sources || [];
   if (!sources.length) {
     return ['section 5 machine-free values: 0 of ' + values.expected.length + ' reported (' + values.expected.join(', ') + '); no bench-report.json was read -- pass --report <p>'];
   }
-  const lines = ['section 5 machine-free values (a value here is never a gate number; read from ' + sources.join(', ') + '):'];
+  const lines = ['section 5 values read from a report (each metric is bound to its registry row; on this host no value is a machine-bound gate number; read from ' + sources.join(', ') + '):'];
   for (const r of values.rows) {
     if (r.status === V.REPORTED) {
       lines.push('  ' + r.id + ' = ' + r.value + ' ' + String(r.reportedUnit) + '  [' + String(r.verdict) + '; registry gate ' + r.gateOp + ' ' + r.gate + ' ' + r.unit + '; owner ' + r.owner + '; source ' + r.source + ']');
@@ -829,7 +842,7 @@ function formatValues(values) {
     lines.push('  ' + c.id + ' (out-of-table control, not one of the 19) = ' + c.value + ' ' + String(c.reportedUnit) + '  [' + String(c.verdict) + '; source ' + c.source + ']');
   }
   for (const e of values.extra) {
-    lines.push('  ' + e.id + ' = ' + e.value + ' ' + String(e.reportedUnit) + '  [' + String(e.verdict) + '; ' + (e.machine === 'none' ? 'not a machine gate' : 'machine ' + e.machine) + '; source ' + e.source + ']');
+    lines.push('  ' + e.id + ' = ' + e.value + ' ' + String(e.reportedUnit) + '  [' + String(e.verdict) + '; registry gate ' + String(e.gateOp || '') + ' ' + e.gate + ' ' + String(e.unit) + '; ' + valueBindingLabel(e) + '; source ' + e.source + ']');
   }
   if (values.unbound.length) lines.push('  not bound to a section 5 row: ' + values.unbound.map(function (u) { return u.id + ' (' + u.source + ')'; }).join(', '));
   return lines;
@@ -1152,6 +1165,83 @@ function runSelftest(root) {
   const h18Gating = V.collectValues([{ rel: 'synthetic-i.json', json: F.syntheticMetricsReport([F.syntheticMetricRow('H18', { value: 53, unit: 'count', gate: 0, gating: true, verdict: 'NON_GATING' })]) }]);
   st.check('inject: H18 (governed: no) declaring gating=true is caught as a binding problem', h18Gating.problems.length === 1 && /not a gate/.test(h18Gating.problems[0]), h18Gating.problems.join(' | '));
 
+  // --- H12: the machine-free section 5 gate row (input byte equality). Its carrier is
+  //     tools/bench/input-bytes.mjs. Judging its reported verdict is NEW judgement in B8, so it gets
+  //     its own controls and injections here. The fixtures are synthetic in-memory copies of the
+  //     produced report shape: no measurement is performed by this selftest.
+  const h12Report = function (value, verdict, overrides) {
+    const o = overrides || {};
+    const r = F.syntheticReport({ metric: 'H12', value: value, unit: 'pct', gate: 100, verdict: verdict });
+    r.metrics[0].statistic = 'exact';
+    r.metrics[0].runs = 1;
+    r.metrics[0].runStat = 'exact';
+    r.metrics[0].samples = 75;
+    r.metrics[0].gating = o.gating !== false;
+    r.flatProjection.samples = 75;
+    if (o.unit) { r.metrics[0].unit = o.unit; r.flatProjection.unit = o.unit; }
+    return r;
+  };
+  const h12StatusFor = function (json, rel) {
+    const set = {
+      discovered: [],
+      explicit: { rel: rel, exists: true, json: json, parseError: null },
+      all: [{ rel: rel, json: json, parseError: null }],
+    };
+    const values = V.collectValues(set.all);
+    return Object.assign({}, status, {
+      reportSet: set,
+      values: values,
+      reliabilityValues: V.collectReliabilityValues([], nonRmHost),
+      gatingNumbersProduced: values.gatingNumbersProduced,
+      gatingSources: values.gating,
+    });
+  };
+
+  const h12GoodJson = h12Report(100, 'PASS');
+  const h12GoodStatus = h12StatusFor(h12GoodJson, 'synthetic-h12-good.json');
+  const h12GoodGate = gateB8(h12GoodStatus);
+  st.check('control: a schema-valid H12 report at 100% binds, is presented as a machine-free section 5 gate row and passes B8',
+    B.validateBenchReport(h12GoodJson).ok === true
+      && h12GoodStatus.values.problems.length === 0
+      && h12GoodStatus.values.extra.length === 1
+      && h12GoodGate.status === STATUS.PASS
+      && h12GoodGate.notes.some(function (n) { return /machine-free section 5 gate row\(s\) carrying a value: H12 = 100 pct \[PASS\]/.test(n); }),
+    h12GoodGate.status + ' ' + h12GoodGate.detail);
+
+  const h12BadJson = h12Report(93.3333, 'FAIL');
+  const h12BadStatus = h12StatusFor(h12BadJson, 'synthetic-h12-bad.json');
+  const h12BadGate = gateB8(h12BadStatus);
+  const h12Cause = h12BadGate.notes.filter(function (n) { return /gate row is FAIL/.test(n); })[0] || '';
+  st.check('inject: a schema-valid H12 report whose own verdict is FAIL (one byte mismatched) makes B8 fail for that reason',
+    B.validateBenchReport(h12BadJson).ok === true && h12BadGate.status === STATUS.FAIL && /gate row is FAIL/.test(h12Cause),
+    h12BadGate.detail + (h12Cause ? ' -- cause: ' + h12Cause : ' -- the injected verdict was NOT the cause'));
+
+  const h12MislabelJson = h12Report(93.3333, 'FAIL', { unit: 'ratio' });
+  const h12MislabelStatus = h12StatusFor(h12MislabelJson, 'synthetic-h12-mislabel.json');
+  st.check('inject: H12 carrying a foreign unit is caught as a row-binding problem, before any verdict is trusted',
+    B.validateBenchReport(h12MislabelJson).ok === true
+      && h12MislabelStatus.values.problems.length === 1
+      && /unit mismatch/.test(h12MislabelStatus.values.problems[0]),
+    h12MislabelStatus.values.problems.join(' | ') || 'no problem reported');
+
+  st.check('control: H12 (machine-free, governed partial) declaring gating=true is not counted as a gating number and keeps B7 green',
+    h12GoodStatus.values.gatingNumbersProduced === 0
+      && h12GoodStatus.values.problems.length === 0
+      && gateB7(root, h12GoodStatus).status === STATUS.PASS,
+    'counter=' + h12GoodStatus.values.gatingNumbersProduced + ', B7=' + gateB7(root, h12GoodStatus).status);
+
+  const h18FailJson = h12Report(100, 'PASS');
+  h18FailJson.metrics[0] = F.syntheticMetricRow('H18', { value: 53, unit: 'count', gate: 0, gating: false, verdict: 'FAIL' });
+  h18FailJson.flatProjection = {
+    metric: 'H18', value: 53, unit: 'count', samples: h18FailJson.metrics[0].samples,
+    runner: h18FailJson.metrics[0].runner, commit: h18FailJson.metrics[0].commit,
+    toolchain: h18FailJson.metrics[0].toolchain, ts: h18FailJson.metrics[0].ts,
+  };
+  const h18FailStatus = h12StatusFor(h18FailJson, 'synthetic-h18-fail.json');
+  st.check('control: the FAIL-verdict rule is scoped to gate rows -- an H18 row (registry governed: no) reporting FAIL is not judged by B8',
+    B.validateBenchReport(h18FailJson).ok === true && gateB8(h18FailStatus).status === STATUS.PASS,
+    gateB8(h18FailStatus).detail);
+
   // --- the real gates must still be green on the real tree
   const realGates = [
     gateB1(root, docs), gateB2(root, docs), gateB3(root, docs), gateB4(root, docs),
@@ -1213,6 +1303,23 @@ function gateB8(status) {
       + '; unknown (forward-compatible) fields: ' + (v.extras.length ? v.extras.join(', ') : 'none'));
   }
   for (const p of status.values.problems) problems.push('row binding: ' + p);
+  // A machine-free section 5 GATE row (registry machine "none", governed "yes" | "partial") is a
+  // row this host CAN judge: that is what "machine: none" means, and H12 (input byte equality, the
+  // carrier tools/bench/input-bytes.mjs) is the first one. Reading its value without judging it
+  // would let a failing carrier pass the gate that reads it, so a report whose own verdict for such
+  // a row is FAIL fails B8 here. Rows the registry marks governed "no" (H17 / H18 / H19, whose
+  // verdict carriers live in tools/design-gates / tools/tokens) are not section 5 gates and are
+  // deliberately left alone.
+  const machineFreeGateRows = [];
+  for (const r of status.values.rows.concat(status.values.extra)) {
+    if (r.machine !== 'none' || r.governed === 'no') continue;
+    machineFreeGateRows.push(r);
+    if (r.verdict !== 'FAIL') continue;
+    problems.push(r.id + ': the report\'s own verdict for this machine-free section 5 gate row is FAIL against the registered gate (' + String(r.gateOp || '') + ' ' + r.gate + ' ' + r.unit + '); a failing carrier must not be read as a pass (HARNESS section 5, AR-20)');
+  }
+  if (machineFreeGateRows.length) {
+    notes.push('machine-free section 5 gate row(s) carrying a value: ' + machineFreeGateRows.map(function (r) { return r.id + ' = ' + r.value + ' ' + r.reportedUnit + ' [' + r.verdict + ']'; }).join(', ') + ' -- judged here; ADR-0029 D-5 keeps them out of the machine-bound gating counter');
+  }
   const reported = V.reportedIds(status.values);
   const missing = V.notReportedIds(status.values);
   notes.push('section 5 machine-free row(s) carrying a value: ' + (reported.length ? reported.join(', ') : 'none') + ' of ' + status.values.expected.join(', '));
@@ -1237,7 +1344,7 @@ function gateB8(status) {
     }
   }
   if (problems.length) return gate('B8', TITLE, STATUS.FAIL, problems.length + ' problem(s)', problems.slice(0, 12));
-  return gate('B8', TITLE, STATUS.PASS, "report satisfies kernel/06 3.4 / 3.7, every metric that names a section 5 row carries that row's registered unit and gate, and every reliability metric matches kernel/06 3.10 + the machine binding", notes);
+  return gate('B8', TITLE, STATUS.PASS, "report satisfies kernel/06 3.4 / 3.7, every metric that names a section 5 row carries that row's registered unit and gate, every machine-free section 5 gate row is judged by its own verdict, and every reliability metric matches kernel/06 3.10 + the machine binding", notes);
 }
 
 // --------------------------------------------------- B9 reliability mapping integrity (ADR-0029 D-4)

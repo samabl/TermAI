@@ -1,0 +1,1000 @@
+{
+  "corpusVersion": "1",
+  "title": "H12 input byte equality corpus (kernel/05 §5 IN-AC-01/09/10/11 byte assertions, AR-29.3 single encoder)",
+  "driver": "tools/bench/input-bytes-driver.rs",
+  "producer": "tools/bench/input-bytes.mjs",
+  "authorityNotes": [
+    "每条 case 的 authority 字段引用 kernel/05 的条款号（语料的权威）或 xterm ctlseqs 规则（键表/报文格式）；authorityKind 区分两者。",
+    "没有权威的期望一律不写进 cases，而是登记在 omitted 中（见该数组的 why）。"
+  ],
+  "omitted": [
+    {
+      "what": "NamedKey::Space 的 named-key 编码",
+      "why": "kernel/05 §3.2/§3.3 没有为「命名空格」固定任何键表条目（可打印字符路径已由 L01/L12 覆盖），无法引用权威，故不设期望。"
+    },
+    {
+      "what": "Legacy 的 F13–F24 序列",
+      "why": "xterm 的 F13–F24 取值取决于 modifyFunctionKeys 资源（CSI 1;2P 形式 vs CSI 25~ 形式），kernel/05 未建模该资源，同一按键有两个合法期望，无法引用单一权威。"
+    },
+    {
+      "what": "滚轮（MouseKind::Wheel）的 SGR button 编号",
+      "why": "kernel/05 §3.8 只规定 DECSET 1007 alternate-scroll 的行为，没有登记滚轮上/下在 SGR 报文里的编号与 encoder button 字段下标的对应关系。"
+    },
+    {
+      "what": "Modifiers::meta（区别于 super_）在 Legacy 下的编码",
+      "why": "kernel/05 §3.2「Super / Meta（Mod 键）」把两者并列为「默认不发往 PTY」，而 AR-29 第 2/7 条把 Mod 定义为 macOS 的 Cmd / Win·Linux 的 Ctrl+Shift；单独 meta=true 该丢弃还是编码无唯一权威。"
+    },
+    {
+      "what": "Kitty 模式下的 IN-04（Super 不发往 PTY）",
+      "why": "该规则是 S1 FocusRouter 层的路由决定（「交 chrome Action Registry」）。本语料直接驱动 S3，没有 FocusRouter，断言丢弃会把 S1 的判断算在 S3 头上。"
+    },
+    {
+      "what": "KittyFlags.report_text / report_associated_text 的报文后缀",
+      "why": "kernel/05 §3.1 声明了两个不同的 flag，而 encoder 用 report_text 追加 associated text 码点；flag 语义需 owner 裁决后才能给出唯一期望。"
+    },
+    {
+      "what": "IME preedit 期间 PTY 字节 = 0（IN-AC-05）",
+      "why": "encoder 按设计没有 preedit 输入（K-05 组合态只存在于 L4），该断言属于 G2 / L3 的回放语料，不属于本语料的可驱动输入。"
+    },
+    {
+      "what": "超过 1MiB 的粘贴",
+      "why": "kernel/05 §3.7 的伪码规定 Chunked(n)，而帧上限（OQ-INP-09 / spec 03 OQ-A4）仍是 P1 未决；分块与确认两种实现都无权威。"
+    },
+    {
+      "what": "OSC 52 读策略（IN-AC-10）",
+      "why": "OSC 52 读是终端→应用的应答路径（输出侧），不是 S3 的输入字节路径。"
+    },
+    {
+      "what": "本机鼠标 / DECSET 1000·1002·1003 状态机",
+      "why": "encoder 只有一个 mouse_sgr 位；DECSET 状态机在 VT/应用层，语料只能断言「未请求鼠标模式时 0 字节」（S05）。"
+    },
+    {
+      "what": "死键合成结果（IN-02 platform / base_char_and_key）",
+      "why": "合成本身在 S2 KeyTranslator（未实现）；语料只断言裸 Dead 事件 0 字节（L14）。"
+    }
+  ],
+  "cases": [
+    {
+      "id": "L01",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;c:120;0;p;-",
+      "expectText": "x",
+      "authority": "kernel/05 §3.3 表「文本输入（IME commit）」行 = UTF-8 原样 + §3.2「Shift + 字母」行（可打印字符按其 UTF-8 编码）",
+      "authorityKind": "kernel05",
+      "note": "KeyEvent::text = None, so the char code itself is encoded",
+      "expectBytes": "78",
+      "expectOutcome": "Emitted(1)"
+    },
+    {
+      "id": "L02",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;c:97;1;p;41",
+      "expectText": "A",
+      "authority": "kernel/05 §3.2「Shift + 字母」行: shift=true，text = 大写 -> 大写 UTF-8",
+      "authorityKind": "kernel05",
+      "note": "shift=true and the platform text = uppercase",
+      "expectBytes": "41",
+      "expectOutcome": "Emitted(1)"
+    },
+    {
+      "id": "L03",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;c:97;4;p;-",
+      "expectText": "\u0001",
+      "authority": "kernel/05 §3.2「Ctrl + 字母」行: ctrl=true -> 0x01..0x1A；§3.3 表 Legacy 列「Ctrl+a」= 0x01",
+      "authorityKind": "kernel05",
+      "expectBytes": "01",
+      "expectOutcome": "Emitted(1)"
+    },
+    {
+      "id": "L04",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;c:99;4;p;-",
+      "expectText": "\u0003",
+      "authority": "kernel/05 §3.2「Ctrl + 字母」行: ctrl=true -> 0x01..0x1A；§3.3 表 Legacy 列「Ctrl+a」= 0x01",
+      "authorityKind": "kernel05",
+      "expectBytes": "03",
+      "expectOutcome": "Emitted(1)"
+    },
+    {
+      "id": "L05",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;c:65;5;p;-",
+      "expectText": "\u0001",
+      "authority": "kernel/05 §3.3 表「Ctrl+Shift+A」行: Legacy = 0x01（丢 Shift）",
+      "authorityKind": "kernel05",
+      "note": "Shift is deliberately lost in Legacy (documented limitation)",
+      "expectBytes": "01",
+      "expectOutcome": "Emitted(1)"
+    },
+    {
+      "id": "L06",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;c:120;2;p;-",
+      "expectText": "\u001bx",
+      "authority": "kernel/05 §3.2「Alt + 可打印」行: alt=true -> ESC + UTF-8（IN-03 默认 true）；§3.3 表「Alt+x」行 Legacy = ESC x",
+      "authorityKind": "kernel05",
+      "expectBytes": "1b78",
+      "expectOutcome": "Emitted(2)"
+    },
+    {
+      "id": "L07",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;c:88;3;p;-",
+      "expectText": "\u001bX",
+      "authority": "kernel/05 §3.2「Alt + 可打印」行: alt=true -> ESC + UTF-8（IN-03 默认 true）；§3.3 表「Alt+x」行 Legacy = ESC x",
+      "authorityKind": "kernel05",
+      "note": "Alt + Shift + printable: ESC + UTF-8 of the shifted text",
+      "expectBytes": "1b58",
+      "expectOutcome": "Emitted(2)"
+    },
+    {
+      "id": "L08",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;c:107;16;p;-",
+      "expectText": "",
+      "authority": "kernel/05 §3.2「Super / Meta（Mod 键）」行: 默认不发往 PTY，交 chrome Action Registry（IN-04 input.meta_sends_escape=false）",
+      "authorityKind": "kernel05",
+      "expectOutcome": "Dropped(UnsupportedKey)",
+      "note": "Super must not reach the PTY by default (IN-04)",
+      "expectBytes": ""
+    },
+    {
+      "id": "L09",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;c:91;4;p;-",
+      "expectText": "\u001b",
+      "authority": "xterm ctlseqs: Control Characters（Ctrl+[ = ESC 0x1B）",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "1b",
+      "expectOutcome": "Emitted(1)"
+    },
+    {
+      "id": "L10",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;c:95;4;p;-",
+      "expectText": "\u001f",
+      "authority": "xterm ctlseqs: Control Characters（Ctrl+_ = US 0x1F）",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "1f",
+      "expectOutcome": "Emitted(1)"
+    },
+    {
+      "id": "L11",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;c:63;4;p;-",
+      "expectText": "",
+      "authority": "xterm ctlseqs: Control Characters（Ctrl+? = DEL 0x7F）",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "7f",
+      "expectOutcome": "Emitted(1)"
+    },
+    {
+      "id": "L12",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;c:20320;0;p;-",
+      "expectText": "你",
+      "authority": "kernel/05 §3.3 表「文本输入（IME commit）」行 = UTF-8 原样 + §3.2「Shift + 字母」行（可打印字符按其 UTF-8 编码）",
+      "authorityKind": "kernel05",
+      "note": "CJK char typed straight through (no IME in the loop)",
+      "expectBytes": "e4bda0",
+      "expectOutcome": "Emitted(3)"
+    },
+    {
+      "id": "L14",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;d:180;0;p;-",
+      "expectText": "",
+      "authority": "kernel/05 §3.2「死键（´ + e）」行 + §3.1 S2（死键合成归 S2）/S3（S3 只编码 S2 交来的结果）责任划分",
+      "authorityKind": "kernel05",
+      "expectOutcome": "Consumed",
+      "note": "a bare dead key produces no bytes (composition belongs to S2)",
+      "expectBytes": ""
+    },
+    {
+      "id": "L15",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;c:97;0;l;-",
+      "expectText": "",
+      "authority": "kernel/05 §3.1 KittyFlags.report_events（key-up 只在 kitty flag 2 下上报）+ §3.3「Legacy 为默认且必须 100% 兼容 xterm 用例集」（xterm 的 legacy 编码没有 key-up 序列）",
+      "authorityKind": "kernel05",
+      "expectOutcome": "Dropped(UnsupportedKey)",
+      "note": "Legacy has no key-up reporting",
+      "expectBytes": ""
+    },
+    {
+      "id": "L16",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;n:Enter;0;p;-",
+      "expectText": "\r",
+      "authority": "kernel/05 §3.3 表「Enter」行: CR（Legacy / ModifyOtherKeys(2) / Kitty 三列同为 CR）",
+      "authorityKind": "kernel05",
+      "expectBytes": "0d",
+      "expectOutcome": "Emitted(1)"
+    },
+    {
+      "id": "L17",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;n:Escape;0;p;-",
+      "expectText": "\u001b",
+      "authority": "kernel/05 §3.3 表「Esc」行 Legacy 列 = 0x1B",
+      "authorityKind": "kernel05",
+      "expectBytes": "1b",
+      "expectOutcome": "Emitted(1)"
+    },
+    {
+      "id": "L18",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;n:Tab;0;p;-",
+      "expectText": "\t",
+      "authority": "xterm ctlseqs: Tab = HT 0x09",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "09",
+      "expectOutcome": "Emitted(1)"
+    },
+    {
+      "id": "L19",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;n:Tab;1;p;-",
+      "expectText": "\u001b[Z",
+      "authority": "xterm ctlseqs: Shift+Tab = CBT, CSI Z（ECMA-48 的 CBT 控制序列）",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "1b5b5a",
+      "expectOutcome": "Emitted(3)"
+    },
+    {
+      "id": "L20",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;n:Backspace;0;p;-",
+      "expectText": "",
+      "authority": "xterm ctlseqs: Backspace（backarrowKey 默认发 DEL 0x7F）",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "7f",
+      "expectOutcome": "Emitted(1)"
+    },
+    {
+      "id": "L22",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;n:Left;0;p;-",
+      "expectText": "\u001b[D",
+      "authority": "kernel/05 §3.3 表「Left」行 Legacy 列 = CSI D / SS3 D（DECCKM）",
+      "authorityKind": "kernel05",
+      "note": "DECCKM clear",
+      "expectBytes": "1b5b44",
+      "expectOutcome": "Emitted(3)"
+    },
+    {
+      "id": "L23",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [
+        "app_cursor"
+      ],
+      "event": "key;n:Left;0;p;-",
+      "expectText": "\u001bOD",
+      "authority": "kernel/05 §3.3 表「Left」行 Legacy 列 = CSI D / SS3 D（DECCKM）",
+      "authorityKind": "kernel05",
+      "note": "DECCKM set -> SS3 form",
+      "expectBytes": "1b4f44",
+      "expectOutcome": "Emitted(3)"
+    },
+    {
+      "id": "L23b",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [
+        "app_cursor"
+      ],
+      "event": "key;n:Home;0;p;-",
+      "expectText": "\u001bOH",
+      "authority": "xterm ctlseqs: Home（DECCKM set -> SS3 H）",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "1b4f48",
+      "expectOutcome": "Emitted(3)"
+    },
+    {
+      "id": "L24",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;n:Left;4;p;-",
+      "expectText": "\u001b[1;5D",
+      "authority": "xterm ctlseqs: Cursor Keys 的修饰形式 CSI 1;{mod}{final}，mod = 1 + shift + 2*alt + 4*ctrl",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "1b5b313b3544",
+      "expectOutcome": "Emitted(6)"
+    },
+    {
+      "id": "L25",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;n:Right;2;p;-",
+      "expectText": "\u001b[1;3C",
+      "authority": "xterm ctlseqs: Cursor Keys 的修饰形式（mod = 3 表示 Alt）",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "1b5b313b3343",
+      "expectOutcome": "Emitted(6)"
+    },
+    {
+      "id": "L26",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;n:Home;0;p;-",
+      "expectText": "\u001b[H",
+      "authority": "xterm ctlseqs: Home = CSI H",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "1b5b48",
+      "expectOutcome": "Emitted(3)"
+    },
+    {
+      "id": "L27",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;n:End;0;p;-",
+      "expectText": "\u001b[F",
+      "authority": "xterm ctlseqs: End = CSI F",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "1b5b46",
+      "expectOutcome": "Emitted(3)"
+    },
+    {
+      "id": "L28",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;n:Insert;0;p;-",
+      "expectText": "\u001b[2~",
+      "authority": "xterm ctlseqs: Insert = CSI 2 ~",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "1b5b327e",
+      "expectOutcome": "Emitted(4)"
+    },
+    {
+      "id": "L29",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;n:Delete;0;p;-",
+      "expectText": "\u001b[3~",
+      "authority": "xterm ctlseqs: Delete = CSI 3 ~",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "1b5b337e",
+      "expectOutcome": "Emitted(4)"
+    },
+    {
+      "id": "L30",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;n:PageUp;0;p;-",
+      "expectText": "\u001b[5~",
+      "authority": "xterm ctlseqs: PageUp = CSI 5 ~",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "1b5b357e",
+      "expectOutcome": "Emitted(4)"
+    },
+    {
+      "id": "L31",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;n:PageDown;0;p;-",
+      "expectText": "\u001b[6~",
+      "authority": "xterm ctlseqs: PageDown = CSI 6 ~",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "1b5b367e",
+      "expectOutcome": "Emitted(4)"
+    },
+    {
+      "id": "L32",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;n:F1;0;p;-",
+      "expectText": "\u001bOP",
+      "authority": "xterm ctlseqs: PC-Style Function Keys（F1 = SS3 P）+ kernel/05 §3.2「功能键」行",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "1b4f50",
+      "expectOutcome": "Emitted(3)"
+    },
+    {
+      "id": "L33",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;n:F1;4;p;-",
+      "expectText": "\u001b[1;5P",
+      "authority": "xterm ctlseqs: PC-Style Function Keys 修饰形式 CSI 1;{mod}P + kernel/05 §3.2「功能键 CSI 1;{mod}X」行",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "1b5b313b3550",
+      "expectOutcome": "Emitted(6)"
+    },
+    {
+      "id": "L34",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;n:F5;0;p;-",
+      "expectText": "\u001b[15~",
+      "authority": "xterm ctlseqs: PC-Style Function Keys（F5 = CSI 15 ~）",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "1b5b31357e",
+      "expectOutcome": "Emitted(5)"
+    },
+    {
+      "id": "L35",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;n:F5;1;p;-",
+      "expectText": "\u001b[15;2~",
+      "authority": "xterm ctlseqs: F5 修饰形式 CSI 15;2 ~",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "1b5b31353b327e",
+      "expectOutcome": "Emitted(7)"
+    },
+    {
+      "id": "L36",
+      "source": "keyboard",
+      "mode": "legacy",
+      "opts": [],
+      "event": "key;n:F12;0;p;-",
+      "expectText": "\u001b[24~",
+      "authority": "xterm ctlseqs: PC-Style Function Keys（F12 = CSI 24 ~）",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "1b5b32347e",
+      "expectOutcome": "Emitted(5)"
+    },
+    {
+      "id": "M01",
+      "source": "keyboard",
+      "mode": "mok:2",
+      "opts": [],
+      "event": "key;c:97;4;p;-",
+      "expectText": "\u0001",
+      "authority": "kernel/05 §3.3 表「Ctrl+a」行 ModifyOtherKeys(2) 列 = 0x01",
+      "authorityKind": "kernel05",
+      "expectBytes": "01",
+      "expectOutcome": "Emitted(1)"
+    },
+    {
+      "id": "M02",
+      "source": "keyboard",
+      "mode": "mok:2",
+      "opts": [],
+      "event": "key;c:49;4;p;-",
+      "expectText": "\u001b[27;5;49~",
+      "authority": "kernel/05 §3.3「modifyOtherKeys：仅当应用显式 CSI > 4;n m（n ∈ {0,1,2}）」+ 同表 ModifyOtherKeys(2) 列的 CSI 27;{mod};{cp}~ 形状；xterm ctlseqs: modifyOtherKeys format = CSI 27 ; modifier ; codepoint ~",
+      "authorityKind": "kernel05",
+      "note": "Ctrl+1 has no C0 mapping, so it takes the modifyOtherKeys form",
+      "expectBytes": "1b5b32373b353b34397e",
+      "expectOutcome": "Emitted(10)"
+    },
+    {
+      "id": "M03",
+      "source": "keyboard",
+      "mode": "mok:2",
+      "opts": [],
+      "event": "key;c:65;5;p;-",
+      "expectText": "\u001b[27;6;65~",
+      "authority": "kernel/05 §3.3 表「Ctrl+Shift+A」行 ModifyOtherKeys(2) 列 = CSI 27;6;65~",
+      "authorityKind": "kernel05",
+      "note": "Shift is NOT lost under modifyOtherKeys",
+      "expectBytes": "1b5b32373b363b36357e",
+      "expectOutcome": "Emitted(10)"
+    },
+    {
+      "id": "M04",
+      "source": "keyboard",
+      "mode": "mok:2",
+      "opts": [],
+      "event": "key;c:120;2;p;-",
+      "expectText": "\u001bx",
+      "authority": "kernel/05 §3.3 表「Alt+x」行 ModifyOtherKeys(2) 列 = ESC x",
+      "authorityKind": "kernel05",
+      "expectBytes": "1b78",
+      "expectOutcome": "Emitted(2)"
+    },
+    {
+      "id": "M05",
+      "source": "keyboard",
+      "mode": "mok:2",
+      "opts": [],
+      "event": "key;n:Escape;0;p;-",
+      "expectText": "\u001b[27;1;27~",
+      "authority": "kernel/05 §3.3 表「Esc」行 ModifyOtherKeys(2) 列 = CSI 27;1;27~",
+      "authorityKind": "kernel05",
+      "expectBytes": "1b5b32373b313b32377e",
+      "expectOutcome": "Emitted(10)"
+    },
+    {
+      "id": "M06",
+      "source": "keyboard",
+      "mode": "mok:2",
+      "opts": [],
+      "event": "key;n:Enter;0;p;-",
+      "expectText": "\r",
+      "authority": "kernel/05 §3.3 表「Enter」行 ModifyOtherKeys(2) 列 = CR",
+      "authorityKind": "kernel05",
+      "expectBytes": "0d",
+      "expectOutcome": "Emitted(1)"
+    },
+    {
+      "id": "M07",
+      "source": "keyboard",
+      "mode": "mok:2",
+      "opts": [],
+      "event": "key;n:Left;0;p;-",
+      "expectText": "\u001b[D",
+      "authority": "kernel/05 §3.3 表「Left」行 ModifyOtherKeys(2) 列 = 同 Legacy",
+      "authorityKind": "kernel05",
+      "expectBytes": "1b5b44",
+      "expectOutcome": "Emitted(3)"
+    },
+    {
+      "id": "M08",
+      "source": "keyboard",
+      "mode": "mok:2",
+      "opts": [],
+      "event": "key;c:20320;0;p;-",
+      "expectText": "你",
+      "authority": "kernel/05 §3.3 表「文本输入（IME commit）」行 ModifyOtherKeys(2) 列 = UTF-8 原样",
+      "authorityKind": "kernel05",
+      "expectBytes": "e4bda0",
+      "expectOutcome": "Emitted(3)"
+    },
+    {
+      "id": "K01",
+      "source": "keyboard",
+      "mode": "kitty:9",
+      "opts": [],
+      "event": "key;c:97;4;p;-",
+      "expectText": "\u001b[97;5u",
+      "authority": "kernel/05 §3.3 表「Ctrl+a」行 Kitty(disambiguate + report_all) 列 = CSI 97;5u",
+      "authorityKind": "kernel05",
+      "expectBytes": "1b5b39373b3575",
+      "expectOutcome": "Emitted(7)"
+    },
+    {
+      "id": "K02",
+      "source": "keyboard",
+      "mode": "kitty:9",
+      "opts": [],
+      "event": "key;c:65;5;p;-",
+      "expectText": "\u001b[65;6u",
+      "authority": "kernel/05 §3.3 表「Ctrl+Shift+A」行 Kitty 列 = CSI 65;6u",
+      "authorityKind": "kernel05",
+      "expectBytes": "1b5b36353b3675",
+      "expectOutcome": "Emitted(7)"
+    },
+    {
+      "id": "K03",
+      "source": "keyboard",
+      "mode": "kitty:9",
+      "opts": [],
+      "event": "key;c:120;2;p;-",
+      "expectText": "\u001b[120;3u",
+      "authority": "kernel/05 §3.3 表「Alt+x」行 Kitty 列 = CSI 120;3u",
+      "authorityKind": "kernel05",
+      "expectBytes": "1b5b3132303b3375",
+      "expectOutcome": "Emitted(8)"
+    },
+    {
+      "id": "K04",
+      "source": "keyboard",
+      "mode": "kitty:9",
+      "opts": [],
+      "event": "key;n:Escape;0;p;-",
+      "expectText": "\u001b[27u",
+      "authority": "kernel/05 §3.3 表「Esc」行 Kitty 列 = CSI 27u",
+      "authorityKind": "kernel05",
+      "expectBytes": "1b5b323775",
+      "expectOutcome": "Emitted(5)"
+    },
+    {
+      "id": "K05",
+      "source": "keyboard",
+      "mode": "kitty:9",
+      "opts": [],
+      "event": "key;n:Enter;0;p;-",
+      "expectText": "\r",
+      "authority": "kernel/05 §3.3 表「Enter」行 Kitty 列 = CR",
+      "authorityKind": "kernel05",
+      "expectBytes": "0d",
+      "expectOutcome": "Emitted(1)"
+    },
+    {
+      "id": "K06",
+      "source": "keyboard",
+      "mode": "kitty:9",
+      "opts": [],
+      "event": "key;n:Left;0;p;-",
+      "expectText": "\u001b[1;1D",
+      "authority": "kernel/05 §3.3 表「Left」行 Kitty 列 = CSI 1;1D",
+      "authorityKind": "kernel05",
+      "expectBytes": "1b5b313b3144",
+      "expectOutcome": "Emitted(6)"
+    },
+    {
+      "id": "K07",
+      "source": "keyboard",
+      "mode": "kitty:9",
+      "opts": [],
+      "event": "commit;e4bda0e5a5bd",
+      "expectText": "你好",
+      "authority": "kernel/05 §3.3 表「文本输入（IME commit）」行: UTF-8 原样；Kitty 列额外要求「不重复作为按键上报」；§3.4 Composing --commit(text)--> emit TextCommit(text)（唯一产生 PTY 字节的出口）；K-05 一次 commit = 一次 UTF-8 写入",
+      "authorityKind": "kernel05",
+      "note": "single event: the encoder has no preedit state, so it cannot re-report the commit as a key",
+      "expectBytes": "e4bda0e5a5bd",
+      "expectOutcome": "Emitted(6)"
+    },
+    {
+      "id": "K08",
+      "source": "keyboard",
+      "mode": "kitty:1",
+      "opts": [],
+      "event": "key;c:97;0;l;-",
+      "expectText": "",
+      "authority": "kernel/05 §3.1 KittyFlags.report_events（未置位时不上报 key-up）；kitty keyboard protocol 的 report_event_types 语义",
+      "authorityKind": "kernel05",
+      "expectOutcome": "Dropped(UnsupportedKey)",
+      "expectBytes": ""
+    },
+    {
+      "id": "K09",
+      "source": "keyboard",
+      "mode": "kitty:3",
+      "opts": [],
+      "event": "key;c:97;0;l;-",
+      "expectText": "\u001b[97;1:3u",
+      "authority": "kernel/05 §3.1 KittyFlags.report_events 置位 -> 上报 key-up；§3.3 表 Kitty 列 CSI {code};{mod}u 形状（event type 以 `:3` 后缀）",
+      "authorityKind": "kernel05",
+      "expectBytes": "1b5b39373b313a3375",
+      "expectOutcome": "Emitted(9)"
+    },
+    {
+      "id": "K10",
+      "source": "keyboard",
+      "mode": "kitty:3",
+      "opts": [],
+      "event": "key;c:97;0;r;-",
+      "expectText": "\u001b[97;1:2u",
+      "authority": "kernel/05 §3.1 KittyFlags.report_events + KeyEventType::Repeat（event type `:2`）；§3.3 表 Kitty 列 CSI {code};{mod}u 形状",
+      "authorityKind": "kernel05",
+      "expectBytes": "1b5b39373b313a3275",
+      "expectOutcome": "Emitted(9)"
+    },
+    {
+      "id": "P01",
+      "source": "paste",
+      "mode": "legacy",
+      "opts": [
+        "bracketed"
+      ],
+      "event": "paste;local;1;6c73202d6c61",
+      "expectText": "\u001b[200~ls -la\u001b[201~",
+      "authority": "kernel/05 §3.7 表「bracketed paste: 应用请求（DECSET 2004）即启用」+ K-11 粘贴屏障 + §3.7 PasteGate::check「ctx.bracketed_paste_active ... else -> Allow」；xterm ctlseqs: bracketed paste = CSI 200 ~ / CSI 201 ~",
+      "authorityKind": "kernel05",
+      "expectBytes": "1b5b3230307e6c73202d6c611b5b3230317e",
+      "expectOutcome": "Emitted(18)"
+    },
+    {
+      "id": "P02",
+      "source": "paste",
+      "mode": "legacy",
+      "opts": [
+        "bracketed"
+      ],
+      "event": "paste;local;1;610a62",
+      "expectText": "\u001b[200~a\nb\u001b[201~",
+      "authority": "kernel/05 §3.7 表「bracketed paste: 应用请求（DECSET 2004）即启用」+ K-11 粘贴屏障 + §3.7 PasteGate::check「ctx.bracketed_paste_active ... else -> Allow」；xterm ctlseqs: bracketed paste = CSI 200 ~ / CSI 201 ~",
+      "authorityKind": "kernel05",
+      "note": "bracketed multiline is allowed without confirmation (IR-06)",
+      "expectBytes": "1b5b3230307e610a621b5b3230317e",
+      "expectOutcome": "Emitted(15)"
+    },
+    {
+      "id": "P03",
+      "source": "paste",
+      "mode": "legacy",
+      "opts": [
+        "bracketed"
+      ],
+      "event": "paste;local;1;736166651b5b3230317e726d202d7266202f1b5b3230317e7461696c",
+      "expectText": "\u001b[200~saferm -rf /tail\u001b[201~",
+      "authority": "kernel/05 K-11「含 ESC[201~ 的载荷一律先消毒」「消毒逻辑不可由配置关闭」+ §3.7 PasteGate::check「if payload.contains(BP_END) -> Sanitize{ removed: BP_END }」+ IN-AC-09「哨兵消毒 100%」",
+      "authorityKind": "kernel05",
+      "note": "both injected terminators are removed; the single remaining 201~ is ours",
+      "expectBytes": "1b5b3230307e73616665726d202d7266202f7461696c1b5b3230317e",
+      "expectOutcome": "Emitted(28)"
+    },
+    {
+      "id": "P04",
+      "source": "paste",
+      "mode": "legacy",
+      "opts": [],
+      "event": "paste;local;0;610a62",
+      "expectText": "",
+      "authority": "kernel/05 K-11「未启用 bracketed paste 的多行粘贴必须确认」+ §3.7 表「多行粘贴（无 bracketed paste）: 确认」+ §3.7 PasteGate::check multiline_unbracketed -> Confirm{risk: L2} + IN-AC-09",
+      "authorityKind": "kernel05",
+      "expectOutcome": "NeedsConfirm(0)",
+      "expectBytes": ""
+    },
+    {
+      "id": "P05",
+      "source": "paste",
+      "mode": "legacy",
+      "opts": [],
+      "event": "paste;local;0;6c73202d6c61",
+      "expectText": "ls -la",
+      "authority": "kernel/05 §3.7 PasteGate::check：非括号化、单行、无控制字符 -> Allow（原样写入）",
+      "authorityKind": "kernel05",
+      "expectBytes": "6c73202d6c61",
+      "expectOutcome": "Emitted(6)"
+    },
+    {
+      "id": "P06",
+      "source": "paste",
+      "mode": "legacy",
+      "opts": [],
+      "event": "paste;local;0;611b62",
+      "expectText": "",
+      "authority": "kernel/05 §3.7 表「含 ESC / C0（\\t、\\r 除外）的粘贴: 确认」+ PasteGate::check「payload.contains_ctl() -> Confirm{risk: L2}」",
+      "authorityKind": "kernel05",
+      "expectOutcome": "NeedsConfirm(0)",
+      "note": "ESC counts as a control byte for friction",
+      "expectBytes": ""
+    },
+    {
+      "id": "P07",
+      "source": "paste",
+      "mode": "legacy",
+      "opts": [
+        "bracketed"
+      ],
+      "event": "paste;local;1;610162",
+      "expectText": "",
+      "authority": "kernel/05 §3.7 PasteGate::check「if ctx.bracketed_paste_active: if payload.contains_ctl_except_tab_cr -> Confirm{risk: L1}」",
+      "authorityKind": "kernel05",
+      "expectOutcome": "NeedsConfirm(0)",
+      "expectBytes": ""
+    },
+    {
+      "id": "P08",
+      "source": "paste",
+      "mode": "legacy",
+      "opts": [
+        "always"
+      ],
+      "event": "paste;local;0;6c73202d6c61",
+      "expectText": "",
+      "authority": "kernel/05 §4.4 IN-08 paste.confirm_unbracketed_multiline = ask/always（不提供 never）+ OQ-INP-12（AR-31 第 6 条）「只能加强不能削弱」",
+      "authorityKind": "kernel05",
+      "expectOutcome": "NeedsConfirm(0)",
+      "note": "PastePolicy::Always may only strengthen friction",
+      "expectBytes": ""
+    },
+    {
+      "id": "P09",
+      "source": "paste",
+      "mode": "legacy",
+      "opts": [],
+      "event": "paste;osc52;0;610a62",
+      "expectText": "",
+      "authority": "kernel/05 §3.1 不变量 P-2「InputEvent::Paste 必须携带 origin；S5 依来源决定摩擦级别并写审计」+ K-10「剪贴板默认拒绝读：OSC 52 读默认 deny」+ §3.7 表「OSC 52 写默认 guarded」",
+      "authorityKind": "kernel05",
+      "expectOutcome": "Dropped(PasteBlocked)",
+      "expectBytes": ""
+    },
+    {
+      "id": "P10",
+      "source": "paste",
+      "mode": "legacy",
+      "opts": [
+        "bracketed"
+      ],
+      "event": "paste;local;1;610962",
+      "expectText": "\u001b[200~a\tb\u001b[201~",
+      "authority": "kernel/05 §3.7 表「含 ESC / C0（\\t、\\r 除外）的粘贴」的例外清单（\\t 不算控制字符）",
+      "authorityKind": "kernel05",
+      "expectBytes": "1b5b3230307e6109621b5b3230317e",
+      "expectOutcome": "Emitted(15)"
+    },
+    {
+      "id": "I01",
+      "source": "ime_commit",
+      "mode": "legacy",
+      "opts": [],
+      "event": "commit;e4bda0e5a5bd",
+      "expectText": "你好",
+      "authority": "kernel/05 §3.3 表「文本输入（IME commit）」行: UTF-8 原样；Kitty 列额外要求「不重复作为按键上报」；§3.4 Composing --commit(text)--> emit TextCommit(text)（唯一产生 PTY 字节的出口）；K-05 一次 commit = 一次 UTF-8 写入",
+      "authorityKind": "kernel05",
+      "expectBytes": "e4bda0e5a5bd",
+      "expectOutcome": "Emitted(6)"
+    },
+    {
+      "id": "I02",
+      "source": "ime_commit",
+      "mode": "legacy",
+      "opts": [],
+      "event": "commit;f09f91a8e2808df09f91a9e2808df09f91a7",
+      "expectText": "👨‍👩‍👧",
+      "authority": "kernel/05 §3.4 CJK 回归用例集「Emoji 候选提交（ZWJ 序列原子提交）」+ §3.3 表文本输入行 UTF-8 原样（不得做 NFC/NFD 变换）",
+      "authorityKind": "kernel05",
+      "note": "ZWJ family emoji commits atomically, no decomposition",
+      "expectBytes": "f09f91a8e2808df09f91a9e2808df09f91a7",
+      "expectOutcome": "Emitted(18)"
+    },
+    {
+      "id": "I03",
+      "source": "ime_commit",
+      "mode": "legacy",
+      "opts": [],
+      "event": "commit;65cc81",
+      "expectText": "é",
+      "authority": "kernel/05 §3.3 表「文本输入（IME commit）」行 = UTF-8 原样（组合序列不重排、不归一化）",
+      "authorityKind": "kernel05",
+      "expectBytes": "65cc81",
+      "expectOutcome": "Emitted(3)"
+    },
+    {
+      "id": "S01",
+      "source": "mouse",
+      "mode": "legacy",
+      "opts": [],
+      "event": "mouse;press;0;9;4;0",
+      "expectText": "\u001b[<0;10;5M",
+      "authority": "kernel/05 §3.8 表「鼠标上报: 1000/1002/1003 + 编码 1006（SGR）-> 仅应用请求时经 S3 编码为字节」+ xterm ctlseqs: SGR mouse (DECSET 1006) = CSI < b ; x ; y M|m，x/y 为 1-based 单元格坐标，button 0=左 1=中 2=右，修饰 +4 shift +8 meta +16 ctrl，motion +32",
+      "authorityKind": "xterm-ctlseqs",
+      "note": "0-based (col,row) = (9,4) becomes xterm 1-based (10,5)",
+      "expectBytes": "1b5b3c303b31303b354d",
+      "expectOutcome": "Emitted(10)"
+    },
+    {
+      "id": "S02",
+      "source": "mouse",
+      "mode": "legacy",
+      "opts": [],
+      "event": "mouse;release;0;9;4;0",
+      "expectText": "\u001b[<0;10;5m",
+      "authority": "kernel/05 §3.8 表「鼠标上报: 1000/1002/1003 + 编码 1006（SGR）-> 仅应用请求时经 S3 编码为字节」+ xterm ctlseqs: SGR mouse (DECSET 1006) = CSI < b ; x ; y M|m，x/y 为 1-based 单元格坐标，button 0=左 1=中 2=右，修饰 +4 shift +8 meta +16 ctrl，motion +32",
+      "authorityKind": "xterm-ctlseqs",
+      "note": "release uses the lowercase final byte",
+      "expectBytes": "1b5b3c303b31303b356d",
+      "expectOutcome": "Emitted(10)"
+    },
+    {
+      "id": "S03",
+      "source": "mouse",
+      "mode": "legacy",
+      "opts": [],
+      "event": "mouse;press;0;9;4;4",
+      "expectText": "\u001b[<16;10;5M",
+      "authority": "kernel/05 §3.8 表「鼠标上报: 1000/1002/1003 + 编码 1006（SGR）-> 仅应用请求时经 S3 编码为字节」+ xterm ctlseqs: SGR mouse (DECSET 1006) = CSI < b ; x ; y M|m，x/y 为 1-based 单元格坐标，button 0=左 1=中 2=右，修饰 +4 shift +8 meta +16 ctrl，motion +32",
+      "authorityKind": "xterm-ctlseqs",
+      "note": "control adds 16",
+      "expectBytes": "1b5b3c31363b31303b354d",
+      "expectOutcome": "Emitted(11)"
+    },
+    {
+      "id": "S04",
+      "source": "mouse",
+      "mode": "legacy",
+      "opts": [],
+      "event": "mouse;motion;0;9;4;5",
+      "expectText": "\u001b[<52;10;5M",
+      "authority": "kernel/05 §3.8 表「鼠标上报: 1000/1002/1003 + 编码 1006（SGR）-> 仅应用请求时经 S3 编码为字节」+ xterm ctlseqs: SGR mouse (DECSET 1006) = CSI < b ; x ; y M|m，x/y 为 1-based 单元格坐标，button 0=左 1=中 2=右，修饰 +4 shift +8 meta +16 ctrl，motion +32",
+      "authorityKind": "xterm-ctlseqs",
+      "note": "motion adds 32, shift 4, control 16",
+      "expectBytes": "1b5b3c35323b31303b354d",
+      "expectOutcome": "Emitted(11)"
+    },
+    {
+      "id": "S05",
+      "source": "mouse",
+      "mode": "legacy",
+      "opts": [
+        "no_sgr"
+      ],
+      "event": "mouse;press;0;9;4;0",
+      "expectText": "",
+      "authority": "kernel/05 §3.8 表「本机鼠标: 未请求任一鼠标模式 -> 选择、链接、滚轮（不开应用上报）」+ K-12「应用未请求鼠标模式时鼠标属本机」",
+      "authorityKind": "kernel05",
+      "expectOutcome": "Dropped(UnsupportedKey)",
+      "note": "no application mouse mode -> the mouse stays local, 0 bytes",
+      "expectBytes": ""
+    },
+    {
+      "id": "F01",
+      "source": "focus",
+      "mode": "legacy",
+      "opts": [],
+      "event": "focus;gain",
+      "expectText": "\u001b[I",
+      "authority": "xterm ctlseqs: focus reporting（DECSET 1004）= CSI I（focus in）/ CSI O（focus out）；kernel/05 §3.1 的 InputEvent 明确把 FocusGained / FocusLost 列为 S3 输入",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "1b5b49",
+      "expectOutcome": "Emitted(3)"
+    },
+    {
+      "id": "F02",
+      "source": "focus",
+      "mode": "legacy",
+      "opts": [],
+      "event": "focus;lost",
+      "expectText": "\u001b[O",
+      "authority": "xterm ctlseqs: focus reporting（DECSET 1004）= CSI I（focus in）/ CSI O（focus out）；kernel/05 §3.1 的 InputEvent 明确把 FocusGained / FocusLost 列为 S3 输入",
+      "authorityKind": "xterm-ctlseqs",
+      "expectBytes": "1b5b4f",
+      "expectOutcome": "Emitted(3)"
+    },
+    {
+      "id": "A01",
+      "source": "api_inject",
+      "mode": "legacy",
+      "opts": [],
+      "event": "inject;1b5b313b3543",
+      "expectText": "\u001b[1;5C",
+      "authority": "AR-29 第 3 条 / kernel/05 K-01「所有进入 PTY 的字节必须由 InputEncoder 产生（键盘 / 鼠标 / 粘贴 / IME commit / API 注入五源共用）；任何模块不得旁路直写 PTY」+ §4.3 input.inject",
+      "authorityKind": "kernel05",
+      "note": "API-injected bytes still travel through S3 and must not be altered",
+      "expectBytes": "1b5b313b3543",
+      "expectOutcome": "Emitted(6)"
+    },
+    {
+      "id": "A02",
+      "source": "api_inject",
+      "mode": "legacy",
+      "opts": [],
+      "event": "inject;03",
+      "expectText": "\u0003",
+      "authority": "AR-29 第 3 条 / kernel/05 K-01「所有进入 PTY 的字节必须由 InputEncoder 产生（键盘 / 鼠标 / 粘贴 / IME commit / API 注入五源共用）；任何模块不得旁路直写 PTY」+ §4.3 input.inject",
+      "authorityKind": "kernel05",
+      "expectBytes": "03",
+      "expectOutcome": "Emitted(1)"
+    }
+  ]
+}

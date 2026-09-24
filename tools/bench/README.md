@@ -4,9 +4,14 @@
 > 测不准怎么办」。它是 **方法学工具**，不是测量工具：它校验 schema、计算指纹、实现判定状态机、
 > 登记 §5 映射表，并用 `--selftest` 证明判定逻辑不是恒绿。
 >
-> **本机没有 RM-A / RM-C 参考机**，所以本工具在任何一次运行中产出 **0 个门禁数字**。
-> 任何真实性能数字必须来自 `cargo xtask bench` 在 RM-A / RM-C 的 T0 后端上的运行
-> （crates/termai-bench，M0 未实现）。这是 AR-20 诚实原则与 ADR-0014 铁律 5 的落地，不是配置项。
+> **本机没有 RM-A / RM-C 参考机**，所以本工具在任何一次运行中产出 **0 个机器绑定的门禁数字**
+> （`gating numbers produced by this run: 0`）。任何真实的*性能*数字必须来自 `cargo xtask bench` 在
+> RM-A / RM-C 的 T0 后端上的运行（crates/termai-bench，M0 未实现）。这是 AR-20 诚实原则与 ADR-0014
+> 铁律 5 的落地，不是配置项。
+>
+> **例外：H12（输入字节等价）不是机器绑定行**（registry `machine: 'none'`，逐字节比较与机器无关），
+> 因此它可以在本机产出真实值并由 `check.mjs --report` 判定；它仍然**不计入**那个机器绑定的计数器
+> （ADR-0029 D-5）。产出器见 `tools/bench/input-bytes.mjs` 与下文「H12 输入字节等价的产出与读取」。
 
 ## 命令
 
@@ -17,6 +22,7 @@ node tools/bench/check.mjs --json       # 仅输出机器可读 JSON
 node tools/bench/check.mjs --report <p> # 校验 schema（B8）**并读取其中的值**，把每个 metric 绑定到它的 §5 行或可靠性行（R1/R2）
 node tools/bench/check.mjs --machine <p># 显式声明本机为已登记的 RM-A / RM-C（默认不声明）
 node tools/bench/sessiond-rebuild.mjs   # 【产出】驱动 apps/sessiond 的重建路径 N 次，算 P95/P99，写出 R1/R2 报告（AR-26 第 4 条 / kernel/06 §3.10）
+node tools/bench/input-bytes.mjs        # 【产出】把 tools/bench/input-corpus.json 喂给 termai-core 的 InputEncoder，逐字节比对，写出 H12 报告（HARNESS §5 H12 / kernel/05 §5 IN-AC / AR-29 第 3 条）
 ```
 
 退出码：`0` = PASS，`1` = FAIL。缺失的报告文件是显式 `SKIP`，绝不静默 PASS。
@@ -31,7 +37,10 @@ node tools/bench/sessiond-rebuild.mjs   # 【产出】驱动 apps/sessiond 的�
 | `fixtures.mjs` | **合成逻辑夹具（不是测量值）**：只用于把状态机推过每个分支，绝不当结果上报、绝不与基线比对 |
 | `values.mjs` | **值的读取与呈现**（D-6 第 ②–④ 步）：把报告里的每个 metric **绑定到它声称的 §5 行**（unit / gate 必须等于 registry 的转录）；机器无关行的「未报告」是**显式**的；`gatingNumbersProduced` 从读取到的值计算。**同一文件另设**可靠性行的读取（`reliabilityRow` / `bindReliabilityMetric` / `collectReliabilityValues`）：metric 指名 R1/R2 时 unit / gate / statistic 必须等于 `RELIABILITY_MAPPING`，且**本机无参考机时只允许 `INCONCLUSIVE` / `NON_GATING`**（写成 `PASS` 或声明 `gating:true` 即违规） |
 | `sessiond-rebuild.mjs` | **产出（producer）**：驱动 `apps/sessiond` 的重建路径（`sessiond::restore::rebuild_session`）每个 Run N 次，记录**每次重建的墙钟时间**，按 kernel/06 §3.2 frame 行 + K-02 三层口径算 Run 内 P95/P99、报告值取 N≥10 Run 的**中位数**，写出 §3.7 形状的 `bench-report.json`；本机无参考机 ⇒ 两行一律 `INCONCLUSIVE` / `gating:false`，**绝不 PASS** |
-| `check.mjs` | 门禁入口 B1–B9 + `--selftest` 78 条注入（本轮为可靠性行绑定加 2 注入 + 2 对照；~~74 条（第 257 轮）~~） |
+| `input-corpus.json` | **H12 的语料（数据文件，不是代码）**：75 条输入事件 + 每条**引用权威**的期望 PTY 字节（`authority` / `authorityKind`），覆盖 keyboard（Legacy / ModifyOtherKeys(2) / Kitty）、paste、ime_commit、mouse、focus、api_inject 六源；**没有权威的期望不写进 `cases`**，一律登记在 `omitted` 里（11 条）并在产出时打印 |
+| `input-bytes-driver.rs` | **H12 的驱动（不是第二个编码器）**：用 `rustc --extern termai_core=<rlib>` 编译，只做「读行协议 → 调 `StandardEncoder::encode` → 记录 sink 里的字节与 `EncodeOutcome`」，自身不含任何编码逻辑；`crates/**` 一字未改 |
+| `input-bytes.mjs` | **产出（producer）**：`cargo build --release -p termai-core` + `rustc` 编译上面的驱动，把语料按 TSV 行协议喂进去，**逐字节**比较（同时比较 `EncodeOutcome`），写出 §3.7 形状的 `bench-report.json`（metric `H12`，`unit: pct`、`gate: 100`）+ 逐 case 明细；打印**每源覆盖数 / 缺席源 / 刻意省略的期望**；两次驱动运行做 kernel/06 §3.6 D0 自证；退出码 0 = H12 100%、1 = 有用例不符（报告照样写出）、2 = 产出器自身跑不起来 |
+| `check.mjs` | 门禁入口 B1–B9 + `--selftest` 83 条注入（本轮为 H12 这一「机器无关门禁行」的判定加 2 注入 + 3 对照；~~78 条（第 258 轮）~~） |
 
 ## 门禁 B1–B9
 
@@ -44,7 +53,7 @@ node tools/bench/sessiond-rebuild.mjs   # 【产出】驱动 apps/sessiond 的�
 | B5 | 指纹确定性 | 同输入同哈希；41 个叶子字段**逐个**改动都改变哈希；键序无关 | kernel/06 §3.4、§3.7 |
 | B6 | §3.1 状态机分支覆盖 | 6 条对照分支 + 21 条故障分支全部产出文档规定的裁决 | kernel/06 §3.1 |
 | B7 | 机器绑定诚实边界 | 无参考机时必须 NON_GATING / INCONCLUSIVE 且产出 0 个门禁数字 | ADR-0014 铁律 5、kernel/06 §6、AR-31 第 8 条 | **⚠ 第 202 轮注**：**「产出 0 个门禁数字」这一条目前是**恒真**的——`gatingNumbersProduced` 是 `check.mjs:672` 的**字面常量 0**，没有任何代码从结果计算它（第 188/189 轮核实）。** `B7` 的另外两条判据是活的（机器分类、无指纹情形）。**因此本行描述的是**要求**，不是**当下被强制的事实**；把计数器做成计算值是 `docs/plan/p0-open-decisions.md` D-6 的第 ④ 步。** **✅ 第 255 轮：该步已完成**——`gatingNumbersProduced` 现由 `values.mjs` 读取到的 metric 计算（声明 `gating:true` 者计入），注入一个产出 gating 数字的行会被 `B7` 判 FAIL；该注入与对照已进 `bench:selftest`（63/63）。**
-| B8 | 报告 schema 校验 **+ §5 行绑定 + 可靠性行绑定**（`--report`，或树中存在报告时） | ① 对 bench-report.json 做 §3.7 校验；② 每个 metric 若指名某个 §5 行，其 `unit` / `gate` 必须等于 registry 的转录（否则 FAIL）；③ 机器无关行的「未报告」显式列出；文件不存在则 SKIP；④ 每个 metric 若指名 R1/R2，其 `unit` / `gate` / `statistic` 必须等于 `RELIABILITY_MAPPING`（B9 每次从 kernel/06 §3.10 正文重新推导），且**本机无参考机时该行只允许 `INCONCLUSIVE` / `NON_GATING`**——写成 `PASS` 或声明 `gating:true` 即 FAIL | kernel/06 §3.7、spec 07 §3.8.2、HARNESS §5、kernel/06 §3.10、ADR-0029 D-4 |
+| B8 | 报告 schema 校验 **+ §5 行绑定 + 机器无关门禁行判定 + 可靠性行绑定**（`--report`，或树中存在报告时） | ① 对 bench-report.json 做 §3.7 校验；② 每个 metric 若指名某个 §5 行，其 `unit` / `gate` 必须等于 registry 的转录（否则 FAIL）；③ 机器无关行的「未报告」显式列出；文件不存在则 SKIP；④ 每个 metric 若指名 R1/R2，其 `unit` / `gate` / `statistic` 必须等于 `RELIABILITY_MAPPING`（B9 每次从 kernel/06 §3.10 正文重新推导），且**本机无参考机时该行只允许 `INCONCLUSIVE` / `NON_GATING`**——写成 `PASS` 或声明 `gating:true` 即 FAIL；⑤ **机器无关的 §5 门禁行**（registry `machine: none` 且 `governed != 'no'`，当前为 `H12`）要**按它自己申报的 verdict 判定**：`verdict: FAIL` → B8 FAIL（读了一个门禁行却不判定它，等于让失败的载体从读它的门禁下溜过去；`governed: 'no'` 的 H17/H18/H19 不是 §5 门禁，不受此条约束） | kernel/06 §3.7、spec 07 §3.8.2、HARNESS §5、kernel/06 §3.10、ADR-0029 D-4 / D-5、AR-20 |
 | B9 | 可靠性登记完整性（HARNESS §8.2 / kernel/06 §3.10） | 每次从 kernel/06 §3.10 正文**重新推导** P95 / P99 门禁数（2000 / 5000 ms）；核对 `RELIABILITY_MAPPING` 与正文（指标名 / 门禁 / 族 / 机器绑定）；`reliabilityIntegrity()` 报错、正文不再含该契约、或登记与正文不一致 → FAIL；并断言 `SECTION5_MAPPING` 仍恰好 19 行、B1/B3 仍 PASS，且 `reliability.mjs` 的可执行代码（去注释后）未引用 §5 的登记口径 | ADR-0029 D-4、kernel/06 §3.10、AR-26 第 4 条 |
 
 ## 可靠性时序登记与门禁 B9（ADR-0029 D-4 / kernel/06 §3.10）
@@ -84,6 +93,34 @@ HARNESS §8.2 的「sessiond 重建 P95 ≤2s / P99 ≤5s」此前只有**登记
 2. `recover_session` 只回放 `PtyOut`，**不回放 `Resize`**，因此跨终端尺寸的 Log 也不可忠实重建；夹具只用一个尺寸。
 3. 本机**不是 RM-A**：这两行永远是 `INCONCLUSIVE` / `NON_GATING`。要成为门禁数字，必须在 RM-A（T0、独占、指纹已登记）上跑同一命令并给出指纹。
 4. 场景是**参数化的**（默认 Log 500 行 / ~45KB）；换场景即换数字，报告 `metrics[].method` 与 `runner` 里都写了场景参数与机器状态。
+
+## H12 输入字节等价的产出与读取（HARNESS §5 H12 / kernel/05 §5 IN-AC / AR-29 第 3 条）
+
+HARNESS §5 的 H12「输入字节等价（键盘 / 粘贴 / IME commit 全语料回放，逐字节比对）= 100%」在 registry 里是 **`machine: 'none'`**：逐字节比较不需要参考机，也不需要 T0 后端。它是 §5 十九行中**唯一能在普通机器上给出真实数字**的行，所以本轮把它从「只有 `InputEncoder` 单测」推到「有语料 + 有产出 + 有读取 + 有判定」。
+
+| 环节 | 落点 |
+| --- | --- |
+| **被测量的东西** | `termai_core::input::StandardEncoder`（AR-29 第 3 条 / kernel/05 K-01 的 S3 唯一编码点）。**不新增第二个编码器**：`tools/bench/input-bytes-driver.rs` 只做「行协议 → 调 `encode()` → 记录 `InputSink` 里的字节与 `EncodeOutcome`」，`crates/**` 一字未改 |
+| **怎么驱动** | producer 先 `cargo build --release -p termai-core`，再用 `rustc --edition 2021 --extern termai_core=target/release/libtermai_core.rlib` 编译该驱动（`termai-core` 没有自己的依赖，所以这一行就够）。没有 cargo / rustc / rlib 时 producer **退出码 2**，绝不用 JS 手写编码器顶替 |
+| **语料** | `tools/bench/input-corpus.json`：75 条 case，覆盖 keyboard（Legacy 35 / ModifyOtherKeys(2) 8 / Kitty 10）、paste 10、ime_commit 3、mouse 5、focus 2、api_inject 2；每条带 `expectBytes`（hex）+ `expectText`（可读字面量，producer 每次交叉校验两者一致）+ `authority` / `authorityKind`（kernel/05 条款号，或 xterm ctlseqs 规则） |
+| **判据** | 每个 case：实际字节**逐字节**等于权威给出的期望，**且** `EncodeOutcome` 等于申报值（丢弃 / 吞掉 / 需确认 都是「0 字节」的合法期望，必须能与「什么都没做」区分）。H12 = 命中 / 已执行 × 100，`unit: pct`、`gate: 100`、`statistic: exact`（registry 转录，B1/B3 每次重新推导） |
+| **没有权威的期望** | **不写进语料**：`input-corpus.json.omitted` 登记 11 条（`NamedKey::Space`、F13–F24、滚轮 button 编号、单独 `meta` 位、Kitty 下的 IN-04、`report_text` / `report_associated_text` 语义、preedit 0 字节、>1MiB 粘贴、OSC 52 读、DECSET 鼠标状态机、死键合成），producer 逐条打印原因——**语料之外的覆盖面不会被这个数字冒充** |
+| **D0 自证** | 同一语料跑驱动两次，结果必须逐字节相同（kernel/06 §3.6 D0）；编码器源码（`crates/termai-core/src/**` + `Cargo.toml`）与语料各取 sha256，写进 `selfcheck.scene.hash` |
+| **报告落点** | 默认 `target/bench-reports/input-bytes-report.json` + `input-bytes-report.cases.json`（逐 case 明细）；`target/` 是 gitignore 区且不被 `discoverReports()` 扫描，因此 `bench:check` 的默认输出仍是 `summary: 8 PASS` |
+| **门禁读取** | `check.mjs --report <p>` 把 H12 作为「机器无关的 §5 门禁行」打印（值 / 门禁 / verdict 一起）；`verdict: FAIL` ⇒ **B8 FAIL**（上表第 ⑤ 条判定）。`gating: true` **合法**（它就是 §5 发布门禁），但 ADR-0029 D-5 把 `gating numbers produced by this run` 限定为**机器绑定**（RM-A / RM-C）的数字，所以 H12 不计入该计数器（与 H13 同形），B7 保持 PASS |
+| **自证** | `--selftest` 为这条判定加了 2 注入（H12 `verdict=FAIL` 必须让 B8 FAIL；H12 带外来 unit 必须先判绑定违规）+ 3 对照（100%/PASS 报告绑定并被呈现、`gating:true` 不计入计数器且 B7 绿、`governed: no` 的 H18 即便 `verdict=FAIL` 也不受第 ⑤ 条约束），计数由 **78/78** 变为 **83/83** |
+
+**本机实测（第 259 轮）：`H12 = 93.3333%`（70/75）= FAIL**。5 条与 kernel/05 §3.3 表逐字冲突：
+
+| case | 模式 | 期望（引用） | 实际 |
+| --- | --- | --- | --- |
+| `M03` | ModifyOtherKeys(2) | `CSI 27;6;65~`（kernel/05 §3.3 表「Ctrl+Shift+A」MOK(2) 列） | `0x01`（Shift 被吞） |
+| `M04` | ModifyOtherKeys(2) | `ESC x`（§3.3 表「Alt+x」MOK(2) 列） | `CSI 27;3;120~` |
+| `M05` | ModifyOtherKeys(2) | `CSI 27;1;27~`（§3.3 表「Esc」MOK(2) 列） | `0x1B` |
+| `K05` | Kitty(disambiguate+report_all) | `CR`（§3.3 表「Enter」Kitty 列） | `CSI 13u` |
+| `K06` | Kitty(disambiguate+report_all) | `CSI 1;1D`（§3.3 表「Left」Kitty 列） | `CSI 57354u` |
+
+即：`KeyboardMode::ModifyOtherKeys(2)` 目前**只在「Ctrl + 无 C0 映射的可打印字符」这一格**符合 §3.3 表（`M02` 通过），其余三格退回 Legacy；Kitty 模式对 `Enter` 与方向键走 PUA 码点 `CSI {code}u` 路线，与 §3.3 表的 `CR` / `CSI 1;1D` 不一致。**这两组要么改表、要么改 encoder，必须由 kernel/05 的 owner 裁决**；本工具只负责把「实现字节 ≠ 被引用条款的字节」如实报出，并且**不**把 H12 报成通过（`check.mjs --report` 因此判 B8 FAIL，退出码 1）。
 
 ## bench-report 字段对照（kernel/06 §3.7 逐字）
 
@@ -239,8 +276,10 @@ runner / commit / toolchain / ts + 顶层 commit）逐字保留」）。任一�
 - **sessiond 重建行（R1/R2）**：机制断言与测量产出都已落地（见上一节）；**仍缺**参考机指纹与 T0 独占，
   以及 `CheckpointRef` / `Resize` 两条分支的忠实重放（需要 CAS 内容存储与「按 Resize 分段重放」）。
   因此 E-P0-4 的「≤2s / ≤5s」目前**不能说已完成**：本机数字不是门禁级证据。
-- **§5 机器无关行的值**：读取路径已落地（D-6 第 ②–④ 步）；本机可产出者只有 **H18** 与**表外对照 C1**，
-  其余行如实 `NOT REPORTED`（H17 需浏览器层、H19 需 RM-C 像素渲染）。
+- **§5 机器无关行的值**：读取路径已落地（D-6 第 ②–④ 步）；本机可产出者现在是 **H18**、**H12**（见上一节，
+  `node tools/bench/input-bytes.mjs`）与**表外对照 C1**，其余行如实 `NOT REPORTED`（H17 需浏览器层、
+  H19 需 RM-C 像素渲染）。**H12 是本机唯一能给出「门禁级」结论的行**：它 `machine: none`，所以
+  §5 的「= 100%」在本机即可判定（第 259 轮判定为 **FAIL**，5 处与 kernel/05 §3.3 表冲突，见上一节）。
 - **H1–H19 的实测**：本工具只校验「测量定义已登记且与正文一致」，不执行任何一项测量
   （机器无关行的值由 `--report` **读入**，不是本工具测出来的）。
 - **`bench-repro-report.json`（A-PM-01）**：`assertReproducible()` 已实现判定，但真正跑两次 G4 全集
