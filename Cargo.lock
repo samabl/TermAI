@@ -1036,7 +1036,7 @@ dependencies = [
  "rustybuzz",
  "swash",
  "termai-core",
- "unicode-width",
+ "termai-vt",
 ]
 
 [[package]]

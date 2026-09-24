@@ -14,8 +14,10 @@
 //!   generation, with the miss / eviction / generation counters kernel/03 section 3.1 asks for.
 //!
 //! This crate still draws nothing: no rasterised bitmap, no texture, no swapchain, and no
-//! `wgpu` / `winit` / `termai-gpu` / `termai-vt` dependency (ADR-0024 D1, ADR-0027 D2: the K4
-//! edge table stays `termai-render -> [termai-core]`, and no fake dependency is declared).
+//! `wgpu` / `winit` / `termai-gpu` dependency. Its one termai edge besides termai-core is the
+//! K-04 width edge `termai-render -> termai-vt` (ADR-0027 D2, registered in the K4 edge table):
+//! `shape::VtWidthSource` asks `termai_vt::width::measure` for a cluster's columns instead of
+//! carrying a second wcwidth table.
 #![forbid(unsafe_code)]
 
 pub mod atlas;
@@ -25,6 +27,7 @@ pub mod vrm;
 
 pub use atlas::{AtlasConfig, AtlasError, AtlasKey, GlyphAtlas, GlyphSize, GlyphSlot};
 pub use shape::{
-    glyph_flag, shape_row, span_flag, AaMode, CellWidthSource, ClusterInput, ClusterSpan, FontFace,
-    FontId, RowClusters, RowGlyphs, ShapeContext, ShapeError, ShapedGlyph, SpanError,
+    glyph_flag, shape_row, shape_row_with_vt_widths, span_flag, AaMode, CellWidthSource,
+    ClusterInput, ClusterSpan, FontFace, FontId, RowClusters, RowGlyphs, ShapeContext, ShapeError,
+    ShapedGlyph, SpanError, VtWidthSource, VT_WIDTH,
 };

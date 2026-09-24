@@ -2,8 +2,9 @@
 //!
 //! The grid owns the cell matrix, cursor, SGR state, modes, scroll region, the main
 //! and alternate screens, OSC 8 link spans and the damage/rev bookkeeping used for
-//! GridDelta production. It deliberately keeps exactly one wcwidth source
-//! (unicode-width) so no second width table can drift in (kernel/03 K-04).
+//! GridDelta production. It deliberately owns no width table: every column decision goes
+//! through `crate::width` (kernel/03 K-04), the same public API `termai-render` reads, so no
+//! second width authority can drift in.
 //!
 //! Canonicalization note: Grid::digest hashes termai-core
 //! GridSnapshot::canonical_bytes, while golden::golden_hash hashes the TERMAI-GRID
@@ -16,9 +17,11 @@ use termai_core::grid::{
     ScrollOp, ATTR_BLINK, ATTR_BOLD, ATTR_DIM, ATTR_DOUBLE_UNDERLINE, ATTR_HIDDEN, ATTR_ITALIC,
     ATTR_OVERLINE, ATTR_REVERSE, ATTR_STRIKETHROUGH, ATTR_UNDERLINE, LINE_WRAPPED,
 };
-use unicode_width::UnicodeWidthChar;
 
 use crate::backend::Params;
+// kernel/03 K-04: the grid owns no width table of its own - it asks the one authority
+// (crate::width) so `termai-render` can read the identical rule.
+use crate::width::measure_scalar;
 
 /// DEC private mode 25: cursor visible.
 pub const MODE_CURSOR_VISIBLE: u64 = 1 << 0;
@@ -908,7 +911,7 @@ impl Grid {
 
     /// Print one character.
     pub fn print(&mut self, ch: char) {
-        let width = UnicodeWidthChar::width(ch).unwrap_or(0);
+        let width = measure_scalar(ch);
         if width == 0 {
             self.append_combining(ch);
             return;

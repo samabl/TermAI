@@ -12,25 +12,24 @@ path = "src/lib.rs"
 
 [dependencies]
 termai-core = { workspace = true }
+# ADR-0027 D2 (Accepted) registers this edge: kernel/03 K-04 makes termai-vt's width table the
+# only column-width authority, and spec kernel/03 section 3.5.1 step 1 spells the shaper's
+# source as `termai-vt::width::measure(scalars)`. The shaper binds its production
+# `shape::CellWidthSource` to that API instead of carrying a second wcwidth table, so the
+# grid and the shaper cannot drift. K4's allow-list entry is 'termai-render -> [termai-core,
+# termai-vt]'; the termai-render -> termai-gpu edge stays unregistered until it is declared.
+termai-vt = { workspace = true }
 # ADR-0027 D1 (Accepted): rustybuzz 0.20.1 (MIT), swash 0.2.10 (Apache-2.0 OR MIT) and
 # fontdb 0.24.0 (MIT) are admitted at SPDX tier A with R=D=0; the unmaintained advisories
 # against rustybuzz/ttf-parser are covered by the ADR-0031 time-boxed waiver W-01
 # (docs/audit/waivers.json, expires 2027-03-23 or after 2 minors). kernel/03 K-05: rustybuzz
 # is the only OpenType shaping engine, swash the only outline/colour-glyph engine; fontdb
 # carries font discovery and the fallback chain (kernel/03 section 3.5.2).
-# No wgpu, winit, termai-gpu or termai-vt dependency in this slice: the K4 edge table stays
-# termai-render -> [termai-core] (ADR-0024 D1, ADR-0027 D2/D3 - no fake dependency).
+# No wgpu, winit or termai-gpu dependency in this slice (ADR-0024 D1, ADR-0027 D2/D3 - no fake
+# dependency).
 rustybuzz = { workspace = true }
 swash = { workspace = true }
 fontdb = { workspace = true }
-
-[dev-dependencies]
-# The K-04 column-width port (shape.rs `CellWidthSource`) has no width table of its own. Its
-# production binding is termai-vt's width API; registering the termai-render -> termai-vt
-# edge is a separate admission step (ADR-0027 D2), so until then the tests bind the port to
-# the same upstream table termai-vt uses internally (crates/termai-vt/src/grid.rs uses
-# unicode_width). That is the identical crate, not a second width table.
-unicode-width = { workspace = true }
 
 [lints.rust]
 unsafe_code = "forbid"

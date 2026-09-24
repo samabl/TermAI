@@ -60,10 +60,14 @@ const ALLOWED_LIB_EDGES = {
   'termai-vt': ['termai-core'],
   'termai-pty': ['termai-core'],
   'termai-session': ['termai-core', 'termai-ipc'],
-  // ADR-0024 D1: the first render slice is pure logic on the core DTO; the HARNESS
-  // section 4.3 edges to termai-vt / termai-gpu are registered with the shaping and GPU
-  // slices, each with its own dependency-admission ADR.
-  'termai-render': ['termai-core'],
+  // ADR-0024 D1 + ADR-0027 D2 (Accepted, which registers the position and direction of the
+  // edges termai-render -> [termai-core, termai-vt, termai-gpu]): kernel/03 K-04 makes
+  // termai-vt's width table the only column-width authority, and kernel/03 section 3.5.1
+  // step 1 spells the shaper's source as termai-vt::width::measure(scalars), so the shaping
+  // slice reads that API instead of carrying a second wcwidth table.
+  // The termai-render -> termai-gpu edge is deliberately still absent: it is admitted when
+  // termai-render actually declares it (no fake dependency).
+  'termai-render': ['termai-core', 'termai-vt'],
   // ADR-0027 D2 registers the GPU crate as the T0-T3 decision point. Its only admitted
   // termai edge in this slice is downward to termai-core; the termai-render -> termai-gpu
   // edge is added when termai-render actually declares it (no fake dependency).
@@ -721,6 +725,29 @@ function runSelftest() {
       temps.push(root);
       const g = gateK4({ root: root });
       st.check('K4: the unmodified scratch root still passes (AR-03 control)', g.status === STATUS.PASS, g.detail);
+    }
+
+    // injection: the K-04 crate edge termai-render -> termai-vt (ADR-0027 D2). The real tree declares
+    // that edge, so the check is exercised by narrowing the admitted set back to its pre-slice value for
+    // one call: if the new allow-list entry were decorative, the run would stay green. The table is
+    // restored in a finally so the baseline checks below cannot inherit the narrowed copy.
+    {
+      const saved = ALLOWED_LIB_EDGES['termai-render'];
+      let g = null;
+      try {
+        ALLOWED_LIB_EDGES['termai-render'] = saved.filter(function (n) { return n !== 'termai-vt'; });
+        g = gateK4({ root: DEFAULT_ROOT });
+      } finally {
+        ALLOWED_LIB_EDGES['termai-render'] = saved;
+      }
+      st.check('K4: termai-render -> termai-vt is caught when the edge is not admitted (K-04 injection)', g !== null && g.status === STATUS.FAIL, g ? g.detail : 'gateK4 threw');
+    }
+
+    // control: the same real tree with the admitted edge restored must pass, so the new entry refuses a
+    // missing admission rather than the edge itself.
+    {
+      const g = gateK4({ root: DEFAULT_ROOT });
+      st.check('K4: the admitted termai-render -> termai-vt edge still passes (K-04 admission control)', g.status === STATUS.PASS, g.detail);
     }
 
     // injection 5: wrong crate license.

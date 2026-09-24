@@ -10,9 +10,10 @@
 //! pixels. That is S7/S8 and belongs to the GPU slice.
 //!
 //! K-04: `termai-render` owns **no** column-width table. A cluster's cell width comes from
-//! the injected [`CellWidthSource`] port; the production binding is termai-vt's width API, and
-//! registering that crate edge is a separate admission step (ADR-0027 D2), so nothing here may
-//! classify a scalar itself. The shaper also refuses to run when the injected widths disagree
+//! the injected [`CellWidthSource`] port, whose production binding is [`VtWidthSource`] -
+//! `termai_vt::width::measure`, i.e. the very rule `termai_vt::Grid::print` applies. The crate
+//! edge `termai-render -> termai-vt` is registered by ADR-0027 D2, so nothing here may classify
+//! a scalar itself. The shaper also refuses to run when the injected widths disagree
 //! with the row's own grid anchors ([`ShapeError::ColumnMismatch`]): that mismatch is the
 //! cluster/column drift K-04 exists to catch (kernel/03 RP-07).
 //!
@@ -46,12 +47,44 @@ pub enum AaMode {
 /// The only source of a cluster's cell columns (kernel/03 K-04).
 ///
 /// `termai-render` carries no wcwidth table, so this port is the single width authority for
-/// the whole shaping path. The production implementor wraps termai-vt's width API (UAX #11
-/// plus emoji-presentation rules); a cluster that measures 0 columns is a combining mark or a
-/// variation selector and joins the preceding cluster (kernel/03 section 3.5.1).
+/// the whole shaping path. The production implementor is [`VtWidthSource`], which wraps
+/// termai-vt's width API (UAX #11 per scalar, kernel/03 section 3.5.1 step 1); a cluster that
+/// measures 0 columns is a combining mark or a variation selector and joins the preceding
+/// cluster (kernel/03 section 3.5.1 step 6 / 3.5.2).
 pub trait CellWidthSource {
     /// Columns occupied by one grapheme cluster's original scalar sequence.
     fn cluster_columns(&self, cluster: &str) -> u8;
+}
+
+/// The production [`CellWidthSource`] (kernel/03 K-04): `termai_vt::width::measure`.
+///
+/// This is the whole point of the K-04 crate edge: the shaper asks the same function the VT
+/// grid used to place the cells, so a cluster's span and the grid's columns are decided by one
+/// implementation instead of two tables that can drift. The port stays injectable (the tests
+/// drive [`CellWidthSource`] with a deliberately wrong source to prove the fit counter moves),
+/// but this is the binding that ships.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct VtWidthSource;
+
+impl CellWidthSource for VtWidthSource {
+    fn cluster_columns(&self, cluster: &str) -> u8 {
+        termai_vt::width::measure(cluster)
+    }
+}
+
+/// The production width source, for callers that want a value rather than a type.
+pub const VT_WIDTH: VtWidthSource = VtWidthSource;
+
+/// Shape one row with the production width source (kernel/03 section 3.5.1 step 1:
+/// `列宽真源 = termai-vt::width::measure(scalars)`).
+///
+/// # Errors
+/// As [`shape_row`].
+pub fn shape_row_with_vt_widths(
+    row: &RowClusters,
+    ctx: &ShapeContext<'_>,
+) -> Result<RowGlyphs, ShapeError> {
+    shape_row(row, ctx, &VT_WIDTH)
 }
 
 /// One cluster of a row as it arrives from the mirror: the grid column it starts at and its
