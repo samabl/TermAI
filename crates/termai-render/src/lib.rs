@@ -10,12 +10,16 @@
 //!   (ADR-0024 D1), pure logic on the core DTO.
 //! - S6 `shape`: a row of clusters becomes per-cell glyph spans using the ADR-0027 D1 engines
 //!   (`rustybuzz` for OpenType layout, `swash` for outlines and metrics).
-//! - S7 `atlas`: the glyph key, page/slot allocation, page-level LRU eviction and the rebuild
-//!   generation, with the miss / eviction / generation counters kernel/03 section 3.1 asks for.
+//! - S7 `atlas`: the glyph key, page/slot allocation, page-level LRU eviction, the rebuild
+//!   generation, and (this slice) real rasterisation through `swash`: an `AtlasKey` becomes an
+//!   8-bit alpha coverage bitmap - grayscale AA, hinting off (AR-14) - blitted into the page at
+//!   the slot the allocator handed out, with the miss / eviction / generation counters
+//!   kernel/03 section 3.1 asks for.
 //!
-//! This crate still draws nothing: no rasterised bitmap, no texture, no swapchain, and no
-//! `wgpu` / `winit` / `termai-gpu` dependency. Its one termai edge besides termai-core is the
-//! K-04 width edge `termai-render -> termai-vt` (ADR-0027 D2, registered in the K4 edge table):
+//! This crate still draws nothing: the pages are CPU `R8Unorm` buffers, not textures. There is
+//! no swapchain, no GPU upload, no frame and no damage loop, and no `wgpu` / `winit` /
+//! `termai-gpu` dependency. Its one termai edge besides termai-core is the K-04 width edge
+//! `termai-render -> termai-vt` (ADR-0027 D2, registered in the K4 edge table):
 //! `shape::VtWidthSource` asks `termai_vt::width::measure` for a cluster's columns instead of
 //! carrying a second wcwidth table.
 #![forbid(unsafe_code)]
@@ -25,7 +29,7 @@ pub mod mirror;
 pub mod shape;
 pub mod vrm;
 
-pub use atlas::{AtlasConfig, AtlasError, AtlasKey, GlyphAtlas, GlyphSize, GlyphSlot};
+pub use atlas::{AtlasConfig, AtlasError, AtlasKey, GlyphAtlas, GlyphBitmap, GlyphSize, GlyphSlot};
 pub use shape::{
     glyph_flag, shape_row, shape_row_with_vt_widths, span_flag, AaMode, CellWidthSource,
     ClusterInput, ClusterSpan, FontFace, FontId, RowClusters, RowGlyphs, ShapeContext, ShapeError,

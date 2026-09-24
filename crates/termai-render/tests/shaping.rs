@@ -44,14 +44,27 @@
 //! `unicode-width` left termai-render's manifest with the ADR-0027 D2 crate edge, so the
 //! agreement checked below (`the_render_width_port_and_the_vt_grid_agree_on_every_cluster`)
 //! cannot be an accident of two copies of the same lookup table.
+//!
+//! **S7 rasterisation (this slice).** The last block of tests drives the atlas's `swash` path:
+//! an `AtlasKey` becomes an 8-bit alpha coverage bitmap, grayscale AA with hinting off (AR-14),
+//! stored in the page at the slot the allocator handed out. The bitmap assertions are:
+//! byte-identical output for the same key (and a different `px_size` producing a different
+//! bitmap), ink for an ASCII glyph with dimensions matching the reported slot, a storage shape
+//! of exactly one `u8` per pixel, a non-empty `.notdef` for an uncovered scalar, page byte
+//! accounting equal to the sum of the stored bitmaps, and one configuration-pinning test
+//! (`the_atlas_rasterises_with_the_ar14_settings`) that re-drives `swash` independently with
+//! `.hint(false)` + `Format::Alpha` and compares bytes, so flipping either setting in `atlas.rs`
+//! fails a test instead of silently changing every glyph on screen. Colour glyphs are refused
+//! with a structured error ([`AtlasError::ColorGlyph`]); the test takes that branch, or prints
+//! why this host cannot exercise it.
 
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use termai_render::atlas::{AtlasConfig, GlyphAtlas, GlyphSize};
+use termai_render::atlas::{AtlasConfig, AtlasError, GlyphAtlas, GlyphBitmap, GlyphSize};
 use termai_render::shape::{
-    shape_row, shape_row_with_vt_widths, AaMode, CellWidthSource, ClusterInput, FontFace,
-    RowClusters, ShapeContext, ShapeError, VtWidthSource, VT_WIDTH,
+    glyph_flag, shape_row, shape_row_with_vt_widths, AaMode, CellWidthSource, ClusterInput,
+    FontFace, RowClusters, ShapeContext, ShapeError, VtWidthSource, VT_WIDTH,
 };
 
 /// Every test in this file shapes this transcript, so degradation step 1 asks for one face that
@@ -770,4 +783,687 @@ fn the_mirror_row_materialises_into_clusters_the_shaper_accepts() {
     assert_eq!(glyphs.validate(), Ok(()));
     assert_eq!(glyphs.cluster_span(2), Some(2..4));
     assert_eq!(glyphs.spans.len(), 3);
+}
+
+// ---------------------------------------------------------------------------------------------
+// S7 rasterisation (kernel/03 section 3.4 `Rasterizer::rasterize`, K-05, AR-14).
+//
+// Everything below runs on the CPU with no GPU, no window and no swapchain: an atlas page is a
+// plain `Vec<u8>` in the `R8Unorm` layout the S8 upload will read. The font is still the real
+// face resolved by the printed degradation chain at the top of this file.
+// ---------------------------------------------------------------------------------------------
+
+/// The S6 -> S7 probe glyph: shape `"0"` with the production width port and take the glyph id S6
+/// itself decided. S7 must key that id - a second, independent cmap lookup here could disagree
+/// with what the shaper draws, which is exactly the drift the atlas key exists to prevent.
+fn probe_glyph_id(ctx: &ShapeContext<'_>) -> u32 {
+    let glyphs = shape_row(&ascii_row("0"), ctx, &HONEST).expect("the '0' probe must shape");
+    glyphs.spans[0].glyphs[0].glyph_id
+}
+
+/// A bitmap digest line for `-- --nocapture` evidence: geometry, placement and the byte digest.
+fn describe_bitmap(bitmap: &GlyphBitmap) -> String {
+    format!(
+        "key(glyph={} px={} aa={:?}) slot(page={} x={} y={} w={} h={} gen={}) \
+         bearing=({},{}) bytes={} opaque={} digest={:#018x}",
+        bitmap.key.glyph_id,
+        bitmap.key.px_size,
+        bitmap.key.aa_mode,
+        bitmap.slot.page,
+        bitmap.slot.x,
+        bitmap.slot.y,
+        bitmap.width,
+        bitmap.height,
+        bitmap.slot.gen,
+        bitmap.left,
+        bitmap.top,
+        bitmap.data.len(),
+        bitmap.opaque_pixels(),
+        bitmap.digest()
+    )
+}
+
+#[test]
+fn an_atlas_bitmap_is_byte_identical_for_the_same_key() {
+    let font = font();
+    let ctx = context(font, 16);
+    let glyph_id = probe_glyph_id(&ctx);
+    let key = ctx.atlas_key(glyph_id);
+
+    let mut atlas = GlyphAtlas::new(AtlasConfig::default());
+    let first = atlas
+        .rasterize(key, &ctx.font)
+        .expect("the probe glyph must rasterise");
+    let again = atlas
+        .rasterize(key, &ctx.font)
+        .expect("the probe glyph must rasterise again");
+    assert_eq!(
+        first.data,
+        again.data,
+        "the same AtlasKey must yield byte-identical coverage (font: {})",
+        font.describe()
+    );
+    assert_eq!(first.slot, again.slot, "and the identical slot");
+    assert_eq!(first.digest(), again.digest());
+    assert_eq!(atlas.hits(), 1, "the second call is a bitmap hit");
+    assert_eq!(atlas.misses(), 1);
+
+    // A second atlas and a second, independently parsed face must not change a pixel either.
+    // This is the determinism the RP-08/RP-10 style golden checks need.
+    let other_ctx = context(font, 16);
+    let mut second_atlas = GlyphAtlas::new(AtlasConfig::default());
+    let second = second_atlas
+        .rasterize(
+            other_ctx.atlas_key(probe_glyph_id(&other_ctx)),
+            &other_ctx.font,
+        )
+        .expect("the probe glyph must rasterise in a fresh atlas");
+    assert_eq!(
+        first.data,
+        second.data,
+        "an independent face parse and atlas must give the same pixels (font: {})",
+        font.describe()
+    );
+    assert_eq!(first.digest(), second.digest());
+    assert_eq!(first.left, second.left);
+    assert_eq!(first.top, second.top);
+    eprintln!("S7 atlas bitmap A: {}", describe_bitmap(&first));
+    eprintln!("S7 atlas bitmap B: {}", describe_bitmap(&second));
+}
+
+#[test]
+fn a_different_px_size_rasterises_a_different_bitmap() {
+    let font = font();
+    let small_ctx = context(font, 16);
+    let large_ctx = context(font, 32);
+    let small_glyph = probe_glyph_id(&small_ctx);
+    let large_glyph = probe_glyph_id(&large_ctx);
+    assert_eq!(
+        small_glyph, large_glyph,
+        "the probe glyph id must not depend on the device pixel size"
+    );
+
+    let mut atlas = GlyphAtlas::new(AtlasConfig::default());
+    let small = atlas
+        .rasterize(small_ctx.atlas_key(small_glyph), &small_ctx.font)
+        .expect("the 16px probe must rasterise");
+    let large = atlas
+        .rasterize(large_ctx.atlas_key(large_glyph), &large_ctx.font)
+        .expect("the 32px probe must rasterise");
+
+    assert_ne!(small.key, large.key, "px_size is part of the key");
+    assert_ne!(
+        small.data,
+        large.data,
+        "a different px_size must yield a different bitmap, not a reused one (font: {})",
+        font.describe()
+    );
+    assert_ne!(small.digest(), large.digest());
+    assert_ne!(small.slot, large.slot, "and its own slot");
+    assert!(
+        large.width > small.width || large.height > small.height,
+        "a 32px glyph must not rasterise to the 16px ink box: small={:?} large={:?}",
+        (small.width, small.height),
+        (large.width, large.height)
+    );
+    assert_eq!(atlas.misses(), 2);
+    assert_eq!(atlas.hits(), 0);
+    eprintln!("S7 atlas bitmap 16px: {}", describe_bitmap(&small));
+    eprintln!("S7 atlas bitmap 32px: {}", describe_bitmap(&large));
+}
+
+#[test]
+fn an_ascii_glyph_has_ink_and_its_dimensions_match_its_slot() {
+    let font = font();
+    let ctx = context(font, 16);
+    let glyph_id = probe_glyph_id(&ctx);
+    // The one face-dependent fact in this test. Which direction runs is printed, never skipped:
+    // `-- --nocapture` shows the `S6/S7 font resolution:` line above and the reason below.
+    if font.coverage.ascii_row {
+        assert_ne!(
+            glyph_id,
+            0,
+            "the probe must be a real ASCII glyph of a face covering {ASCII_ROW:?} (font: {})",
+            font.describe()
+        );
+    } else {
+        eprintln!(
+            "an_ascii_glyph_has_ink_and_its_dimensions_match_its_slot: {} - the resolved face \
+             does not cover every scalar of {ASCII_ROW:?}, so the probe keys .notdef (glyph id 0); \
+             the ink and dimension assertions below hold for either id, and .notdef is exactly \
+             what S6 hands S7 in this case",
+            font.branch.label()
+        );
+    }
+
+    let mut atlas = GlyphAtlas::new(AtlasConfig::default());
+    let bitmap = atlas
+        .rasterize(ctx.atlas_key(glyph_id), &ctx.font)
+        .expect("the probe glyph must rasterise");
+    assert!(
+        !bitmap.is_empty(),
+        "an ASCII glyph must produce a bitmap with an ink box (font: {})",
+        font.describe()
+    );
+    assert!(
+        bitmap.has_ink(),
+        "an ASCII glyph must produce at least one nonzero coverage byte (font: {})",
+        font.describe()
+    );
+    // Anti-aliased coverage with body, not a stray byte. Note what is deliberately NOT asserted:
+    // that some pixel reaches full coverage. Measured on this host with the degradation chain
+    // forced to step 3, a light proportional face (Alibaba PuHuiTi 3.0 Light) rasterises '0' at
+    // 16px with peak coverage 253 and **zero** fully covered pixels, so "opaque_pixels() > 0" is
+    // a font property rather than an S7 property. Peak and ink mass are.
+    let mass: u64 = bitmap.data.iter().map(|byte| u64::from(*byte)).sum();
+    assert!(
+        bitmap.data.iter().any(|byte| *byte >= 128),
+        "the rasterised glyph must have substantially covered pixels, peak coverage was {} \
+         (font: {})",
+        bitmap.data.iter().copied().max().unwrap_or(0),
+        font.describe()
+    );
+    assert!(
+        mass >= u64::from(bitmap.width) * u64::from(bitmap.height) * 16,
+        "the ink must have body: coverage mass {mass} over {} pixels is {:.1} per pixel \
+         (font: {})",
+        bitmap.data.len(),
+        mass as f64 / bitmap.data.len().max(1) as f64,
+        font.describe()
+    );
+    // The dimensions the atlas reports *are* the bitmap's dimensions: the slot is the ink box,
+    // so a caller can never read a rect that does not cover its pixels.
+    assert_eq!(bitmap.width, bitmap.slot.width);
+    assert_eq!(bitmap.height, bitmap.slot.height);
+    assert_eq!(
+        bitmap.data.len(),
+        usize::from(bitmap.width) * usize::from(bitmap.height),
+        "one coverage byte per pixel of the reported ink box"
+    );
+    // ...and they are consistent with the metric the key carries: device pixels per em. A
+    // rasterisation at the wrong unit (unscaled font units, a 64x scale_q6 mix-up) would come
+    // back hundreds of pixels wide here.
+    assert!(
+        bitmap.width > 0 && u32::from(bitmap.width) <= 2 * u32::from(ctx.px_size),
+        "a {}px glyph must rasterise to at most {}px wide, got {} (font: {})",
+        ctx.px_size,
+        2 * u32::from(ctx.px_size),
+        bitmap.width,
+        font.describe()
+    );
+    assert!(
+        bitmap.height > 0 && u32::from(bitmap.height) <= 2 * u32::from(ctx.px_size),
+        "a {}px glyph must rasterise to at most {}px tall, got {} (font: {})",
+        ctx.px_size,
+        2 * u32::from(ctx.px_size),
+        bitmap.height,
+        font.describe()
+    );
+    assert!(
+        bitmap.top > 0,
+        "the ink box must sit above the baseline (swash placement top = {}), got {}",
+        bitmap.height,
+        bitmap.top
+    );
+    // The bitmap really is on the page at the slot the atlas reported: read the same rows out of
+    // the raw page buffer and compare.
+    let stride = usize::from(atlas.config().page_size);
+    let page = atlas.page_pixels(bitmap.slot.page);
+    assert_eq!(page.len(), usize::from(atlas.config().page_size).pow(2));
+    for row in 0..usize::from(bitmap.height) {
+        let start = (usize::from(bitmap.slot.y) + row) * stride + usize::from(bitmap.slot.x);
+        let width = usize::from(bitmap.width);
+        assert_eq!(
+            &page[start..start + width],
+            &bitmap.data[row * width..(row + 1) * width],
+            "row {row} of the slot must hold the rasterised row on the page"
+        );
+    }
+    eprintln!("S7 atlas ink: {}", describe_bitmap(&bitmap));
+}
+
+#[test]
+fn atlas_coverage_is_eight_bit_single_channel() {
+    let font = font();
+    let ctx = context(font, 16);
+    let glyph_id = probe_glyph_id(&ctx);
+    let mut atlas = GlyphAtlas::new(AtlasConfig::default());
+    let bitmap = atlas
+        .rasterize(ctx.atlas_key(glyph_id), &ctx.font)
+        .expect("the probe glyph must rasterise");
+
+    // The storage shape, not the values: `data` is one `u8` per pixel, so a three-sample subpixel
+    // mask or a four-byte RGBA bitmap cannot be represented by this API at all.
+    let bytes: &[u8] = bitmap.data.as_slice();
+    assert_eq!(
+        bytes.len(),
+        usize::from(bitmap.width) * usize::from(bitmap.height),
+        "an 8-bit mask is exactly one byte per pixel, never 3 or 4 (font: {})",
+        font.describe()
+    );
+    assert_eq!(
+        u32::try_from(bytes.len()).unwrap() % u32::from(bitmap.width).max(1),
+        0,
+        "the coverage buffer must divide evenly into rows"
+    );
+    // The page is `R8Unorm` 1024x1024 = 1 MiB (kernel/03 section 3.4). An RGBA or subpixel page
+    // would be 4 MiB / 3 MiB: the page size is itself a single-channel assertion.
+    let page = atlas.page_pixels(bitmap.slot.page);
+    assert_eq!(
+        page.len(),
+        1024 * 1024,
+        "a text page is one byte per pixel: 1024x1024 R8Unorm (font: {})",
+        font.describe()
+    );
+    assert_eq!(atlas.used_bytes(), 1024 * 1024);
+    // The bytes read back out of the page are the bytes that were rasterised.
+    let read_back = atlas
+        .bitmap(&bitmap.key)
+        .expect("a stored bitmap must be readable");
+    assert_eq!(read_back, bitmap, "the page round-trips the bitmap");
+    // Grayscale AA, not a 1-bit mask: an anti-aliased unhinted outline leaves partial coverage.
+    assert!(
+        bitmap.data.iter().any(|byte| *byte != 0 && *byte != 255),
+        "every coverage byte is 0 or 255, which is a 1-bit mask rather than AR-14's grayscale AA \
+         (font: {})",
+        font.describe()
+    );
+    eprintln!(
+        "S7 atlas channel shape: {} bytes = {}x{} of u8; page {} bytes",
+        bitmap.data.len(),
+        bitmap.width,
+        bitmap.height,
+        page.len()
+    );
+}
+
+#[test]
+fn an_uncovered_scalar_rasterises_a_notdef_with_ink() {
+    let font = font();
+    let ctx = context(font, 16);
+
+    // A noncharacter: no text face maps it, so S6 must report `.notdef` for it. The candidate
+    // list exists only so the test cannot fail because some exotic face happens to map one of
+    // them; whichever scalar is picked, the assertion is that S6 said glyph id 0.
+    const NONCHARACTERS: &[char] = &['\u{10FFFD}', '\u{FDD0}', '\u{0FFFF}', '\u{E0001}'];
+    let parses = rustybuzz::ttf_parser::Face::parse(&font.data, font.index).is_ok();
+    assert!(
+        parses,
+        "the resolved face must be parseable for the coverage probe (font: {})",
+        font.describe()
+    );
+    let uncovered = NONCHARACTERS.iter().copied().find(|scalar| {
+        rustybuzz::ttf_parser::Face::parse(&font.data, font.index)
+            .ok()
+            .and_then(|face| face.glyph_index(*scalar))
+            .is_none()
+    });
+    eprintln!(
+        "an_uncovered_scalar_rasterises_a_notdef_with_ink: uncovered probe scalar = {uncovered:?} \
+         (branch={})",
+        font.branch.label()
+    );
+
+    let scalar = uncovered.unwrap_or('\u{10FFFD}');
+    let row = RowClusters::new(0, 0, vec![cluster(0, &scalar.to_string())]);
+    let glyphs = shape_row(&row, &ctx, &HONEST).expect("the uncovered row must shape");
+    let glyph = glyphs.spans[0].glyphs[0];
+    assert_eq!(
+        glyph.glyph_id,
+        0,
+        "S6 must report .notdef (glyph id 0) for the uncovered scalar {scalar:?} (font: {})",
+        font.describe()
+    );
+    assert!(
+        glyph.flags & glyph_flag::MISSING != 0,
+        "and must mark it MISSING so S7 is never asked to look up a real glyph"
+    );
+
+    let mut atlas = GlyphAtlas::new(AtlasConfig::default());
+    match atlas.rasterize(ctx.atlas_key(0), &ctx.font) {
+        Ok(bitmap) => {
+            // The documented non-empty branch: a `.notdef` box, not a silent empty slot.
+            assert!(
+                !bitmap.is_empty(),
+                "the .notdef bitmap must have an ink box (font: {})",
+                font.describe()
+            );
+            assert!(
+                bitmap.has_ink(),
+                "the .notdef bitmap must have ink; a stored all-zero slot would be a silent hole \
+                 (font: {})",
+                font.describe()
+            );
+            assert!(atlas.get(&ctx.atlas_key(0)).is_some());
+            assert_eq!(
+                atlas.bitmap_bytes(),
+                bitmap.data.len(),
+                "the accounting counts the .notdef bitmap too"
+            );
+            eprintln!("S7 atlas .notdef: {}", describe_bitmap(&bitmap));
+        }
+        Err(error) => {
+            // The documented refusal branch: this face cannot produce a .notdef image at all.
+            // What must NOT happen is an empty slot stored anyway.
+            eprintln!(
+                "an_uncovered_scalar_rasterises_a_notdef_with_ink: {} - the rasteriser produced \
+                 no image for .notdef, so the documented structured refusal is asserted instead \
+                 of an empty slot (font: {})",
+                font.branch.label(),
+                font.describe()
+            );
+            assert_eq!(
+                error,
+                AtlasError::NoOutline {
+                    font_id: font.id,
+                    glyph_id: 0,
+                }
+            );
+            assert!(
+                atlas.get(&ctx.atlas_key(0)).is_none(),
+                "a refused glyph must leave no slot behind"
+            );
+            assert_eq!(atlas.bitmap_bytes(), 0);
+        }
+    }
+}
+
+#[test]
+fn the_page_bitmap_accounting_equals_the_sum_of_the_stored_bitmaps() {
+    let font = font();
+    let mut atlas = GlyphAtlas::new(AtlasConfig::default());
+    let mut stored: Vec<GlyphBitmap> = Vec::new();
+    // Three sizes of the '0' probe plus one other ASCII glyph, so a page holds more than one
+    // bitmap and the accounting is a sum rather than a single value.
+    for px_size in [16_u16, 20, 24] {
+        let ctx = context(font, px_size);
+        let bitmap = atlas
+            .rasterize(ctx.atlas_key(probe_glyph_id(&ctx)), &ctx.font)
+            .expect("the probe glyph must rasterise");
+        stored.push(bitmap);
+        let other = shape_row(&ascii_row("1"), &ctx, &HONEST).expect("the '1' probe must shape");
+        let other_id = other.spans[0].glyphs[0].glyph_id;
+        stored.push(
+            atlas
+                .rasterize(ctx.atlas_key(other_id), &ctx.font)
+                .expect("the '1' glyph must rasterise"),
+        );
+    }
+
+    let expected: usize = stored.iter().map(|bitmap| bitmap.data.len()).sum();
+    assert!(
+        expected > 0,
+        "the stored bitmaps must not all be empty (font: {})",
+        font.describe()
+    );
+    assert_eq!(
+        atlas.bitmap_bytes(),
+        expected,
+        "the atlas's bitmap accounting must be the sum of the stored bitmaps (font: {})",
+        font.describe()
+    );
+    let per_page: usize = (0..u8::try_from(atlas.page_count()).unwrap())
+        .map(|page| atlas.page_bitmap_bytes(page))
+        .sum();
+    assert_eq!(
+        per_page, expected,
+        "and the per-page accounting must sum to the same number"
+    );
+    for bitmap in &stored {
+        assert_eq!(
+            atlas.page_bitmap_bytes(bitmap.slot.page),
+            stored
+                .iter()
+                .filter(|other| other.slot.page == bitmap.slot.page)
+                .map(|other| other.data.len())
+                .sum::<usize>(),
+            "page {} must account for exactly the bitmaps it holds",
+            bitmap.slot.page
+        );
+    }
+    // The page cost is the page's, not the bitmaps': `used_bytes` stays the 1 MiB R8Unorm page
+    // the S8 upload allocates (kernel/03 section 3.4), and the bitmaps fit inside it.
+    assert_eq!(atlas.page_count(), 1);
+    assert_eq!(atlas.used_bytes(), 1024 * 1024);
+    assert!(
+        atlas.bitmap_bytes() <= atlas.used_bytes(),
+        "stored bitmap bytes {} cannot exceed the page bytes {}",
+        atlas.bitmap_bytes(),
+        atlas.used_bytes()
+    );
+    eprintln!(
+        "S7 atlas accounting: {} bitmaps, bitmap_bytes={} of used_bytes={} on {} page(s)",
+        stored.len(),
+        atlas.bitmap_bytes(),
+        atlas.used_bytes(),
+        atlas.page_count()
+    );
+}
+
+#[test]
+fn the_atlas_rasterises_with_the_ar14_settings() {
+    // The configuration pin for AR-14. The test re-drives swash itself - an independent call
+    // sequence with hinting off and a grayscale Alpha format - and compares the bytes against
+    // what the atlas produced. Flipping `hint(false)` to `hint(true)` or `Format::Alpha` to
+    // `Format::Subpixel` in `atlas.rs` changes the atlas's pixels and this test fails, which is
+    // what makes "hinting is off" an assertion rather than a comment.
+    let font = font();
+    let ctx = context(font, 16);
+    let glyph_id = probe_glyph_id(&ctx);
+    let mut atlas = GlyphAtlas::new(AtlasConfig::default());
+    let bitmap = atlas
+        .rasterize(ctx.atlas_key(glyph_id), &ctx.font)
+        .expect("the probe glyph must rasterise");
+
+    let font_ref = swash::FontRef::from_index(&font.data, font.index as usize)
+        .expect("the resolved face must parse in swash");
+    let mut scale_context = swash::scale::ScaleContext::new();
+    let mut scaler = scale_context
+        .builder(font_ref)
+        .size(f32::from(ctx.px_size))
+        // AR-14: hinting OFF.
+        .hint(false)
+        .build();
+    let mut render = swash::scale::Render::new(&[swash::scale::Source::Outline]);
+    render
+        // AR-14: grayscale AA = one coverage byte per pixel.
+        .format(swash::zeno::Format::Alpha)
+        .style(swash::zeno::Style::default())
+        .offset(swash::zeno::Vector::new(0.0, 0.0));
+    let reference = render
+        .render(
+            &mut scaler,
+            u16::try_from(glyph_id).expect("the probe glyph id fits u16"),
+        )
+        .expect("the reference rasterisation must produce an image");
+
+    assert_eq!(
+        reference.placement.left,
+        i32::from(bitmap.left),
+        "the atlas must report swash's own bearing (font: {})",
+        font.describe()
+    );
+    assert_eq!(
+        reference.placement.top,
+        i32::from(bitmap.top),
+        "the atlas must report swash's own placement top (font: {})",
+        font.describe()
+    );
+    assert_eq!(
+        reference.placement.width,
+        u32::from(bitmap.width),
+        "the atlas slot must be the rasterised ink box (font: {})",
+        font.describe()
+    );
+    assert_eq!(
+        reference.placement.height,
+        u32::from(bitmap.height),
+        "the atlas slot must be the rasterised ink box (font: {})",
+        font.describe()
+    );
+    assert_eq!(
+        reference.data,
+        bitmap.data,
+        "the atlas must rasterise with AR-14's settings (hinting off, Format::Alpha, zero \
+         offset); a different configuration changes every coverage byte (font: {})",
+        font.describe()
+    );
+    eprintln!(
+        "S7 atlas AR-14 pin: {} reference bytes == {} atlas bytes",
+        reference.data.len(),
+        bitmap.data.len()
+    );
+}
+
+#[test]
+fn a_colour_glyph_is_refused_with_a_reason() {
+    // DC-17 / kernel/03 section 3.4 put colour glyphs on the RGBA8 colour page this slice does
+    // not own, and AR-14 promises no subpixel AA: the atlas refuses rather than approximating.
+    // This test finds a colour glyph on the host if one exists. If the host has no colour font,
+    // that is printed - the rest of this file still runs at full strength.
+    let mut db = fontdb::Database::new();
+    db.load_system_fonts();
+    let mut found: Option<(fontdb::ID, u32, Vec<u8>, u32, String)> = None;
+    'faces: for face in db.faces() {
+        let data = db.with_face_data(face.id, |data, _| data.to_vec());
+        let Some(data) = data else { continue };
+        let Some(font_ref) = swash::FontRef::from_index(&data, face.index as usize) else {
+            continue;
+        };
+        let mut scale_context = swash::scale::ScaleContext::new();
+        let mut scaler = scale_context
+            .builder(font_ref)
+            .size(16.0)
+            .hint(false)
+            .build();
+        let has_colour = scaler.has_color_outlines() || scaler.has_color_bitmaps();
+        if !has_colour {
+            continue;
+        }
+        let glyph_count = u32::from(font_ref.metrics(&[]).glyph_count);
+        for glyph_id in 0..glyph_count.min(4096) {
+            let Ok(probe) = u16::try_from(glyph_id) else {
+                continue;
+            };
+            let colour = (scaler.has_color_outlines()
+                && scaler.scale_color_outline(probe).is_some())
+                || (scaler.has_color_bitmaps()
+                    && scaler
+                        .scale_color_bitmap(probe, swash::scale::StrikeWith::BestFit)
+                        .is_some());
+            if colour {
+                found = Some((
+                    face.id,
+                    face.index,
+                    data.clone(),
+                    glyph_id,
+                    face.post_script_name.clone(),
+                ));
+                break 'faces;
+            }
+        }
+    }
+
+    let Some((font_id, face_index, data, glyph_id, name)) = found else {
+        eprintln!(
+            "a_colour_glyph_is_refused_with_a_reason: no colour-capable face on this host, so the \
+             refusal branch cannot be exercised here; the grayscale refusals asserted in \
+             `the_atlas_refuses_a_key_the_rasteriser_cannot_honour` still run (host faces: {})",
+            db.len()
+        );
+        return;
+    };
+
+    let face = FontFace::from_slice(font_id, &data, face_index)
+        .expect("fontdb handed out a colour face that rustybuzz cannot parse");
+    let mut atlas = GlyphAtlas::new(AtlasConfig::default());
+    let key = termai_render::atlas::AtlasKey {
+        font_id,
+        glyph_id,
+        px_size: 16,
+        aa_mode: AaMode::Sharp,
+    };
+    assert_eq!(
+        atlas.rasterize(key, &face),
+        Err(AtlasError::ColorGlyph { font_id, glyph_id }),
+        "a COLR/CBDT glyph must be refused with a reason, not squeezed into the R8 page \
+         (face: {name:?})"
+    );
+    assert!(
+        atlas.get(&key).is_none(),
+        "a refused colour glyph must leave no slot behind"
+    );
+    assert_eq!(atlas.bitmap_bytes(), 0);
+    eprintln!(
+        "S7 atlas colour refusal: face={name:?} glyph={glyph_id} -> ColorGlyph (RGBA8 colour page \
+         is the emoji slice's, kernel/03 section 3.4)"
+    );
+}
+
+#[test]
+fn the_atlas_refuses_a_key_the_rasteriser_cannot_honour() {
+    let font = font();
+    let ctx = context(font, 16);
+    let glyph_id = probe_glyph_id(&ctx);
+    let mut atlas = GlyphAtlas::new(AtlasConfig::default());
+
+    // A zero device pixel size: swash reads `size(0)` as "unscaled font units" and would hand
+    // back a glyph hundreds of pixels wide instead of erroring.
+    let mut zero = ctx.atlas_key(glyph_id);
+    zero.px_size = 0;
+    assert_eq!(
+        atlas.rasterize(zero, &ctx.font),
+        Err(AtlasError::ZeroPixelSize),
+        "a zero px_size must be refused before anything is allocated (font: {})",
+        font.describe()
+    );
+    // A glyph id outside swash's 16-bit glyph id space.
+    let mut huge = ctx.atlas_key(glyph_id);
+    huge.glyph_id = u32::from(u16::MAX) + 1;
+    assert_eq!(
+        atlas.rasterize(huge, &ctx.font),
+        Err(AtlasError::GlyphOutOfRange {
+            glyph_id: u32::from(u16::MAX) + 1,
+        })
+    );
+    // The key names the resolved face; a key from another font may never be drawn with these
+    // outlines. A second real face off the host is the honest way to build that mismatch.
+    let other_font = {
+        let mut db = fontdb::Database::new();
+        db.load_system_fonts();
+        let other = db
+            .faces()
+            .find(|face| face.id != font.id)
+            .map(|face| face.id);
+        other
+    };
+    if let Some(other_id) = other_font {
+        let mut foreign = ctx.atlas_key(glyph_id);
+        foreign.font_id = other_id;
+        assert_eq!(
+            atlas.rasterize(foreign, &ctx.font),
+            Err(AtlasError::FontMismatch {
+                key_font: other_id,
+                face: font.id,
+            }),
+            "a key from another face must be refused (font: {})",
+            font.describe()
+        );
+    } else {
+        eprintln!(
+            "the_atlas_refuses_a_key_the_rasteriser_cannot_honour: the host has exactly one face, \
+             so the font-mismatch refusal is not exercised here; the zero-px-size and glyph-range \
+             refusals above still are"
+        );
+    }
+    assert_eq!(
+        atlas.page_count(),
+        0,
+        "no refusal may have allocated a page (font: {})",
+        font.describe()
+    );
+    assert_eq!(atlas.bitmap_bytes(), 0);
+    // And the control: the very same key, unchanged, does rasterise.
+    assert!(atlas.rasterize(ctx.atlas_key(glyph_id), &ctx.font).is_ok());
+    assert_eq!(atlas.page_count(), 1);
 }
