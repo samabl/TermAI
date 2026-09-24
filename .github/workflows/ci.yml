@@ -357,8 +357,81 @@ jobs:
           rustup show
           rustc -vV
           cargo --version
+      # DIAGNOSABILITY (same measured defect as the macos-arm64 job): this job's workspace test
+      # suite is K3, which runs inside tools/kernel-gates/check.mjs, so it is the kernel:check
+      # step that carries the failure. Its only anonymous signal used to be "exit code 1";
+      # the job-log endpoint needs credentials, but workflow commands are readable anonymously
+      # as check-run annotations. check.mjs already prints the test output, but only as a
+      # 2000-character tail, so the extractor additionally tolerates check.mjs's "..." marker
+      # and the indentation its report adds. NOTE: K3's failing test names are only as
+      # complete as that tail - see the report's stated limit.
+      # The gates still run exactly ONCE, the full output is printed, and the original exit
+      # status is propagated, so a red run stays red (no `|| true`, no continue-on-error,
+      # no retry, unchanged gate semantics).
+      # The capture file lives under RUNNER_TEMP and is never uploaded (AR-11 / section 6.3).
+      # The step name is deliberately unchanged: K8 pairs gates by step-name prefix.
       - name: kernel:check (K1-K8, merge-blocking)
-        run: node tools/kernel-gates/check.mjs
+        run: |
+          set +e
+          log="${RUNNER_TEMP:-/tmp}/termai-cargo-test-workspace.txt"
+          node tools/kernel-gates/check.mjs > "$log" 2>&1
+          status=$?
+          echo "--- kernel:check (K1-K8): full output (exit $status) ---"
+          cat "$log"
+          echo "--- kernel:check (K1-K8): end of captured output ---"
+          if [ "$status" -ne 0 ]; then
+            # One ::error:: per distinct failure shape found in the captured output. The
+            # extractor prints NOTHING when the log names no failure, so a green run adds
+            # zero annotations (that is the control, not a hope). POSIX sh + tr + awk only:
+            # no new action (ADR-0021), no third-party tool. awk is used because the trailing
+            # `failures:` list is only recognisable by its indentation.
+            tr -d '\r' < "$log" | awk '
+              function esc(s) { gsub(/%/, "%25", s); return s }
+              {
+                line = $0
+                sub(/^[[:space:]]*output tail: /, "", line)
+                sub(/^[[:space:]]*\.\.\./, "", line)
+                flat = line
+                sub(/^[[:space:]]+/, "", flat)
+                if (flat ~ /^test .* \.\.\. FAILED$/) {
+                  name = flat; sub(/^test /, "", name); sub(/ \.\.\. FAILED$/, "", name)
+                  if (!(("t:" name) in seen)) { seen["t:" name] = 1; print esc("test " name " FAILED") }
+                  next
+                }
+                if (flat ~ /^---- .* stdout ----$/) {
+                  name = flat; sub(/^---- /, "", name); sub(/ stdout ----$/, "", name)
+                  if (!(("p:" name) in seen)) { seen["p:" name] = 1; print esc("test " name " panicked (its stdout block is in the log)") }
+                  infail = 0
+                  next
+                }
+                if (flat ~ /^error(\[E[0-9]+\])?:/) {
+                  if (!(("e:" flat) in seen)) { seen["e:" flat] = 1; print esc(flat) }
+                  next
+                }
+                if (flat ~ /^failures:[[:space:]]*$/) { infail = 1; next }
+                if (flat ~ /^test result:/) { infail = 0; next }
+                if (infail && line ~ /^[[:space:]]+[^[:space:]]/) {
+                  name = line; sub(/^[[:space:]]+/, "", name); sub(/[[:space:]]+$/, "", name)
+                  if (!(("t:" name) in seen)) { seen["t:" name] = 1; print esc("test " name " FAILED") }
+                }
+              }
+            ' > "$log.annotations"
+            total=$(wc -l < "$log.annotations" | tr -d '[:space:]')
+            if [ "$total" -gt 50 ]; then emitted=50; else emitted="$total"; fi
+            n=0
+            while IFS= read -r annotation; do
+              n=$((n + 1))
+              if [ "$n" -le 50 ]; then
+                printf '::error::%s\n' "$annotation"
+              fi
+            done < "$log.annotations"
+            if [ "$total" -gt 0 ]; then
+              printf '::error::termai: %s of %s failing-test annotation(s) emitted; %s truncated (cap 50). The full output is printed above.\n' "$emitted" "$total" "$((total - emitted))"
+            else
+              printf '::warning::termai: the gates failed (exit %s) but the output named no test/compile failure shape; read the printed output above.\n' "$status"
+            fi
+          fi
+          exit "$status"
       - name: kernel:selftest (inject faults; prove the gates are not always-green)
         run: node tools/kernel-gates/check.mjs --selftest
       # E-P0-3's "gates in CI" half. ADR-0014 decision 5: section 5 numbers are NON_GATING off an
@@ -469,8 +542,78 @@ jobs:
         run: cargo check --workspace --all-targets
       - name: cargo clippy --workspace --all-targets -- -D warnings
         run: cargo clippy --workspace --all-targets -- -D warnings
+      # DIAGNOSABILITY (measured defect, not a hypothetical one): this step's only anonymous
+      # signal used to be "Process completed with exit code 101". The job-log endpoint
+      # (GET /repos/{owner}/{repo}/actions/jobs/{id}/logs) requires credentials, but workflow
+      # commands ARE readable anonymously as check-run annotations
+      # (GET /repos/{owner}/{repo}/commits/{sha}/check-runs + /check-runs/{id}/annotations).
+      # So the failing test names are re-emitted as ::error:: annotations.
+      # The suite still runs exactly ONCE; the captured output is printed in full so the log
+      # keeps every line it had; and the original exit status is propagated, so a red suite
+      # stays red (no `|| true`, no continue-on-error, no retry, unchanged gate semantics).
+      # The capture file lives under RUNNER_TEMP and is never uploaded (AR-11 / section 6.3).
       - name: cargo test --workspace
-        run: cargo test --workspace
+        run: |
+          set +e
+          log="${RUNNER_TEMP:-/tmp}/termai-cargo-test-workspace.txt"
+          cargo test --workspace > "$log" 2>&1
+          status=$?
+          echo "--- cargo test --workspace: full output (exit $status) ---"
+          cat "$log"
+          echo "--- cargo test --workspace: end of captured output ---"
+          if [ "$status" -ne 0 ]; then
+            # One ::error:: per distinct failure shape found in the captured output. The
+            # extractor prints NOTHING when the log names no failure, so a green run adds
+            # zero annotations (that is the control, not a hope). POSIX sh + tr + awk only:
+            # no new action (ADR-0021), no third-party tool. awk is used because the trailing
+            # `failures:` list is only recognisable by its indentation.
+            tr -d '\r' < "$log" | awk '
+              function esc(s) { gsub(/%/, "%25", s); return s }
+              {
+                line = $0
+                sub(/^[[:space:]]*output tail: /, "", line)
+                sub(/^[[:space:]]*\.\.\./, "", line)
+                flat = line
+                sub(/^[[:space:]]+/, "", flat)
+                if (flat ~ /^test .* \.\.\. FAILED$/) {
+                  name = flat; sub(/^test /, "", name); sub(/ \.\.\. FAILED$/, "", name)
+                  if (!(("t:" name) in seen)) { seen["t:" name] = 1; print esc("test " name " FAILED") }
+                  next
+                }
+                if (flat ~ /^---- .* stdout ----$/) {
+                  name = flat; sub(/^---- /, "", name); sub(/ stdout ----$/, "", name)
+                  if (!(("p:" name) in seen)) { seen["p:" name] = 1; print esc("test " name " panicked (its stdout block is in the log)") }
+                  infail = 0
+                  next
+                }
+                if (flat ~ /^error(\[E[0-9]+\])?:/) {
+                  if (!(("e:" flat) in seen)) { seen["e:" flat] = 1; print esc(flat) }
+                  next
+                }
+                if (flat ~ /^failures:[[:space:]]*$/) { infail = 1; next }
+                if (flat ~ /^test result:/) { infail = 0; next }
+                if (infail && line ~ /^[[:space:]]+[^[:space:]]/) {
+                  name = line; sub(/^[[:space:]]+/, "", name); sub(/[[:space:]]+$/, "", name)
+                  if (!(("t:" name) in seen)) { seen["t:" name] = 1; print esc("test " name " FAILED") }
+                }
+              }
+            ' > "$log.annotations"
+            total=$(wc -l < "$log.annotations" | tr -d '[:space:]')
+            if [ "$total" -gt 50 ]; then emitted=50; else emitted="$total"; fi
+            n=0
+            while IFS= read -r annotation; do
+              n=$((n + 1))
+              if [ "$n" -le 50 ]; then
+                printf '::error::%s\n' "$annotation"
+              fi
+            done < "$log.annotations"
+            if [ "$total" -gt 0 ]; then
+              printf '::error::termai: %s of %s failing-test annotation(s) emitted; %s truncated (cap 50). The full suite output is printed above.\n' "$emitted" "$total" "$((total - emitted))"
+            else
+              printf '::warning::termai: the suite failed (exit %s) but its output named no test/compile failure shape; read the printed output above.\n' "$status"
+            fi
+          fi
+          exit "$status"
 
   windows-build:
     name: windows build (release workspace artifacts)
