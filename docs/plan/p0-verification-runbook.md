@@ -46,17 +46,17 @@ python tools/conformance/upstream/esctest_adapter.py --esctest <esctest2 检出>
 
 **第 257 轮（ADR-0030）：esctest 的数字必须连「级别 + eligible 分母」一起报，缺级别的数字不得引用。**
 规则：声明的 VT 级别 = xterm DA1 在该级别的 expected 集合**全部为已实现能力**的最高级别（当前 = **1**）；**禁止**按失败数选级别。
-本机实测（同一检出、同一命令，只换 `--max-vt-level`）：
+本机实测（同一检出、同一命令，**`--xterm-reverse-wrap 383`**；**第 271 轮重测，让整张表用同一把尺子**；第 257 轮的 flag-0 表见 ADR-0030 附录，仅作历史对照）：
 
 | level | passed | known-bug | failed | eligible = passed+failed |
 | --- | --- | --- | --- | --- |
-| **1（当前声明）** | ~~99~~ **103**（第 261 轮，D-3 之后） | 378 | ~~**90**~~ **86** | 189（raw = passed+failed） |
-| 2 | 105 | 369 | 93 | 198 |
-| 3 | 111 | 334 | 122 | 233 |
-| 4 | 266 | 43 | 258 | 524 |
-| 5（旧口径/默认） | 267 | 41 | **259** | 526 |
+| **1（当前声明）** | **124** | 376 | **67** | 191 |
+| 2 | 126 | 367 | 74 | 200 |
+| 3 | 133 | 332 | 102 | 235 |
+| 4 | 292 | 41 | 234 | 526 |
+| 5 | 293 | 39 | 235 | 528 |
 
-**raw 与 gate-eligible 不是一回事**（第 261 轮）：D-2 声明的 `color-query` 静态缺失会把 47 条 color 族失败移出判定集，因此 **gate-eligible = 189 − 47 = 142，failed_real = 86 − 47 = 39**。这个换算**必须由工具做，不许手算**：
+**raw 与 gate-eligible 不是一回事**（第 261 轮；第 271 轮按当前口径更新）：D-2/ADR-0032 声明的静态缺失会把失败移出判定集——level 1 是 **excluded_by_capability 67 = 47 `color-query` + 17 `xterm-window-ops` + 2 `deccolm-132` + 1 `c1-8bit-controls`**，因此 **gate-eligible = 191 − 67 = 124，`failed_real` = 67 − 67 = 0**。这个换算**必须由工具做，不许手算**：
 
 ```powershell
 node tools/conformance/esctest-report.mjs --log target/conformance/lvl1-new/esctest.log
