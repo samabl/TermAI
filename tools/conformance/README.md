@@ -42,6 +42,14 @@ bin target (no Cargo.toml change, no new dependency) that calls only the public 
 `parse_trec`, `run`, `write_golden`, `Terminal`, `lane_verdict`. It never changes
 VT semantics.
 
+`vttest/` holds the V-01 build probe (`build-vttest.ps1` + its raw logs). This round
+established that **no runnable vttest exists on this host**, and that the missing piece is
+**not** a C compiler — MSVC `cl` 19.51 and w64devkit `gcc` 14.1 + `make` 4.4.1 both run —
+but a POSIX tty header: mingw-w64 ships no `termios.h`, so upstream `vttest.h:57` hard-errors
+with `#error please fix me`. See `vttest/README.md` for the four probes' raw output, the
+verified minimal unblock (MSYS2 **msys** gcc+make, ~10–20 min), what V-01 still needs beyond
+a compiler, and a correction owed to `docs/audit/debt-p0.md` row A3.
+
 ## Case format
 
 One case = one `.trec` body plus one metadata line. Bodies use the implemented
