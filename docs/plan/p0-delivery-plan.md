@@ -14,7 +14,7 @@ HARNESS §7 对 P0 的出口标准是四条，本文只做拆解，**不得改�
 | **E-P0-1** | vttest + esctest 全通过 | §8.1-1 **G1**（vttest/esctest/kitty 100%；xterm ≥99%，差异登记在案） | **未判定（已有可执行数字）**：harness 已落地，L0 gating **64/64（R=1.0）**，但语料 **275 / AR-31 的 ≥2000**、**真实语料 0% / ≥20%**——后者**环境阻塞**（需 Xvfb + 钉定 xterm 的 oracle 环境，见 SD-20 段）；esctest 当前 **267 passed / 41 known-bug / 259 failed / substitutions 0**（**必须带 `-- --expected-terminal xterm --xterm-checksum 336`**；缺该参数时 esctest 会对每格校验和取反，得出 110/117 一类的**伪失败**，见 §6.3 规则 8），**已通过 AR-27 两次运行自检**（两次结果与失败集合逐字节相同）；**vttest 本机无法构建**（无 C 编译器）。**⚠ 第 256 轮（ADR-0029 D-1）：G1 的判定域是 kernel/01 §5 的**两个**套件，不是一个**——**V-02（esctest）** 要求 **`R_strict=1 且 X=0`**；**V-04（xterm 语料）** 才是「**≥99% + 差异登记**」。因此这 **259 条失败全部按硬缺口计**，**不得**用差异登记豁免（对 esctest 登记差异会要求 `X>0`，与 K-01 冲突，且构成 §8.1-1 的放宽） |
 | **E-P0-2** | 三平台 IME/CJK 矩阵全绿 | §8.2 可访问性 + `kernel/05` IN-AC-04（截图矩阵 + 人工会签，AR-31 第 4 条：不进 §5） | **未实现**：无原生窗口 / GPU / IME 宿主；且渲染依赖（wgpu/rustybuzz/swash/winit）在本环境**无法取得 SPDX 证据**（ADR-0015 P3 未知即拒绝）→ ADR-0024 只落地了**零依赖的镜像切片** |
 | **E-P0-3** | 性能门禁进 CI | §8.1-4 **G4**（§5 全部门禁；AR-27 的 G4-PR / G4-REL 双口径）+ ADR-0014（RM-A/B/C，云 runner NON-GATING） | **未判定**：B-10 方法学已落地并自证（`bench:check` ~~7 PASS~~ **第 257 轮为 8 PASS（ADR-0029 D-4 加 B9）** / ~~`bench:selftest` 54/54~~ **第 256 轮为 65/65、第 257 轮为 74/74**），但 **§5 每条指标的测量实现未做**（**第 255 轮已补上「机器无关行 → 报告 → 展示」的读取与行绑定路径**：`tools/bench/values.mjs` + `B8` 扩展；**本机实测仍缺**——只产得出 H18 与表外对照 C1），且**无 RM-A/B/C 参考机** → 工具每次打印 `gating numbers produced by this run: 0`。**「进 CI」的一半已完成**：`bench:check` 与 `conformance L0` 已接入 Windows/Linux 两个 job（**结构性门禁阻断、§5 数字在 INCONCLUSIVE 状态下按 ADR-0014 不阻断**）；**仍缺的是参考机上的判定** |
-| **E-P0-4** | screen 可恢复 | §8.2 可靠性（UI 崩溃 <2s 重连且屏幕一致；sessiond 重建 P95 ≤2s / P99 ≤5s，AR-26 第 4 条） | **部分**：`recover_session` + **attach 握手（WS-05a）** + **TAIL_REPLAY（WS-05b / ADR-0026）** 已交付；但 **sessiond 重建 P95/P99 的验收未做**、**跨段重放未实现**、且 sessiond 目前**不持有 PTY**（真实生命周期仍在 `apps/termai`） |
+| **E-P0-4** | screen 可恢复 | §8.2 可靠性（UI 崩溃 <2s 重连且屏幕一致；sessiond 重建 P95 ≤2s / P99 ≤5s，AR-26 第 4 条） | **部分**：`recover_session` + **attach 握手（WS-05a）** + **TAIL_REPLAY（WS-05b / ADR-0026）** 已交付；~~但 **sessiond 重建 P95/P99 的验收未做**、**跨段重放未实现**、且 sessiond 目前**不持有 PTY**（真实生命周期仍在 `apps/termai`）~~ → **第 272 轮更正：跨段重放已于第 115–125 轮落地（A10）；sessiond 已在守护进程层持有 PTY（`fd04a11`，A8，关闭 → 树回收 ≤2s 有真实进程验收）**。**仍缺**：**sessiond 重建 P95/P99 的验收（A9）**，且 `SessionHost::probed()` 尚无调用者（main 仍是 stub） |
 
 **附带不得回退的门禁**（P0 期间任一 PR 都不得使其变红）：§8.1-2 G2 行为回放 ≥99.5%、§8.1-3 G3 视觉回归 ≤0.1%、§8.1-5 G5 依赖与许可、§8.1-6 G6 安全与 fuzz 24h；以及 G7（S1–S10）/ G8（B1–B10）设计门禁。
 
@@ -154,6 +154,24 @@ P0 只启用三条现有团队线，其余（T3 Agent / T4 生态）在 P2/P3 �
 **本轮新增登记**：**SD-15**（快照不带 rev → 快照后 rev 基线无定义）、**SD-16**（`kernel/04` §3.4 首个 Interactive attach 自动授予租约 **与 AR-03 冲突 → 裁决：显式授权优先**）、**SD-17**（`proto_range` vs `proto_min/proto_max` 命名）、**SD-18**（attach 暴露的会话域错误码未登记 → 已在 `kernel/07` §3.8 补登 `NoSuchSession` / `AttachStateInvalid`；`Corrupt` 表达「未 attach」列为 WS-05b 待切换项）。
 
 **新增 ADR**：**ADR-0024**（渲染第一刀：crate 依赖位置 + 第三方依赖**零准入**）。
+#### Wave 3 回报（第 272 轮：三条切片，子代理执行 + 总负责人独立复核后提交）
+
+**入口纪律（本轮新增一条，写在这里以便下一个会话读到）**：本会话的三条切片都遵守了「一轮可验证 + 显式非目标 + 限定阅读面 + 原件证据 + 止损」五条，**三条全部落地**；其中两条是**判断/管道类**切片（vttest 可行性、sessiond 重建路径），它们过去是「跑几轮零产出」的重灾区——本轮能落地的原因不是模型变好，而是**派单前把管道搭好了**：vttest 那条明确给了「四步顺序 + 25 分钟可行性预算 + 组装工具链的候选路径」，sessiond 那条明确给了「已核实的事实清单，不许重新推导」。**这一条是 §6.3 规则 7/9 的正例**。
+
+| 编号 | 工作流 | 状态 | 已验证证据（总负责人亲自实跑） | 未验证边界（诚实） |
+| --- | --- | --- | --- | --- |
+| **W3-A** | A8：sessiond 持有 PTY + 会话关闭显式杀树（E-P0-4 / AR-30 第 2 条） | **完成**（`fd04a11`） | `apps/sessiond/src/host.rs`（`SessionHost`/`PtySession`）：`kill(Force)` → 有界 `wait`（`REAP_BUDGET = 1.5s`）→ 恰好一次释放 pty；reap 失败报 `NotReaped` 而非成功。`apps/sessiond/tests/pty_lifecycle.rs`：关闭后**子进程与孙进程** 2s 内消失（自 close 起轮询），对照 1「未关闭的会话同时刻仍有活树」、对照 2「close 幂等」。**非空真性**：临时桩掉 kill+wait → `left: 2 / right: 0`。总负责人实跑：`cargo test --workspace` exit 0（sessiond lib 42 / pty_lifecycle 3 / wire 20）、`kernel-gates` **8 PASS**、`conformance` **68/68**、`bench:check` **8 PASS** | **E-P0-4 仍为「部分」**：① `SessionHost::probed()` **没有任何 main 循环调用它**（`apps/sessiond/src/main.rs` 仍是 stub），`broker.rs` 也无 session-closed 拆除点（只有 `GO_AWAY → Draining`）——即这条回收路径在当前生产路径上**还没有触发者**；② A9 的重建时延验收（AR-26 第 4 条）未做；③ Unix 侧的树枚举只列组长（`crates/termai-pty/src/unix/pty.rs:418-436`），故「孙进程」断言只在 Windows/ConPTY 上成立 |
+| **W3-B** | kernel/03 **S6 shaping + S7 atlas**（E-P0-2 关键路径第一刀） | **完成**（`6f3a590`） | 根 `Cargo.toml` 准入 `rustybuzz 0.20.1` / `swash 0.2.10` / `fontdb 0.24.0`（ADR-0027 D1 tier A；unmaintained 公告走 ADR-0031 的 W-01）。`shape.rs`：cluster→cell 跨度 + `fit_squeezed` 计数 + `canonical_bytes` 字节级确定性，`ColumnMismatch`/`SpanWidthMismatch` **可触发**；`atlas.rs`：`AtlasKey` 货架分配 + 页 LRU + miss/hit/eviction/generation。真实系统字体（`fontdb` → `C:\Windows\Fonts\BIZ-UDGothicB.ttc`），无字体即**响亮失败**。总负责人实跑：`cargo test --workspace` exit 0、`clippy -D warnings` exit 0、`fmt --check` exit 0、`kernel-gates` **8 PASS**（K4 允许边未变） | **本切片不产像素**，故**它自身不移动 E-P0-2 也不移动 E-P0-3**；RP-01/02/05/10/11/14 与 §5 每一行仍未判定。**K-04 缺口（新登记）**：`kernel/03:187` 要求的 `termai-vt::width::measure` **不存在公开 API**（`crates/termai-vt/src/lib.rs:17-29`；唯一 wcwidth 用法在私有 `grid.rs:19/911`），因此本切片用注入端口 `CellWidthSource` 保住了 K-04 的实质（`termai-render` 无第二张宽度表），但那条规格行**目前仍是纸面**；把它变成真的是下一刀（公开宽度 API + K4 登记 ADR-0027 D2 的 `termai-render -> termai-vt` 边） |
+| **W3-C** | A3：vttest 可构建性（E-P0-1 / V-01） | **完成（结论：仍不可构建，但原因被更正）**（`c3c66c8`） | 四路探针的原始输出（`tools/conformance/vttest/README.md`）：MSVC `cl` 19.51 与 w64devkit `gcc` 14.1 + `make` 4.4.1 **都可用**；A3 原引的 `no acceptable cc found in $PATH` **可复现但根因是 autoconf 在 `;` 分隔 PATH 上按 `:` 切分**（同一 shell 里 `gcc --version` 正常）；真正的墙是 **`vttest.h:49-58` 只要 termios.h/termio.h/sgtty.h，而 mingw-w64 三者皆无** → `vttest.h:57: #error please fix me`。脚本**有意不打补丁**（桩掉 termios 的 vttest 不再是 V-01 需要的那把上游尺子） | **未产出一行 vttest 输出、没有 `probe.mjs`、不主张任何 G1 进展**。即便按已验证的解法装上 MSYS2 `msys` 工具链（10–20 分钟，T5 系统变更），V-01 **仍不可判定**：① 期望网格需钉定 **xterm + Xvfb** oracle（本机无 X11）；② 需 `expect` 式**双向** driver 回答 DA/DECRQM/DSR；③ `unix_io.c:260-266` 的 `readnl()` 在管道 EOF 时 `read()` 返回 **0 而非 −1** → 有限 stdin 脚本**死循环而非退出** |
+
+**发起人裁决（第 272 轮，逐条记录以便审计）**：
+
+1. **oracle/参考机环境（Xvfb + 钉定 xterm、RM-A/B/C）：本轮不做** → **E-P0-1 的真实语料 ≥20% 与 vttest golden 保持「未判定」**，不做替代方案、不用自钉基线冒充。
+2. **治理前置 C1–C3（TSC 未成立 / CODEOWNERS 双签不可执行 / 分支保护未启用）：暂不处理，继续作为出口前置登记** → 期间 **§5/§8 的任何放宽一律禁止**（AGENTS §5）。
+3. **提交策略：本地按切片用显式路径提交 + 推送到远端当前分支以触发真实 CI**（`0f699b9..6f3a590` 已推送；CI 的 `on: push` 覆盖全部作业）。
+
+**本轮新增的登记**：**A20**（`esctest-report.mjs` 打印的「可复现命令」漏 `--xterm-reverse-wrap`，**复现不了它自己印的数字**；同处 `kernel/01:279` 的 `suites.toml` 与实现的 `suites.json` 命名漂移）；**A3 原因更正**；**A6 关闭**；**A4/首屏口径更正**；**A8 在守护进程层闭合**。详见 [debt-p0.md](../audit/debt-p0.md)。
+
 #### G1 首轮实测（W1-B harness，总负责人独立复跑）
 
 命令：`npm run conformance`（= `node tools/conformance/run.mjs`）。**这是未判定 → 有数字的第一步**，但**不是 G1 通过**。
@@ -273,7 +291,7 @@ P0 只启用三条现有团队线，其余（T3 Agent / T4 生态）在 P2/P3 �
 | 三平台 IME/CJK 矩阵全绿 | §7 E-P0-2、`kernel/05` IN-AC-04、AR-29.4/AR-31.4 | WS-04 | 12 组合截图矩阵 + 人工会签记录 | 未实现 |
 | 性能门禁进 CI | §7 E-P0-3、§8.1-4、AR-27、ADR-0014 | WS-06/08/03 | G4-PR/REL 报告 + 机器指纹 | 未判定（W1-C 起桩） |
 | screen 可恢复 | §7 E-P0-4、§8.2、AR-13/AR-26 | WS-05 | 重建 P95/P99 报告 + AC-S1…S6 | 部分（恢复器已交付；attach 全族未实现） |
-| 孤儿进程清理 = 100% 且会话关闭 ≤2s 回收 | AR-30 第 2 条、§8.2、`kernel/02` §3.3 | WS-02 + WS-05 | PTY-ORPHAN-1 用例（native + pipe） | **部分**：native ConPTY 路径已补覆盖（根 + **后代**，`kill(Force)` 后 2s 内清空，commit `89b491d`）；但 **M0 的 sessiond 不持有 PTY**（registry 只走 `TerminalEngine` trait，真实 PTY 生命周期在 `apps/termai` CLI），故「**会话关闭 → 回收**」在守护进程层**尚未实现**，当前仅靠 CLI 进程退出时关闭 Job 句柄兜底；且 `close()` 的契约是「**不隐式杀树**」，长期存活的 sessiond 必须在会话关闭时**显式 kill**，否则首次多会话就会泄漏 |
+| 孤儿进程清理 = 100% 且会话关闭 ≤2s 回收 | AR-30 第 2 条、§8.2、`kernel/02` §3.3 | WS-02 + WS-05 | PTY-ORPHAN-1 用例（native + pipe） | ~~**部分**：native ConPTY 路径已补覆盖（根 + **后代**，`kill(Force)` 后 2s 内清空，commit `89b491d`）；但 **M0 的 sessiond 不持有 PTY**（registry 只走 `TerminalEngine` trait，真实 PTY 生命周期在 `apps/termai` CLI），故「**会话关闭 → 回收**」在守护进程层**尚未实现**~~ → **第 272 轮已闭合（守护进程层，`fd04a11`）**：`SessionHost::close()` = `kill(Force)` → 有界 `wait`（1.5s）→ 释放 pty，`apps/sessiond/tests/pty_lifecycle.rs` 用真实进程断言**子进程与孙进程** 2s 内消失，带「未关闭会话仍活」与「close 幂等」两条对照，并以桩掉 kill+wait 的方式证明断言非空真。**仍余**：`SessionHost::probed()` **无调用者**（`main.rs` 仍是 stub），故该路径在生产上尚无触发者 |
 | 行为回放 ≥99.5% | §8.1-2 | WS-01 | `.trec` 回放报告 | 部分 |
 | 视觉回归 ≤0.1% | §8.1-3 | WS-03/04 | B4 diff | 不适用（无渲染） |
 | 依赖与许可 | §8.1-5 | WS-06 | cargo-deny/audit/SBOM | 部分（K4/K5 声明清单） |
@@ -309,3 +327,4 @@ P0 只启用三条现有团队线，其余（T3 Agent / T4 生态）在 P2/P3 �
 | 日期 | 变更 | 依据 |
 | --- | --- | --- |
 | P0 立项 | 建立 P0 出口拆解、差距分析、团队组织、WBS、波次、门禁与可追溯矩阵；Wave 1 派单（W1-A/B/C/D） | HARNESS §7/§8/§5/§2、kernel/00-index §2、m0-delivery-report |
+| 第 272 轮 | **Wave 3 三条切片落地并推送**（A8 sessiond 持有 PTY + 会话关闭杀树 `fd04a11`；kernel/03 S6 shaping + S7 atlas + 字体栈准入 `6f3a590`；A3 vttest 可行性四路探针与原因更正 `c3c66c8`）；更正债务表四处旧断言并新增 A20（esctest-report 可复现命令缺口）；发起人裁决：oracle/RM 环境本轮不做、治理 C1–C3 暂不处理、按切片提交并推送触发真实 CI | AR-20/AR-26/AR-30、ADR-0027 D1、ADR-0030、ADR-0031、§6.3 规则 7/8/9/10/12 |
