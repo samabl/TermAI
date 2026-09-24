@@ -16,7 +16,7 @@
 //                   refused dependencies (portable-pty, AR-28.3)
 //   K5 license      every package.license == "Apache-2.0 OR MIT" (or license.workspace = true),
 //                   and [workspace.package].license == that SPDX expression (AR-21)
-//   K6 spec-defects the M0 (SD-01..SD-08) and P0 (SD-09..SD-25) registers stay complete
+//   K6 spec-defects the M0 (SD-01..SD-08) and P0 (SD-09..SD-26) registers stay complete
 //   K7 codeowners   .github/CODEOWNERS names every tracked top-level directory and every
 //                   rule names an owner; spec 07 section 3.1.2 requires 100% coverage and
 //                   "no directory without an owner may merge"
@@ -38,7 +38,7 @@ const DEFAULT_ROOT = path.resolve(HERE, '..', '..');
 const STATUS = { PASS: 'PASS', FAIL: 'FAIL', SKIP: 'SKIP' };
 const LICENSE_EXPR = 'Apache-2.0 OR MIT';
 // K6 registry: every implementation-period defect register must exist and keep its ids.
-// The M0 register keeps SD-01..SD-08; the P0 register keeps SD-09..SD-25 (AGENTS section 5).
+// The M0 register keeps SD-01..SD-08; the P0 register keeps SD-09..SD-26 (AGENTS section 5).
 // Adding an SD entry means adding it here too, or the gate silently stops covering it.
 const SPEC_DEFECT_REGISTERS = [
   {
@@ -47,7 +47,7 @@ const SPEC_DEFECT_REGISTERS = [
   },
   {
     rel: 'docs/plan/p0-spec-defects.md',
-    ids: ['SD-09', 'SD-10', 'SD-11', 'SD-12', 'SD-13', 'SD-14', 'SD-15', 'SD-16', 'SD-17', 'SD-18', 'SD-19', 'SD-20', 'SD-21', 'SD-22', 'SD-23', 'SD-24', 'SD-25'],
+    ids: ['SD-09', 'SD-10', 'SD-11', 'SD-12', 'SD-13', 'SD-14', 'SD-15', 'SD-16', 'SD-17', 'SD-18', 'SD-19', 'SD-20', 'SD-21', 'SD-22', 'SD-23', 'SD-24', 'SD-25', 'SD-26'],
   },
 ];
 
@@ -372,7 +372,7 @@ function gateK5(ctx) {
 }
 
 function gateK6(ctx) {
-  const TITLE = 'spec-defect registers: m0 SD-01..SD-08 and p0 SD-09..SD-25 (AGENTS section 5)';
+  const TITLE = 'spec-defect registers: m0 SD-01..SD-08 and p0 SD-09..SD-26 (AGENTS section 5)';
   const notes = [];
   for (const reg of SPEC_DEFECT_REGISTERS) {
     const abs = path.join(ctx.root, reg.rel);
@@ -819,6 +819,49 @@ function runSelftest() {
       const root = makeManifestRoot(); temps.push(root);
       const g = gateK6({ root: root });
       st.check('K6: the unmodified register still passes with the SD-25 bound (bound control)', g.status === STATUS.PASS, g.detail);
+    }
+
+    // injection 7f: the newest P0 registration (SD-26, the kernel/05 section 3.2 vs 3.3 conflict)
+    // must be enforced too, not merely carried by the hardcoded list. The mutation drops SD-26 from
+    // the register; with the pre-SD-26 bound this exact mutation still passed, so a stale bound
+    // reports MISSED here.
+    {
+      const root = makeManifestRoot(); temps.push(root);
+      mutateFile(root, 'docs/plan/p0-spec-defects.md', function (t) {
+        return t.split('SD-26').join('SD-25');
+      });
+      const g = gateK6({ root: root });
+      st.check('K6: dropped SD-26 registration in the P0 register is caught and named (upper bound moved)',
+        g.status === STATUS.FAIL && g.detail.indexOf('SD-26') >= 0, g.detail);
+    }
+
+    // injection 7g: the discrimination behind 7f - the bound itself is what enforces SD-26. Reverting
+    // the P0 ids array to the previous bound (SD-09..SD-25) for one call must make the very same
+    // mutation invisible, so a stale bound cannot ride on 7f's green. Restored in a finally so the
+    // control and the real-tree baseline below cannot inherit the narrowed copy.
+    {
+      const root = makeManifestRoot(); temps.push(root);
+      mutateFile(root, 'docs/plan/p0-spec-defects.md', function (t) {
+        return t.split('SD-26').join('SD-25');
+      });
+      const saved = SPEC_DEFECT_REGISTERS[1].ids;
+      let g = null;
+      try {
+        SPEC_DEFECT_REGISTERS[1].ids = saved.filter(function (id) { return id !== 'SD-26'; });
+        g = gateK6({ root: root });
+      } finally {
+        SPEC_DEFECT_REGISTERS[1].ids = saved;
+      }
+      st.check('K6: with the bound reverted to SD-09..SD-25 the same SD-26 mutation is NOT caught (bound discrimination)',
+        g !== null && g.status === STATUS.PASS, g ? g.detail : 'gateK6 threw');
+    }
+
+    // control 7h: the same fixture left unmodified still passes under the SD-26 bound, so the bound
+    // rejects a missing registration rather than the register itself.
+    {
+      const root = makeManifestRoot(); temps.push(root);
+      const g = gateK6({ root: root });
+      st.check('K6: the unmodified register still passes with the SD-26 bound (bound control)', g.status === STATUS.PASS, g.detail);
     }
 
     // injection 8: CODEOWNERS that leaves a top-level directory without its own rule.

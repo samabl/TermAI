@@ -110,17 +110,18 @@ HARNESS §5 的 H12「输入字节等价（键盘 / 粘贴 / IME commit 全语�
 | **门禁读取** | `check.mjs --report <p>` 把 H12 作为「机器无关的 §5 门禁行」打印（值 / 门禁 / verdict 一起）；`verdict: FAIL` ⇒ **B8 FAIL**（上表第 ⑤ 条判定）。`gating: true` **合法**（它就是 §5 发布门禁），但 ADR-0029 D-5 把 `gating numbers produced by this run` 限定为**机器绑定**（RM-A / RM-C）的数字，所以 H12 不计入该计数器（与 H13 同形），B7 保持 PASS |
 | **自证** | `--selftest` 为这条判定加了 2 注入（H12 `verdict=FAIL` 必须让 B8 FAIL；H12 带外来 unit 必须先判绑定违规）+ 3 对照（100%/PASS 报告绑定并被呈现、`gating:true` 不计入计数器且 B7 绿、`governed: no` 的 H18 即便 `verdict=FAIL` 也不受第 ⑤ 条约束），计数由 **78/78** 变为 **83/83** |
 
-**本机实测（第 259 轮）：`H12 = 93.3333%`（70/75）= FAIL**。5 条与 kernel/05 §3.3 表逐字冲突：
+**本机实测（第 272 轮，commit `a555a77`）：`H12 = 100%`（75/75），`[B8] PASS`。**
 
-| case | 模式 | 期望（引用） | 实际 |
-| --- | --- | --- | --- |
-| `M03` | ModifyOtherKeys(2) | `CSI 27;6;65~`（kernel/05 §3.3 表「Ctrl+Shift+A」MOK(2) 列） | `0x01`（Shift 被吞） |
-| `M04` | ModifyOtherKeys(2) | `ESC x`（§3.3 表「Alt+x」MOK(2) 列） | `CSI 27;3;120~` |
-| `M05` | ModifyOtherKeys(2) | `CSI 27;1;27~`（§3.3 表「Esc」MOK(2) 列） | `0x1B` |
-| `K05` | Kitty(disambiguate+report_all) | `CR`（§3.3 表「Enter」Kitty 列） | `CSI 13u` |
-| `K06` | Kitty(disambiguate+report_all) | `CSI 1;1D`（§3.3 表「Left」Kitty 列） | `CSI 57354u` |
+~~**第 259 轮：`H12 = 93.3333%`（70/75）= FAIL**，5 条与 kernel/05 §3.3 的键盘表逐字冲突（ModifyOtherKeys(2) 的 `Ctrl+Shift+A` / `Alt+x` / `Esc`，Kitty 的 `Enter` / `Left`）；当时本工具只负责把「实现字节 ≠ 被引用条款的字节」如实报出，并记「要么改表、要么改 encoder，必须由 kernel/05 的 owner 裁决」。~~
 
-即：`KeyboardMode::ModifyOtherKeys(2)` 目前**只在「Ctrl + 无 C0 映射的可打印字符」这一格**符合 §3.3 表（`M02` 通过），其余三格退回 Legacy；Kitty 模式对 `Enter` 与方向键走 PUA 码点 `CSI {code}u` 路线，与 §3.3 表的 `CR` / `CSI 1;1D` 不一致。**这两组要么改表、要么改 encoder，必须由 kernel/05 的 owner 裁决**；本工具只负责把「实现字节 ≠ 被引用条款的字节」如实报出，并且**不**把 H12 报成通过（`check.mjs --report` 因此判 B8 FAIL，退出码 1）。
+**裁决已做且已执行**：按 **K-03** 的仲裁顺序（规范 > 文档 > 实现），**kernel/05 §3.3 的键盘表是权威**——它是专门的键盘模式表，也是本语料逐条引用的那张表。`crates/termai-core/src/input/encoder.rs` 因此改为按 §3.3 的三列编码（ModifyOtherKeys(2) 用表里的 `CSI 27;{1+shift+2*alt+4*ctrl};{codepoint}~` 形式，Kitty 列写成功能序列的那些格——`Enter` → `CR`、方向键 → `CSI 1;1D`——保留功能序列，不再一律转成 `CSI {code};{mod}u`），**语料一字未改**（改语料会让这条测量自我循环）。复跑 `node tools/bench/input-bytes.mjs` → `H12 = 100 pct (matched 75/75)`、`verdict: PASS`；`node tools/bench/check.mjs --report target/bench-reports/input-bytes-report.json` → `[B8] PASS`、`summary: 9 PASS / 0 FAIL`。
+
+**这一节现在说的是什么、不是什么**（AR-20 诚实边界）：
+
+- **只覆盖 S3 编码阶段**：75 例 = keyboard **53**（Legacy 35 / ModifyOtherKeys(2) 8 / Kitty 10）+ paste **10** + ime_commit **3** + mouse **5** + focus **2** + api_inject **2**。
+- **11 条期望因没有可引权威而不写进语料**（登记在 `input-corpus.json.omitted`，producer 每次逐条打印）：命名空格、F13–F24、滚轮 button 编号、单独 `meta` 位、Kitty 下的 IN-04、`report_text` / `report_associated_text` 语义、preedit 0 字节、>1MiB 粘贴、OSC 52 读、DECSET 鼠标状态机、死键合成。**语料之外的覆盖面不被这个数字冒充。**
+- **未被执行的路径不主张已覆盖**：原生 IME 宿主、死键合成、FocusRouter 的 Super 路由、OSC 52 读、DECSET 驱动的鼠标模式都**不在**本语料内（理由逐条见 `omitted` 的 `why`）。
+- **它是被判定过的 §5 行，不是机器绑定的门禁数字**：registry 里 H12 是 `machine: 'none'`（ADR-0029 D-5 使它不计入 `gating numbers produced by this run`，该计数仍为 0）。「100%」指**本语料上逐字节相等**，不等于 §5 的「输入字节等价」已对整个输入栈成立。
 
 ## bench-report 字段对照（kernel/06 §3.7 逐字）
 
@@ -280,7 +281,8 @@ runner / commit / toolchain / ts + 顶层 commit）逐字保留」）。任一�
 - **§5 机器无关行的值**：读取路径已落地（D-6 第 ②–④ 步）；本机可产出者现在是 **H18**、**H12**（见上一节，
   `node tools/bench/input-bytes.mjs`）与**表外对照 C1**，其余行如实 `NOT REPORTED`（H17 需浏览器层、
   H19 需 RM-C 像素渲染）。**H12 是本机唯一能给出「门禁级」结论的行**：它 `machine: none`，所以
-  §5 的「= 100%」在本机即可判定（第 259 轮判定为 **FAIL**，5 处与 kernel/05 §3.3 表冲突，见上一节）。
+  §5 的「= 100%」在本机即可判定（第 272 轮判定为 **PASS = 100%（75/75）**；该结论只对本语料覆盖的
+  S3 编码阶段成立，仍不是机器绑定数字，见上一节）。
 - **H1–H19 的实测**：本工具只校验「测量定义已登记且与正文一致」，不执行任何一项测量
   （机器无关行的值由 `--report` **读入**，不是本工具测出来的）。
 - **`bench-repro-report.json`（A-PM-01）**：`assertReproducible()` 已实现判定，但真正跑两次 G4 全集
