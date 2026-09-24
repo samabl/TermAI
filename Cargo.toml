@@ -32,6 +32,17 @@ termai-session = { path = "crates/termai-session" }
 termai-render = { path = "crates/termai-render" }
 # AR-18: vte is the P0-P2 base ESC state machine behind the termai-vt trait boundary.
 vte = "0.15"
+# ADR-0027 D1 (Accepted): the render/font stack is admitted at SPDX tier A with R=D=0 -
+# rustybuzz 0.20.1 (MIT), swash 0.2.10 (Apache-2.0 OR MIT), fontdb 0.24.0 (MIT)
+# (evidence: docs/adr/ADR-0027-spdx-evidence.md). After ADR-0027 D3, admission now precedes
+# the slice that declares them; that slice is kernel/03 S6 shaping + S7 atlas.
+# rustybuzz (and its ttf-parser) are unmaintained per RUSTSEC-2026-0206 / RUSTSEC-2026-0192:
+# that advisory does not block admission because ADR-0031 puts it under the time-boxed
+# exception waiver W-01 (docs/audit/waivers.json), expiring 2027-03-23 or after 2 minors,
+# whichever comes first, and an expired waiver is a failure rather than a warning.
+rustybuzz = "0.20.1"
+swash = "0.2.10"
+fontdb = "0.24.0"
 unicode-width = "0.2"
 blake3 = "1"
 sha2 = "0.10"
