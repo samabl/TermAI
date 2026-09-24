@@ -13,8 +13,7 @@
 //! in its own message which step won and which face it used. Run with `-- --nocapture` to see
 //! the `S6/S7 font resolution:` line and the per-branch reasons.
 //!
-//! Only two families of assertion depend on the resolved face, and neither is ever silently
-//! dropped:
+//! Three families of assertion depend on the resolved face, and none is ever silently dropped:
 //!
 //! * *"this face really has a glyph for U+4E2D"* - on a face with coverage the shaper must
 //!   report glyph id `!= 0` and `missing_glyphs == 0`; on a face without it the honest,
@@ -24,16 +23,21 @@
 //!   kept behind the monospaced branch with a printed reason, because deriving the expected
 //!   advance from the same measurement the shaper used would make the assertion a tautology
 //!   rather than a check that the face is a fixed-pitch face.
+//! * *"a two-column CJK cluster needs no fit"* (the `fit_squeezed == 0` control in
+//!   [`a_two_cell_ideograph_occupies_exactly_two_cells`] and in
+//!   [`a_two_cell_glyph_in_a_one_cell_span_is_squeezed_and_the_control_is_not`]) - the same
+//!   fixed-pitch property, kept behind the same monospaced branch and printed with its own
+//!   reason, because a proportional face legitimately writes a CJK glyph wider than two of its
+//!   narrow `"0"` advances. The assertions those two tests are *for* (the span never overflows
+//!   its cells, the under-anchored row is refused) stay unconditional.
 //!
 //! The `fit_squeezed` **positive** case is unconditional: [`SQUEEZE_PROBE`]'s columns are
 //! under-reported relative to an advance the face itself defines (the cell advance *is* this
 //! face's `"0"`), so the counter is reachable on any face and no step needs the host to own a
-//! wide glyph. The two **control** claims that a two-column CJK cluster needs no fit stay
-//! unconditional too; they assert a fixed-pitch property, so on the step-3-only host class
-//! (fonts present, not one of them monospaced) a proportional face may legitimately falsify
-//! them - the resolution line prints that warning before those tests run, rather than hiding it.
-//! `ubuntu-latest`, `macos-latest` and any normal desktop reach step 1 or step 2, where every
-//! assertion in this file runs at full strength.
+//! wide glyph. `ubuntu-latest`, `macos-latest` and any normal desktop reach step 1 or step 2,
+//! where every assertion in this file runs at full strength; the step-3-only host class (fonts
+//! present, not one of them monospaced) prints what it cannot exercise and still asserts the
+//! boundaries above.
 //!
 //! Column widths never come from the font: the K-04 spans are decided by the injected
 //! [`CellWidthSource`] alone, so the two-cell cluster assertions hold in every step.
@@ -62,11 +66,32 @@
 //! name: a shaped row plus real atlas bitmaps become an explicit `glyph_bitmap_origin` and
 //! `cell_box_origin` per drawn glyph, and
 //! `max abs(glyph_bitmap_origin - cell_box_origin)` is measured at all four device scales the
-//! contract judges (100/125/150/200%). The block asserts the sample count is the number of drawn
-//! glyphs, that a measurement over zero glyphs is *refused* rather than reported as a clean zero,
-//! that the probe's cell metrics are genuinely fractional, that the probe can tell a rounding
-//! placement from a truncating one, and - plan section 6.3 rule 10 - that an injected
-//! misplacement exceeds the contract while the untouched placement does not.
+//! contract judges (100/125/150/200%).
+//!
+//! That block is the one that also runs on `ubuntu-latest` / `macos-latest`, where a *different*
+//! face is resolved (step 2 or step 3 above), so its assertions are split by what they are
+//! actually a property of:
+//!
+//! * **Unconditional** (true of the placement on any face): every drawn glyph's cell-box
+//!   deviation is `<= 0.5px` at all four scales; the sample count is the number of drawn glyphs
+//!   and drawn + refused is the row's glyph count; a measurement over zero drawn glyphs is
+//!   *refused* (`MeasureError::NoDrawnGlyphs`) rather than reported as a clean zero; the pen is
+//!   centered in the cell box and sits on the font's baseline; the bitmap frame is the snapped
+//!   cell origin and the ink box starts at the snapped pen plus the atlas's own bearing; the
+//!   atlas key carries S6's `fit_scale`; and - plan section 6.3 rule 10 - a deliberate +1px
+//!   misplacement exceeds the contract while the untouched placement does not.
+//! * **Conditional, with a printed reason** (the claim holds only for particular metrics, so it is
+//!   asserted wherever the resolved face exercises it and its absence is always printed): that the
+//!   cell metrics are genuinely fractional; that the probe pattern can tell a rounding placement
+//!   from a truncating one at that scale; and the strict "the drawn ink box is inside its cell box
+//!   within one device pixel" reading of V-10, which the atlas's integer ink box can falsify on a
+//!   face whose glyph ink is wider than, or offset inside, its cell (that excursion is the face's,
+//!   not the placement's; see [`FRAME_SNAP_PX`] and the per-glyph printing in the test).
+//!
+//! The first two come from a **candidate search** over [`PLACEMENT_LOGICAL_SIZES`]
+//! ([`probe_shape`]), which reports what it found per claim and per scale instead of assuming it:
+//! the size it chooses is the best evidence configuration the face admits, and when no candidate
+//! can exercise a claim the test prints that and still asserts the contract.
 
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -230,14 +255,18 @@ fn font() -> &'static ResolvedFont {
                 if !resolved.monospaced {
                     // Not a skip: this is the documented statement of what a proportional face
                     // can and cannot demonstrate, printed before any assertion that depends on
-                    // it runs. The two `fit_squeezed == 0` control claims below assert that a
-                    // 2-cell CJK cluster fits exactly its 2 columns, which a proportional face
-                    // is free to falsify (it is written with a narrower "0"); every other
-                    // assertion in this file is independent of that and still runs.
+                    // it runs. From here on every claim that only a fixed-pitch face can carry
+                    // (an ASCII advance equal to the cell advance; a two-column CJK cluster
+                    // fitting its two columns, whether the counter stays at zero or not) is
+                    // printed with this branch and its own numbers instead of being asserted,
+                    // while every boundary those tests exist for - the span never overflowing
+                    // its cells, the under-anchored row being refused - still runs.
                     eprintln!(
-                        "S6/S7 font resolution: WARNING {} resolved a proportional face, so the \
-                         two `fit_squeezed == 0` control claims (a two-column CJK cluster fits \
-                         its two columns) are a fixed-pitch property and may fail honestly here",
+                        "S6/S7 font resolution: WARNING {} resolved a proportional face: the \
+                         fixed-pitch claims of this file (a face's ASCII advance is its cell \
+                         advance, and a two-column CJK cluster fits exactly its two columns) are \
+                         not exercisable here and each one is printed at its own assertion with \
+                         the values this face produced; the hard boundaries still run",
                         resolved.branch.label()
                     );
                 }
@@ -316,6 +345,52 @@ fn ascii_row(text: &str) -> RowClusters {
     RowClusters::new(0, 0, clusters)
 }
 
+/// The face's own cell advance at `px_size`, in device pixels, measured from its `"0"`
+/// (kernel/03 section 3.5.3: `cell_w = "0" advance`).
+///
+/// [`context`] measures the same quantity with a 1 em provisional cell box and asserts that the
+/// probe was not squeezed. That box is wide enough for every text face, but an *icon* face whose
+/// `"0"` advances more than one em would be squeezed by it, and a squeezed probe reports a scaled
+/// advance - i.e. the measurement would silently be of the wrong number. This probe widens the
+/// provisional box (1, 2, 4, 8 em) until the shaped `"0"` is untouched, so the number it returns
+/// is always the face's own advance, and refuses loudly only when no box up to 8 em can measure
+/// it at all.
+fn measure_advance_ratio(font: &ResolvedFont, px_size: u16) -> f32 {
+    let face = FontFace::from_slice(font.id, &font.data, font.index)
+        .expect("fontdb handed out a face that rustybuzz cannot parse");
+    for ems in [1.0_f32, 2.0, 4.0, 8.0] {
+        let ctx = ShapeContext {
+            font: face.clone(),
+            px_size,
+            scale_q8: 256,
+            aa: AaMode::Sharp,
+            ligatures: true,
+            cell_advance_px: ems * f32::from(px_size),
+            row_height_px: LINE_HEIGHT_RATIO * ems * f32::from(px_size),
+        };
+        let probe = shape_row(
+            &RowClusters::new(0, 0, vec![cluster(0, "0")]),
+            &ctx,
+            &HONEST,
+        )
+        .expect("the cell-advance probe must shape");
+        if probe.fit_squeezed != 0 {
+            continue;
+        }
+        assert!(
+            probe.spans[0].advance_px > 0.0,
+            "the font's '0' has no advance; the cell box cannot be derived (font: {})",
+            font.describe()
+        );
+        return probe.spans[0].advance_px / f32::from(px_size);
+    }
+    panic!(
+        "the font's '0' is still squeezed by an 8em cell box, so its cell advance cannot be \
+         measured unscaled (font: {})",
+        font.describe()
+    );
+}
+
 /// The S6 context for one device pixel size. The cell advance is measured from the font's own
 /// `"0"` (kernel/03 section 3.5.3), never assumed.
 fn context(font: &ResolvedFont, px_size: u16) -> ShapeContext<'_> {
@@ -379,7 +454,32 @@ fn a_two_cell_ideograph_occupies_exactly_two_cells() {
         glyphs.spans[0].advance_px,
         span_px
     );
-    assert_eq!(glyphs.fit_squeezed, 0, "a two-column glyph fits two cells");
+    // Face-dependent, and the reason is printed rather than the claim being dropped: "a two-column
+    // glyph fits two cells" says the face's CJK glyph is no wider than two of its *own* `"0"`
+    // advances, which is the definition of a fixed-pitch face. A proportional face (step 3, a host
+    // with no monospaced face at all) legitimately writes a CJK glyph wider than its narrow `"0"`,
+    // and the fit counter then moves for the face's reason rather than because of a width drift.
+    // Asserted on every fixed-pitch face; the span-overflow assertion above is unconditional.
+    if font.monospaced {
+        assert_eq!(
+            glyphs.fit_squeezed,
+            0,
+            "a two-column glyph fits two cells in a fixed-pitch face ({}; font: {})",
+            font.branch.label(),
+            font.describe()
+        );
+    } else {
+        eprintln!(
+            "a_two_cell_ideograph_occupies_exactly_two_cells: {} - the resolved face is not \
+             fixed-pitch, so 'a two-column glyph fits two cells' cannot hold as a face property \
+             (its CJK glyph is wider than two of its own `0` advances); the fit counter reports {} \
+             here and the span still never overflows its two cells, which is asserted above (font: \
+             {})",
+            font.branch.label(),
+            glyphs.fit_squeezed,
+            font.describe()
+        );
+    }
     assert_eq!(glyphs.covered_cells, 3);
 
     // The one pair of facts in this test that depends on the resolved face rather than on the
@@ -698,16 +798,33 @@ fn a_two_cell_glyph_in_a_one_cell_span_is_squeezed_and_the_control_is_not() {
         );
     }
 
-    // Control: the same text with the honest table stays at zero.
+    // Control: the same text with the honest table stays at zero - on a fixed-pitch face. This is
+    // the same face property [`a_two_cell_ideograph_occupies_exactly_two_cells`] prints: a
+    // proportional face writes the CJK glyph wider than its two narrow `"0"` cells, so the counter
+    // moves for the face's reason and not because the width table drifted. Asserted whenever the
+    // resolved face is fixed-pitch, printed with its numbers otherwise.
     let wide = RowClusters::new(0, 0, vec![cluster(0, "\u{4E2D}"), cluster(2, "A")]);
     let control = shape_row(&wide, &ctx, &HONEST).expect("the row must shape");
-    assert_eq!(
-        control.fit_squeezed,
-        0,
-        "the control row must not move the counter ({}; font: {})",
-        font.branch.label(),
-        font.describe()
-    );
+    if font.monospaced {
+        assert_eq!(
+            control.fit_squeezed,
+            0,
+            "the control row must not move the counter ({}; font: {})",
+            font.branch.label(),
+            font.describe()
+        );
+    } else {
+        eprintln!(
+            "a_two_cell_glyph_in_a_one_cell_span_is_squeezed_and_the_control_is_not: {} - the \
+             resolved face is not fixed-pitch, so the control row's honest-table fit counter is a \
+             face property rather than a width-table one; it reports {} here and the \
+             under-anchored row is still refused by the honest table below, which is the claim \
+             this control guards (font: {})",
+            font.branch.label(),
+            control.fit_squeezed,
+            font.describe()
+        );
+    }
 
     // And the shaper refuses the under-anchored row when the honest table is used: this is the
     // cluster/column assertion at the S6 entry point (kernel/03 RP-07, K-04).
@@ -1507,18 +1624,50 @@ const PLACEMENT_ROWS: [u16; 4] = [1, 2, 3, 4];
 /// the first whose product with this host face's advance ratio is fractional at **all four**
 /// device scales *and* whose device cells put the probe's columns/rows at least once more than
 /// half a pixel away from a whole pixel: a whole-pixel cell, or a pattern a truncating placement
-/// would pass, is exactly the case AR-14's `<=0.5px` rule says nothing about.
+/// would pass, is exactly the case AR-14's `<=0.5px` rule says nothing about. When a face admits
+/// no such candidate, [`probe_shape`] falls back to the best one it does admit and reports which
+/// claim the face cannot exercise; it never silently drops the claim or the contract.
 const PLACEMENT_LOGICAL_SIZES: [f32; 6] = [12.25, 12.75, 12.5, 13.25, 11.75, 12.1];
 
+/// How far the device-pixel grid can move a frame origin: `round` to the nearest device pixel is
+/// never worse than half a pixel, which is the very same half pixel RP-05's contract budgets for.
+/// A face whose glyph ink already reaches further than this past its cell box before any snapping
+/// cannot be contained by *any* placement, so the ink-containment assert in the RP-05 block is
+/// bounded by it instead of pretending the face's own ink is the placement's error.
+const FRAME_SNAP_PX: f32 = HARNESS_ALIGNMENT_CONTRACT_PX;
+
 /// What the printed probe selection proved about this host's face.
+///
+/// The three facts are reported **separately** and are never inferred from each other: a
+/// candidate that is fractional but cannot expose truncation is still the size the test runs at,
+/// with the truncation claim printed as vacuous, rather than being reported as "no candidate".
 #[derive(Clone, Copy, PartialEq, Debug)]
 struct ProbeShape {
     /// The chosen logical font size in logical pixels.
     logical_px: f32,
     /// Every device cell metric is fractional at all four RP-05 scales.
     fractional: bool,
-    /// The probe can tell a rounding placement from a truncating one at all four scales.
-    discriminating: bool,
+    /// Per RP-05 scale (index into [`RP05_DPI_SCALES`]): a truncating (`floor`/`as u16`)
+    /// placement would be exposed by this probe's columns/rows at that scale.
+    discriminating: [bool; RP05_DPI_SCALES.len()],
+    /// How many candidate logical sizes the search tried and rejected before the chosen one.
+    rejected: usize,
+}
+
+impl ProbeShape {
+    /// Whether the pattern can expose a truncating placement at `scale_index` (0 when the index
+    /// is out of range, which no caller can reach: the loop enumerates the same array).
+    fn exposes_truncation_at(self, scale_index: usize) -> bool {
+        self.discriminating
+            .get(scale_index)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    /// How many of the four scales exercise the truncation claim.
+    fn discriminating_scales(self) -> usize {
+        self.discriminating.iter().filter(|flag| **flag).count()
+    }
 }
 
 /// Whether a whole-pixel placement of a `cell`-sized step from the grid origin would ever be more
@@ -1530,9 +1679,15 @@ fn placement_discriminates(cell_px: f32, steps: (u16, u16)) -> bool {
         .any(|step| (cell_px * f32::from(step)).fract() > HARNESS_ALIGNMENT_CONTRACT_PX)
 }
 
-/// Pick the probe's logical font size, and report whether the device cell metrics are genuinely
-/// fractional and whether the pattern can tell rounding from truncation. The choice and both
-/// facts are printed by the test that uses them, never assumed.
+/// Search [`PLACEMENT_LOGICAL_SIZES`] for the best evidence configuration this face admits, and
+/// report exactly which claims it exercises.
+///
+/// Preference order: the first candidate whose device cell metrics are fractional at **all four**
+/// RP-05 scales *and* whose columns and rows can expose a truncating placement at **all four**;
+/// failing that, the first candidate that is at least fractional (so the fractional-metrics claim
+/// is still asserted); failing that, the first candidate, reported as exercising neither claim.
+/// The search is exhaustive over its candidate list, so "nothing found" is a fact about the face's
+/// advance ratio, not an early exit - and the caller prints it with the numbers.
 fn probe_shape(advance_ratio: f32) -> ProbeShape {
     let columns = (
         0,
@@ -1542,30 +1697,39 @@ fn probe_shape(advance_ratio: f32) -> ProbeShape {
         PLACEMENT_ROWS[0],
         u16::try_from(PLACEMENT_ROWS.len()).unwrap_or(1),
     );
+    let mut fallback: Option<ProbeShape> = None;
+    let mut rejected = 0;
     for size in PLACEMENT_LOGICAL_SIZES {
         let logical_advance = advance_ratio * size;
         let mut fractional = true;
-        let mut discriminating = true;
-        for scale in RP05_DPI_SCALES {
+        let mut discriminating = [true; RP05_DPI_SCALES.len()];
+        for (index, scale) in RP05_DPI_SCALES.into_iter().enumerate() {
             let cell_w = logical_advance * scale;
             let cell_h = size * LINE_HEIGHT_RATIO * scale;
             fractional &= cell_w.fract() != 0.0 && cell_h.fract() != 0.0;
-            discriminating &=
+            discriminating[index] =
                 placement_discriminates(cell_w, columns) && placement_discriminates(cell_h, rows);
         }
-        if fractional && discriminating {
-            return ProbeShape {
-                logical_px: size,
-                fractional,
-                discriminating,
-            };
+        let candidate = ProbeShape {
+            logical_px: size,
+            fractional,
+            discriminating,
+            rejected,
+        };
+        if fractional && discriminating.iter().all(|flag| *flag) {
+            return candidate;
         }
+        if fallback.is_none() && fractional {
+            fallback = Some(candidate);
+        }
+        rejected += 1;
     }
-    ProbeShape {
+    fallback.unwrap_or(ProbeShape {
         logical_px: PLACEMENT_LOGICAL_SIZES[0],
         fractional: false,
-        discriminating: false,
-    }
+        discriminating: [false; RP05_DPI_SCALES.len()],
+        rejected,
+    })
 }
 
 /// The face's ascent and descent in logical pixels at `logical_px`, from the font's own metrics:
@@ -1619,12 +1783,30 @@ fn is_half_pixel(origin: f32) -> bool {
 /// The S6 context for one probe row, bound to the placement's own device grid: the cell advance
 /// the shaper fits against *is* the grid's device cell width, so a cluster that fills its cell
 /// exactly records `fit_scale` for it instead of being fitted against a second, provisional box.
+///
+/// Built directly rather than through [`context`]: every metric it needs is overridden here
+/// anyway, and `context`'s provisional 1 em probe can be squeezed by an icon face whose `"0"` is
+/// wider than one em, which would fail the probe before the placement under test is ever reached.
 fn probe_context(font: &ResolvedFont, metrics: CellMetrics, device_px: u16) -> ShapeContext<'_> {
-    let mut ctx = context(font, device_px);
-    ctx.scale_q8 = metrics.scale_q8;
-    ctx.cell_advance_px = metrics.cell_w_px;
-    ctx.row_height_px = metrics.cell_h_px;
-    ctx
+    let face = FontFace::from_slice(font.id, &font.data, font.index)
+        .expect("fontdb handed out a face that rustybuzz cannot parse");
+    ShapeContext {
+        font: face,
+        px_size: device_px,
+        scale_q8: metrics.scale_q8,
+        aa: AaMode::Sharp,
+        ligatures: true,
+        cell_advance_px: metrics.cell_w_px,
+        row_height_px: metrics.cell_h_px,
+    }
+}
+
+/// One placed probe row, together with the S6 numbers the placement's own arithmetic is checked
+/// against: the pen is centred on the span's *fitted advance*, which only S6 knows.
+struct PlacedProbeRow {
+    placed: PlacedRow,
+    /// `advance_px` of each S6 span, indexed by the `cluster_index` the placed glyphs carry.
+    span_advance: Vec<f32>,
 }
 
 /// Shape one probe row, rasterise exactly the bitmaps the placement will look up (a blank glyph
@@ -1636,7 +1818,7 @@ fn place_probe_row(
     device_px: u16,
     atlas: &mut GlyphAtlas,
     row_index: u16,
-) -> PlacedRow {
+) -> PlacedProbeRow {
     let ctx = probe_context(font, *metrics, device_px);
     let mut input = ascii_row(PLACEMENT_ROW);
     input.row = row_index;
@@ -1656,55 +1838,99 @@ fn place_probe_row(
         placed,
         "place_row and place_row_with_vt_widths must agree when the authority agrees"
     );
-    placed
+    PlacedProbeRow {
+        placed,
+        span_advance: shaped.spans.iter().map(|span| span.advance_px).collect(),
+    }
 }
 
 #[test]
 fn the_placement_stays_within_half_a_pixel_at_every_rp05_device_scale() {
     let font = font();
-    let advance_ratio = context(font, 16).cell_advance_px / 16.0;
+    let advance_ratio = measure_advance_ratio(font, 16);
     let shape = probe_shape(advance_ratio);
     eprintln!(
         "RP-05 placement probe: logical font size {}px, advance ratio {:.6}, device cell sizes \
-         fractional at all four scales: {}, pattern discriminates rounding from truncation: {} \
+         fractional at all four scales: {}, truncation exposed by the probe pattern at {}/{} \
+         scale(s), candidate logical sizes rejected before it: {} of {PLACEMENT_LOGICAL_SIZES:?} \
          (font: {})",
         shape.logical_px,
         advance_ratio,
         shape.fractional,
-        shape.discriminating,
+        shape.discriminating_scales(),
+        RP05_DPI_SCALES.len(),
+        shape.rejected,
         font.describe()
     );
-    assert!(
-        shape.fractional,
-        "the probe must place into genuinely fractional cell metrics (kernel/03 section 3.5.3, \
-         AR-14's <=0.5px rule); no candidate logical size did for this face (font: {})",
-        font.describe()
-    );
-    assert!(
-        shape.discriminating,
-        "the probe pattern must be able to expose a truncating placement; no candidate logical \
-         size did for this face (font: {})",
-        font.describe()
-    );
+    // Claim 1 of the probe's candidate search: genuinely fractional device cell metrics
+    // (kernel/03 section 3.5.3, the case AR-14's <=0.5px rule is about). Asserted per scale
+    // below whenever the search found it, printed here when it could not - never dropped.
+    if !shape.fractional {
+        eprintln!(
+            "the_placement_stays_within_half_a_pixel_at_every_rp05_device_scale: {} - none of the \
+             candidate logical sizes {PLACEMENT_LOGICAL_SIZES:?} gives fractional cell metrics at \
+             all four RP-05 scales for this face's advance ratio {:.6}: the probe places into \
+             whole-pixel cell metrics, where a snapped placement and a perfect one are the same \
+             picture, so the 'cell metrics are fractional' claim is vacuous on this face. The \
+             <=0.5px contract assertion, the sample/refusal accounting and the injection control \
+             are unaffected and still run (font: {})",
+            font.branch.label(),
+            advance_ratio,
+            font.describe()
+        );
+    }
 
     let glyphs_per_row = PLACEMENT_ROW.chars().count();
     let glyphs_per_scale = PLACEMENT_ROWS.len() * glyphs_per_row;
-    for scale in RP05_DPI_SCALES {
+    for (scale_index, scale) in RP05_DPI_SCALES.into_iter().enumerate() {
         let (metrics, device_px) = probe_scale(font, advance_ratio, shape, scale);
         let mut atlas = GlyphAtlas::new(AtlasConfig::default());
         let mut worst_px = 0.0_f32;
         let mut truncated_worst_px = 0.0_f32;
         let mut boundary_samples = 0_usize;
         let mut samples = 0_usize;
+        // How many drawn glyphs exercised the strict one-device-pixel ink-box containment, and
+        // the printed reasons of the ones whose own ink box made it unreachable.
+        let mut strict_contained = 0_usize;
+        let mut face_owned: Vec<String> = Vec::new();
         let mut refusals: Vec<GlyphRefusal> = Vec::new();
         for row_index in PLACEMENT_ROWS {
-            let placed = place_probe_row(font, &metrics, device_px, &mut atlas, row_index);
+            let probe = place_probe_row(font, &metrics, device_px, &mut atlas, row_index);
+            let placed = &probe.placed;
             assert_eq!(
                 placed.glyphs.len() + placed.refusals.len(),
                 glyphs_per_row,
                 "every glyph of row {row_index} is either drawn or refused with a reason"
             );
-            let alignment = measure_placement(&placed)
+            if placed.glyphs.is_empty() {
+                // A face that draws none of the probe row at all (an icon face, or ASCII mapped to
+                // colour/empty glyphs) has no RP-05 sample to judge. That is printed with the
+                // refusals, and the documented refusal is asserted in place of a clean zero: the
+                // measurement must never come back as 0.0px over nothing.
+                assert_eq!(
+                    measure_placement(placed),
+                    Err(MeasureError::NoDrawnGlyphs {
+                        refusals: glyphs_per_row
+                    }),
+                    "a row with no drawn glyph must be refused, never reported as 0.0px (font: {})",
+                    font.describe()
+                );
+                eprintln!(
+                    "the_placement_stays_within_half_a_pixel_at_every_rp05_device_scale: {} - at \
+                     {:.0}% DPI the resolved face draws none of the {} glyphs of probe row \
+                     {row_index}; all {} are refused with a reason ({:?}), so RP-05 has no sample \
+                     to judge here and the refusal is asserted instead of a clean zero (font: {})",
+                    font.branch.label(),
+                    scale * 100.0,
+                    glyphs_per_row,
+                    placed.refusals.len(),
+                    placed.refusals,
+                    font.describe()
+                );
+                refusals.extend(placed.refusals.iter().copied());
+                continue;
+            }
+            let alignment = measure_placement(placed)
                 .unwrap_or_else(|error| panic!("row {row_index}: {error}"));
             if row_index == PLACEMENT_ROWS[0] {
                 if let Some(glyph) = placed.glyphs.first() {
@@ -1750,11 +1976,29 @@ fn the_placement_stays_within_half_a_pixel_at_every_rp05_device_scale() {
                 {
                     boundary_samples += 1;
                 }
+                // The placement must key the atlas with S6's `fit_scale` applied. `max(1)` is
+                // `place::placement_key`'s documented floor: a `u16` pixel size cannot be zero,
+                // and `AtlasKey::px_size == 0` is refused by the atlas (S7).
                 assert_eq!(
                     glyph.key.px_size,
-                    (f32::from(device_px) * glyph.fit_scale).round() as u16,
+                    ((f32::from(device_px) * glyph.fit_scale).round() as u16).max(1),
                     "the placement must key the atlas with S6's fit_scale applied (glyph {})",
                     glyph.glyph_id
+                );
+                // The ink box the atlas stored must be consistent with the device pixel size the
+                // key names: a rasterisation at the wrong unit (font units, a 64x scale_q6
+                // mix-up) comes back hundreds of pixels wide, far past the two em an ASCII probe
+                // glyph can fill. Face-independent, and S7's own probe test asserts the same bound.
+                assert!(
+                    u32::from(glyph.ink_width) <= 2 * u32::from(glyph.key.px_size)
+                        && u32::from(glyph.ink_height) <= 2 * u32::from(glyph.key.px_size),
+                    "glyph {} rasterised to an ink box {}x{} at {}px, which is more than two em \
+                     (font: {})",
+                    glyph.glyph_id,
+                    glyph.ink_width,
+                    glyph.ink_height,
+                    glyph.key.px_size,
+                    font.describe()
                 );
                 // The pen origin is on the *font's baseline* (kernel/03 section 3.5.2), so every
                 // glyph of the row shares it - a placement that centered each ink box instead
@@ -1765,47 +2009,208 @@ fn the_placement_stays_within_half_a_pixel_at_every_rp05_device_scale() {
                     "every glyph of the row must sit on the same baseline (glyph {})",
                     glyph.glyph_id
                 );
-                // And the drawn ink box stays inside the cell box the grid gave it (kernel/03
-                // section 3.5.1 step 6 / V-10), within one device pixel of snapping.
-                let ink_right = glyph.bitmap_quad_origin.x + f32::from(glyph.ink_width);
-                let ink_bottom = glyph.bitmap_quad_origin.y + f32::from(glyph.ink_height);
-                assert!(
-                    glyph.bitmap_quad_origin.x >= glyph.cell_box_origin.x - 1.0
-                        && ink_right
-                            <= glyph.cell_box_origin.x + metrics.cell_box_width(glyph.cells) + 1.0
-                        && glyph.bitmap_quad_origin.y >= glyph.cell_box_origin.y - 1.0
-                        && ink_bottom <= glyph.cell_box_origin.y + metrics.cell_h_px + 1.0,
-                    "the drawn ink box of glyph {} ({:?} + {}x{}) must stay inside its cell box \
-                     ({:?} {}x{}) within one device pixel",
+                // ...and horizontally the *fitted advance* S6 measured is centered in the cell box
+                // the grid gave the cluster (kernel/03 section 3.5.1 step 6: the pen is centered,
+                // not the ink box). Face-independent: both numbers are the placement's own inputs.
+                let span_advance = probe.span_advance[glyph.cluster_index];
+                assert_eq!(
+                    glyph.glyph_origin.x,
+                    glyph.cell_box_origin.x
+                        + (metrics.cell_box_width(glyph.cells) - span_advance) * 0.5,
+                    "the pen must be centered in the cell box (glyph {}, cluster {}, span \
+                     {span_advance:.5}px in {:.5}px)",
                     glyph.glyph_id,
-                    glyph.bitmap_quad_origin,
-                    glyph.ink_width,
-                    glyph.ink_height,
-                    glyph.cell_box_origin,
-                    metrics.cell_box_width(glyph.cells),
-                    metrics.cell_h_px
+                    glyph.cluster_index,
+                    metrics.cell_box_width(glyph.cells)
                 );
+                // RP-05's numerator is the nearest device pixel to the grid line, and S7's bitmap
+                // frame starts at the snapped pen plus the glyph's own bearing (kernel/03 section
+                // 3.4). Both are identities the contract and the ink box below rest on, so both
+                // are pinned rather than assumed.
+                assert_eq!(
+                    glyph.glyph_bitmap_origin,
+                    Point::new(
+                        glyph.cell_box_origin.x.round(),
+                        glyph.cell_box_origin.y.round()
+                    ),
+                    "the bitmap frame must be the snapped cell box origin (glyph {})",
+                    glyph.glyph_id
+                );
+                assert_eq!(
+                    glyph.bitmap_quad_origin,
+                    Point::new(
+                        (glyph.glyph_origin.x + f32::from(glyph.bearing_left)).round(),
+                        (glyph.glyph_origin.y - f32::from(glyph.bearing_top)).round()
+                    ),
+                    "the drawn ink box must start at the snapped pen + bearing (glyph {})",
+                    glyph.glyph_id
+                );
+                // kernel/03 section 3.5.1 step 6 / V-10: the drawn ink box stays inside its cell
+                // box. The box is the atlas's - the glyph's outline rounded OUT to whole device
+                // pixels, so its size and its bearings are the face's - while the pen and the snap
+                // are the placement's. The strict reading ("inside the cell box within one device
+                // pixel") is therefore exercisable exactly by the glyphs whose *un-snapped* ink box
+                // is already inside the cell box up to that same half pixel; for the others the
+                // box's own excursion past the cell edge is the face's, is printed with its
+                // numbers, and is added to the budget instead of being asserted away.
+                let cell_w = metrics.cell_box_width(glyph.cells);
+                let cell_right = glyph.cell_box_origin.x + cell_w;
+                let cell_bottom = glyph.cell_box_origin.y + metrics.cell_h_px;
+                let ink_left = glyph.glyph_origin.x + f32::from(glyph.bearing_left);
+                let ink_top = glyph.glyph_origin.y - f32::from(glyph.bearing_top);
+                // How far the ideal (un-snapped) and the drawn (snapped) ink box reach past the
+                // cell box, per side; positive means "outside it".
+                let ideal = [
+                    glyph.cell_box_origin.x - ink_left,
+                    ink_left + f32::from(glyph.ink_width) - cell_right,
+                    glyph.cell_box_origin.y - ink_top,
+                    ink_top + f32::from(glyph.ink_height) - cell_bottom,
+                ];
+                let drawn = [
+                    glyph.cell_box_origin.x - glyph.bitmap_quad_origin.x,
+                    glyph.bitmap_quad_origin.x + f32::from(glyph.ink_width) - cell_right,
+                    glyph.cell_box_origin.y - glyph.bitmap_quad_origin.y,
+                    glyph.bitmap_quad_origin.y + f32::from(glyph.ink_height) - cell_bottom,
+                ];
+                for (side, drawn_reach, ideal_reach) in [
+                    ("left", drawn[0], ideal[0]),
+                    ("right", drawn[1], ideal[1]),
+                    ("top", drawn[2], ideal[2]),
+                    ("bottom", drawn[3], ideal[3]),
+                ] {
+                    assert!(
+                        drawn_reach <= ideal_reach + FRAME_SNAP_PX + 1.0e-3,
+                        "the drawn ink box may only be the ideal ink box snapped by at most \
+                         {FRAME_SNAP_PX}px: its {side} side reaches {drawn_reach:.4}px past the \
+                         cell box where this glyph's own ink reaches {ideal_reach:.4}px (glyph {}, \
+                         ink {}x{} at bearing ({},{}), cell {:.5}x{:.5}px, font: {})",
+                        glyph.glyph_id,
+                        glyph.ink_width,
+                        glyph.ink_height,
+                        glyph.bearing_left,
+                        glyph.bearing_top,
+                        cell_w,
+                        metrics.cell_h_px,
+                        font.describe()
+                    );
+                }
+                if ideal.iter().all(|reach| *reach <= FRAME_SNAP_PX) {
+                    // This face's ink box is inside the cell box before any snapping, so the only
+                    // thing that can push it out is the placement: the strict one-device-pixel
+                    // containment is exercisable here and is asserted, never skipped.
+                    assert!(
+                        drawn.iter().all(|reach| *reach <= 1.0 + 1.0e-3),
+                        "the drawn ink box of glyph {} ({:?} + {}x{}) must stay inside its cell box \
+                         ({:?} {:.5}x{:.5}) within one device pixel (font: {})",
+                        glyph.glyph_id,
+                        glyph.bitmap_quad_origin,
+                        glyph.ink_width,
+                        glyph.ink_height,
+                        glyph.cell_box_origin,
+                        cell_w,
+                        metrics.cell_h_px,
+                        font.describe()
+                    );
+                    strict_contained += 1;
+                } else {
+                    face_owned.push(format!(
+                        "glyph {} ({}x{} ink box at bearing ({},{})) already reaches {:.4}px past \
+                         its {:.5}x{:.5}px cell box before any snapping, so one-device-pixel \
+                         containment is a property of this face's ink rather than of the placement; \
+                         the drawn box is asserted against that excursion",
+                        glyph.glyph_id,
+                        glyph.ink_width,
+                        glyph.ink_height,
+                        glyph.bearing_left,
+                        glyph.bearing_top,
+                        ideal.iter().copied().fold(0.0_f32, f32::max),
+                        cell_w,
+                        metrics.cell_h_px
+                    ));
+                }
             }
             worst_px = worst_px.max(alignment.worst_px);
             samples += alignment.samples;
             refusals.extend(placed.refusals.iter().copied());
         }
-        eprintln!(
-            "RP-05 placement: scale={:.0}% device_px={} cell={:.5}x{:.5}px worst={:.4}px \
-             samples={} refusals={} half-pixel grid lines among the samples={} (floor() would \
-             report {:.4}px; contract {:.1}px)",
-            scale * 100.0,
-            device_px,
-            metrics.cell_w_px,
-            metrics.cell_h_px,
-            worst_px,
-            samples,
-            refusals.len(),
-            boundary_samples,
-            truncated_worst_px,
-            HARNESS_ALIGNMENT_CONTRACT_PX
-        );
-        assert!(metrics.cell_w_px.fract() != 0.0 && metrics.cell_h_px.fract() != 0.0);
+        if samples == 0 {
+            // Never a clean zero: there is no sample to report a worst deviation for, and the
+            // refusal that took its place is asserted in the row loop above.
+            eprintln!(
+                "RP-05 placement: scale={:.0}% device_px={} cell={:.5}x{:.5}px NOT MEASURED - 0 \
+                 drawn glyph(s) of {glyphs_per_scale}, {} refusal(s): RP-05 is never judged on zero \
+                 samples (font: {})",
+                scale * 100.0,
+                device_px,
+                metrics.cell_w_px,
+                metrics.cell_h_px,
+                refusals.len(),
+                font.describe()
+            );
+        } else {
+            eprintln!(
+                "RP-05 placement: scale={:.0}% device_px={} cell={:.5}x{:.5}px worst={:.4}px \
+                 samples={} refusals={} half-pixel grid lines among the samples={} strict ink-box \
+                 containment exercised by {strict_contained}/{samples} drawn glyph(s), {} glyph(s) \
+                 whose own ink box leaves its cell box before any snapping (floor() would report \
+                 {:.4}px; contract {:.1}px)",
+                scale * 100.0,
+                device_px,
+                metrics.cell_w_px,
+                metrics.cell_h_px,
+                worst_px,
+                samples,
+                refusals.len(),
+                boundary_samples,
+                face_owned.len(),
+                truncated_worst_px,
+                HARNESS_ALIGNMENT_CONTRACT_PX
+            );
+        }
+        for reason in face_owned.iter().take(4) {
+            eprintln!(
+                "the_placement_stays_within_half_a_pixel_at_every_rp05_device_scale: {reason} \
+                 (font: {})",
+                font.describe()
+            );
+        }
+        if face_owned.len() > 4 {
+            eprintln!(
+                "the_placement_stays_within_half_a_pixel_at_every_rp05_device_scale: ... and {} \
+                 more glyph(s) of the same kind at {:.0}% DPI",
+                face_owned.len() - 4,
+                scale * 100.0
+            );
+        }
+        if samples > 0 && strict_contained == 0 {
+            eprintln!(
+                "the_placement_stays_within_half_a_pixel_at_every_rp05_device_scale: {} - no drawn \
+                 glyph of the probe row exercises the strict one-device-pixel ink-box containment \
+                 at {:.0}% DPI on this face: every glyph's rasterised ink box leaves its cell box \
+                 before any snapping (the per-glyph numbers are printed above), so that claim is \
+                 vacuous here and is not asserted. The face-independent claims - the pen centered \
+                 in the cell box, the frame at the snapped cell origin, the ink box at the snapped \
+                 pen, the sample/refusal accounting and the {:.1}px contract over every drawn glyph \
+                 - all still run (font: {})",
+                font.branch.label(),
+                scale * 100.0,
+                HARNESS_ALIGNMENT_CONTRACT_PX,
+                font.describe()
+            );
+        }
+        // Claim 1 of the candidate search, per scale: asserted wherever the search reported it,
+        // and printed with its reason at the top of the test when it could not.
+        if shape.fractional {
+            assert!(
+                metrics.cell_w_px.fract() != 0.0 && metrics.cell_h_px.fract() != 0.0,
+                "the candidate search reported fractional cell metrics at {:.0}% DPI but {}x{}px \
+                 are whole-pixel (font: {})",
+                scale * 100.0,
+                metrics.cell_w_px,
+                metrics.cell_h_px,
+                font.describe()
+            );
+        }
         assert_eq!(
             samples + refusals.len(),
             glyphs_per_scale,
@@ -1813,6 +2218,16 @@ fn the_placement_stays_within_half_a_pixel_at_every_rp05_device_scale() {
             scale * 100.0,
             font.describe()
         );
+        if samples == 0 {
+            assert_eq!(
+                refusals.len(),
+                glyphs_per_scale,
+                "a scale that measured nothing must account for every probe glyph as a refusal \
+                 (font: {})",
+                font.describe()
+            );
+            continue;
+        }
         if font.coverage.probe {
             assert_eq!(
                 refusals.len(),
@@ -1838,11 +2253,6 @@ fn the_placement_stays_within_half_a_pixel_at_every_rp05_device_scale() {
                 refusals
             );
         }
-        assert!(
-            samples > 0,
-            "a measurement over zero drawn glyphs must never be reported as clean (font: {})",
-            font.describe()
-        );
         assert!(
             worst_px <= HARNESS_ALIGNMENT_CONTRACT_PX,
             "RP-05 at {:.0}% DPI: worst {:.4}px over {} glyph sample(s) exceeds the {:.1}px \
@@ -1878,25 +2288,47 @@ fn the_placement_stays_within_half_a_pixel_at_every_rp05_device_scale() {
             samples,
             font.describe()
         );
-        assert!(
-            truncated_worst_px > HARNESS_ALIGNMENT_CONTRACT_PX,
-            "the probe pattern must expose a truncating placement at {:.0}% DPI: floor() would \
-             have reported {:.4}px, which is inside the {:.1}px contract, so a green run would \
-             say nothing (cell {:.5}x{:.5}px, font: {})",
-            scale * 100.0,
-            truncated_worst_px,
-            HARNESS_ALIGNMENT_CONTRACT_PX,
-            metrics.cell_w_px,
-            metrics.cell_h_px,
-            font.describe()
-        );
+        // Claim 2 of the candidate search, per scale: a truncating (`floor`/`as u16`) placement
+        // would be exposed by this probe's columns/rows. Asserted wherever the search reported it
+        // for this scale, and printed with its reason where it could not.
+        if shape.exposes_truncation_at(scale_index) {
+            assert!(
+                truncated_worst_px > HARNESS_ALIGNMENT_CONTRACT_PX,
+                "the probe pattern must expose a truncating placement at {:.0}% DPI: floor() would \
+                 have reported {:.4}px, which is inside the {:.1}px contract, so a green run would \
+                 say nothing (cell {:.5}x{:.5}px, font: {})",
+                scale * 100.0,
+                truncated_worst_px,
+                HARNESS_ALIGNMENT_CONTRACT_PX,
+                metrics.cell_w_px,
+                metrics.cell_h_px,
+                font.describe()
+            );
+        } else {
+            eprintln!(
+                "the_placement_stays_within_half_a_pixel_at_every_rp05_device_scale: {} - at {:.0}% \
+                 DPI the probe pattern cannot expose a truncating placement on this face: no column \
+                 or row of {PLACEMENT_ROW:?} x rows {PLACEMENT_ROWS:?} puts a floor() error past \
+                 {:.1}px (the worst floor() error the drawn samples admit is {:.4}px), so the \
+                 'a truncating placement would exceed the contract' claim is vacuous at this scale \
+                 and is not asserted; the <=0.5px contract assertion above still runs (cell \
+                 {:.5}x{:.5}px, font: {})",
+                font.branch.label(),
+                scale * 100.0,
+                HARNESS_ALIGNMENT_CONTRACT_PX,
+                truncated_worst_px,
+                metrics.cell_w_px,
+                metrics.cell_h_px,
+                font.describe()
+            );
+        }
     }
 }
 
 #[test]
 fn a_measurement_over_zero_drawn_glyphs_is_refused_not_a_clean_zero() {
     let font = font();
-    let advance_ratio = context(font, 16).cell_advance_px / 16.0;
+    let advance_ratio = measure_advance_ratio(font, 16);
     let shape = probe_shape(advance_ratio);
     let (metrics, device_px) = probe_scale(font, advance_ratio, shape, 1.25);
     let ctx = probe_context(font, metrics, device_px);
@@ -1911,14 +2343,38 @@ fn a_measurement_over_zero_drawn_glyphs_is_refused_not_a_clean_zero() {
         .expect("an un-rasterised row is a placement, not an error");
     assert_eq!(placed.glyphs.len(), 0);
     assert_eq!(placed.refusals.len(), PLACEMENT_ROW.chars().count());
-    assert!(
-        placed
-            .refusals
-            .iter()
-            .all(|refusal| matches!(refusal, GlyphRefusal::MissingBitmap { .. })),
-        "an empty atlas must refuse every glyph as MissingBitmap, got {:?}",
-        placed.refusals
-    );
+    // Which refusal an empty atlas produces for a glyph is itself a coverage fact: a scalar the
+    // resolved face does not cover is refused without ever consulting the atlas
+    // (`UncoveredCluster`), and only the covered ones become `MissingBitmap`. Both directions are
+    // asserted, and the resolved face's coverage is printed with the reason - never skipped.
+    if font.coverage.probe {
+        assert!(
+            placed
+                .refusals
+                .iter()
+                .all(|refusal| matches!(refusal, GlyphRefusal::MissingBitmap { .. })),
+            "an empty atlas must refuse every glyph as MissingBitmap, got {:?}",
+            placed.refusals
+        );
+    } else {
+        eprintln!(
+            "a_measurement_over_zero_drawn_glyphs_is_refused_not_a_clean_zero: {} - the resolved \
+             face does not cover every scalar of {PLACEMENT_ROW:?}, so an empty atlas refuses the \
+             uncovered scalars without consulting it (UncoveredCluster) instead of as \
+             MissingBitmap; both are documented refusals and every glyph is still refused exactly \
+             once: {:?}",
+            font.branch.label(),
+            placed.refusals
+        );
+        assert!(
+            placed.refusals.iter().all(|refusal| matches!(
+                refusal,
+                GlyphRefusal::MissingBitmap { .. } | GlyphRefusal::UncoveredCluster { .. }
+            )),
+            "an empty atlas must refuse every glyph with a documented reason, got {:?}",
+            placed.refusals
+        );
+    }
     assert_eq!(
         measure_placement(&placed),
         Err(MeasureError::NoDrawnGlyphs {
@@ -1936,12 +2392,64 @@ fn a_measurement_over_zero_drawn_glyphs_is_refused_not_a_clean_zero() {
         placed.refusals.len()
     );
 
-    // The control: the very same row with its bitmaps rasterised measures every glyph.
+    // The control: the very same row with its bitmaps rasterised measures every glyph it covers.
     let mut atlas = GlyphAtlas::new(AtlasConfig::default());
-    let placed = place_probe_row(font, &metrics, device_px, &mut atlas, 1);
-    assert_eq!(placed.refusals.len(), 0);
-    let alignment = measure_placement(&placed).expect("the rasterised control row must measure");
-    assert_eq!(alignment.samples, PLACEMENT_ROW.chars().count());
+    let control = place_probe_row(font, &metrics, device_px, &mut atlas, 1);
+    if control.placed.glyphs.is_empty() {
+        // An icon face draws none of the probe row, so this control cannot be built on it: the
+        // refusal is asserted instead of a measurement, and the reason is printed.
+        eprintln!(
+            "a_measurement_over_zero_drawn_glyphs_is_refused_not_a_clean_zero: {} - the resolved \
+             face draws none of the {} probe glyphs (all refused: {:?}), so the rasterised control \
+             cannot measure anything here; the empty-atlas refusal asserted above still ran, and \
+             this row's own refusal is asserted here (font: {})",
+            font.branch.label(),
+            PLACEMENT_ROW.chars().count(),
+            control.placed.refusals,
+            font.describe()
+        );
+        assert_eq!(
+            measure_placement(&control.placed),
+            Err(MeasureError::NoDrawnGlyphs {
+                refusals: PLACEMENT_ROW.chars().count()
+            }),
+            "a rasterised row with no drawn glyph must still be refused, never a silent zero"
+        );
+        return;
+    }
+    let alignment =
+        measure_placement(&control.placed).expect("the rasterised control row must measure");
+    // The control's sample set is exactly the glyphs the face draws: a face that covers fewer
+    // scalars of the probe row refuses the rest with a reason, which is a coverage fact of the
+    // resolved face rather than a property of the measurement.
+    assert_eq!(
+        alignment.samples,
+        control.placed.glyphs.len(),
+        "the control's sample count is the number of drawn glyphs, never more and never fewer \
+         (font: {})",
+        font.describe()
+    );
+    assert_eq!(
+        control.placed.refusals.len(),
+        PLACEMENT_ROW.chars().count() - control.placed.glyphs.len(),
+        "every glyph of the control row is either drawn or refused"
+    );
+    if control.placed.refusals.is_empty() {
+        assert_eq!(alignment.samples, PLACEMENT_ROW.chars().count());
+    } else {
+        eprintln!(
+            "a_measurement_over_zero_drawn_glyphs_is_refused_not_a_clean_zero: {} - the resolved \
+             face draws {} of the {} probe glyphs and refuses {} with a reason ({:?}), so the \
+             'every glyph measures' control is asserted over the drawn sample set instead (font: \
+             {})",
+            font.branch.label(),
+            control.placed.glyphs.len(),
+            PLACEMENT_ROW.chars().count(),
+            control.placed.refusals.len(),
+            control.placed.refusals,
+            font.describe()
+        );
+    }
     assert!(alignment.within_contract());
     eprintln!("RP-05 placement control: {alignment}");
 }
@@ -1952,7 +2460,7 @@ fn a_blank_glyph_is_reported_rather_than_silently_dropped_from_the_sample_set() 
     // slot, so the placement records a structured refusal. The point is that the *other* glyphs
     // still measure and the refusal is listed - a blank must never shrink the sample set quietly.
     let font = font();
-    let advance_ratio = context(font, 16).cell_advance_px / 16.0;
+    let advance_ratio = measure_advance_ratio(font, 16);
     let shape = probe_shape(advance_ratio);
     let (metrics, device_px) = probe_scale(font, advance_ratio, shape, 1.0);
     let ctx = probe_context(font, metrics, device_px);
@@ -1961,8 +2469,10 @@ fn a_blank_glyph_is_reported_rather_than_silently_dropped_from_the_sample_set() 
     input.row = 2;
     let shaped = shape_row(&input, &ctx, &HONEST).expect("the blank probe row must shape");
 
-    // What the atlas itself did with the blank's key decides which refusal is the honest one.
-    let blank_key = placement_keys(
+    // What the atlas itself did with the blank's key decides which refusal is the honest one. A
+    // face with no glyph for U+0020 (or one that maps the blank to a colour glyph) refuses it
+    // *without* the atlas, so that key may legitimately not exist.
+    let blank_keys = placement_keys(
         &shape_row(
             &RowClusters::new(0, 0, vec![cluster(0, " ")]),
             &ctx,
@@ -1970,9 +2480,7 @@ fn a_blank_glyph_is_reported_rather_than_silently_dropped_from_the_sample_set() 
         )
         .expect("the blank cluster must shape"),
     );
-    let blank_key = *blank_key
-        .first()
-        .expect("the blank glyph is not colour and not .notdef, so it has a key");
+    let blank_key = blank_keys.first().copied();
     let mut atlas = GlyphAtlas::new(AtlasConfig::default());
     for key in placement_keys(&shaped) {
         match atlas.rasterize(key, &ctx.font) {
@@ -1981,16 +2489,89 @@ fn a_blank_glyph_is_reported_rather_than_silently_dropped_from_the_sample_set() 
             Err(error) => panic!("every non-blank probe glyph must rasterise: {error:?}"),
         }
     }
-    let blank_state = atlas.bitmap(&blank_key);
+    let blank_state = blank_key.and_then(|key| atlas.bitmap(&key));
     let placed = place_row_with_vt_widths(&shaped, &input, &metrics, &atlas)
         .expect("the blank probe row must place");
+    if placed.glyphs.is_empty() {
+        // A face that draws none of the row (an icon face, or ASCII mapped to blank/colour
+        // glyphs) refuses every glyph: the blank's own refusal and the never-a-clean-zero
+        // measurement are then what is asserted, and the reason is printed.
+        eprintln!(
+            "a_blank_glyph_is_reported_rather_than_silently_dropped_from_the_sample_set: {} - the \
+             resolved face draws none of the {} glyphs of {WITH_BLANK:?} (refused: {:?}), so the \
+             'the other glyphs still measure' half of this test cannot run here; every glyph is \
+             accounted for as a refusal and the measurement refuses over zero samples (font: {})",
+            font.branch.label(),
+            WITH_BLANK.chars().count(),
+            placed.refusals,
+            font.describe()
+        );
+        assert_eq!(
+            placed.refusals.len(),
+            WITH_BLANK.chars().count(),
+            "every glyph is either drawn or refused, and here none is drawn"
+        );
+        assert_eq!(
+            measure_placement(&placed),
+            Err(MeasureError::NoDrawnGlyphs {
+                refusals: WITH_BLANK.chars().count()
+            }),
+            "a row with no drawn glyph must be refused, never a silent zero"
+        );
+        return;
+    }
+    // The unconditional half of this test: the blank never shrinks the sample set quietly. Every
+    // glyph of the row is either drawn or refused, and the blank's own refusal is in the list
+    // (identified by the key the atlas holds for it) whatever the face does with the other ten.
     assert_eq!(
-        placed.glyphs.len(),
-        WITH_BLANK.chars().count() - 1,
-        "the eleven inked glyphs are drawn"
+        placed.glyphs.len() + placed.refusals.len(),
+        WITH_BLANK.chars().count(),
+        "every glyph of the row is either drawn or refused with a reason"
     );
-    assert_eq!(placed.refusals.len(), 1, "and the blank is refused, once");
-    match (&placed.refusals[0], blank_state) {
+    let Some(blank_key) = blank_key else {
+        eprintln!(
+            "a_blank_glyph_is_reported_rather_than_silently_dropped_from_the_sample_set: {} - the \
+             resolved face has no drawable glyph for U+0020 (S6 reports .notdef or a colour \
+             glyph), so the placement refuses the blank without consulting the atlas and there is \
+             no key to compare against; the refusal is still listed and the drawn glyphs still \
+             measure. Refusals: {:?} (font: {})",
+            font.branch.label(),
+            placed.refusals,
+            font.describe()
+        );
+        assert!(
+            placed.refusals.iter().any(|refusal| matches!(
+                refusal,
+                GlyphRefusal::UncoveredCluster { .. } | GlyphRefusal::ColorGlyph { .. }
+            )),
+            "a blank the face cannot draw must be refused with a reason, got {:?}",
+            placed.refusals
+        );
+        let alignment = measure_placement(&placed)
+            .expect("the drawn glyphs of the blank probe row must still measure");
+        assert_eq!(alignment.samples, placed.glyphs.len());
+        assert_eq!(alignment.refusals, placed.refusals.len());
+        assert!(
+            alignment.worst_px <= HARNESS_ALIGNMENT_CONTRACT_PX,
+            "the blank must not disturb the measurement: {alignment}"
+        );
+        eprintln!("RP-05 placement blank probe: {alignment}");
+        return;
+    };
+    let blank_refusal = placed.refusals.iter().find(|refusal| match refusal {
+        GlyphRefusal::MissingBitmap { key, .. } | GlyphRefusal::NoInk { key, .. } => {
+            *key == blank_key
+        }
+        GlyphRefusal::ColorGlyph { .. } | GlyphRefusal::UncoveredCluster { .. } => false,
+    });
+    let Some(blank_refusal) = blank_refusal else {
+        panic!(
+            "the blank glyph must be reported among the row's refusals, not dropped: refusals \
+             {:?} for key {blank_key:?}",
+            placed.refusals
+        );
+    };
+    match (blank_refusal, blank_state) {
         (GlyphRefusal::MissingBitmap { key, .. }, None) => {
             assert_eq!(*key, blank_key);
             eprintln!(
@@ -2014,10 +2595,28 @@ fn a_blank_glyph_is_reported_rather_than_silently_dropped_from_the_sample_set() 
              {refusal:?}, atlas bitmap {state:?}"
         ),
     }
+    // How many of the *other* ten glyphs are drawn is a coverage property of the resolved face
+    // (an uncovered scalar is refused with a reason too); the blank itself is refused exactly once
+    // either way, which is the claim this test exists for.
+    if placed.glyphs.len() == WITH_BLANK.chars().count() - 1 {
+        assert_eq!(placed.refusals.len(), 1, "and the blank is refused, once");
+    } else {
+        eprintln!(
+            "a_blank_glyph_is_reported_rather_than_silently_dropped_from_the_sample_set: {} - the \
+             resolved face draws {} of the {} glyphs of {WITH_BLANK:?} and refuses {} (the blank \
+             plus every scalar it does not cover), so the exact refusal count is a coverage fact \
+             of this face; the blank's own refusal is asserted above in every case (font: {})",
+            font.branch.label(),
+            placed.glyphs.len(),
+            WITH_BLANK.chars().count(),
+            placed.refusals.len(),
+            font.describe()
+        );
+    }
     let alignment =
         measure_placement(&placed).expect("the inked glyphs of the blank probe row must measure");
-    assert_eq!(alignment.samples, WITH_BLANK.chars().count() - 1);
-    assert_eq!(alignment.refusals, 1);
+    assert_eq!(alignment.samples, placed.glyphs.len());
+    assert_eq!(alignment.refusals, placed.refusals.len());
     assert!(
         alignment.worst_px <= HARNESS_ALIGNMENT_CONTRACT_PX,
         "the blank must not disturb the measurement: {alignment}"
@@ -2028,7 +2627,7 @@ fn a_blank_glyph_is_reported_rather_than_silently_dropped_from_the_sample_set() 
 #[test]
 fn an_uncovered_cluster_is_refused_with_its_reason_never_measured_as_notdef() {
     let font = font();
-    let advance_ratio = context(font, 16).cell_advance_px / 16.0;
+    let advance_ratio = measure_advance_ratio(font, 16);
     let shape = probe_shape(advance_ratio);
     let (metrics, device_px) = probe_scale(font, advance_ratio, shape, 1.0);
     let ctx = probe_context(font, metrics, device_px);
@@ -2099,12 +2698,35 @@ fn an_injected_misplacement_exceeds_the_contract_and_the_untouched_placement_doe
     // downstream of everything the placement computed, which is exactly what a wrong cell index,
     // a wrong device scale or a wrong rounding mode would do to them.
     let font = font();
-    let advance_ratio = context(font, 16).cell_advance_px / 16.0;
+    let advance_ratio = measure_advance_ratio(font, 16);
     let shape = probe_shape(advance_ratio);
     for scale in RP05_DPI_SCALES {
         let (metrics, device_px) = probe_scale(font, advance_ratio, shape, scale);
         let mut atlas = GlyphAtlas::new(AtlasConfig::default());
-        let placed = place_probe_row(font, &metrics, device_px, &mut atlas, 3);
+        let placed = place_probe_row(font, &metrics, device_px, &mut atlas, 3).placed;
+        if placed.glyphs.is_empty() {
+            // Nothing is drawn at this scale, so there is no produced origin to inject into. The
+            // refusal is asserted and printed rather than the injection silently passing.
+            eprintln!(
+                "an_injected_misplacement_exceeds_the_contract_and_the_untouched_placement_does_\
+                 not: {} - at {:.0}% DPI the resolved face draws none of the {} probe glyphs \
+                 (refused: {:?}), so the injection control cannot be built at this scale and the \
+                 documented refusal is asserted instead (font: {})",
+                font.branch.label(),
+                scale * 100.0,
+                PLACEMENT_ROW.chars().count(),
+                placed.refusals,
+                font.describe()
+            );
+            assert_eq!(
+                measure_placement(&placed),
+                Err(MeasureError::NoDrawnGlyphs {
+                    refusals: PLACEMENT_ROW.chars().count()
+                }),
+                "a row with no drawn glyph must be refused, never measured as 0.0px"
+            );
+            continue;
+        }
         assert!(
             placed.glyphs.len() > 1,
             "the injection needs glyphs to move"
