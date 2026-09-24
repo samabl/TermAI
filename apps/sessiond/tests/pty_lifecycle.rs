@@ -474,6 +474,110 @@ fn closing_a_session_reaps_its_process_group_within_two_seconds() {
     host.close(b).expect("close session B");
 }
 
+/// A long-lived command with **no** descendants - the exact shape the reported CI failure used
+/// (`/bin/sleep 30` in `host::tests::idle_command`, `cmd.exe` on Windows).
+fn long_lived_single_process() -> Command {
+    #[cfg(windows)]
+    {
+        Command::new("cmd.exe")
+    }
+    #[cfg(unix)]
+    {
+        Command::with_args("/bin/sleep", vec!["30".to_string()])
+    }
+}
+
+/// The reported CI failure, as an acceptance test:
+/// `test host::tests::the_probed_backend_can_open_and_close_a_session FAILED` on macOS arm64 and
+/// Linux x64 at commit 6911c9e. That unit test opens `/bin/sleep 30` on `SessionHost::probed()`
+/// (forkpty on unix) and closes it in the very next statement, and the close reported
+/// `NotReaped`.
+///
+/// Every other test in this file polls the tree before closing (`wait_for_count` with a 10 s
+/// `SETUP_LIMIT`), which hands the child all the time in the world to finish its session setup
+/// and therefore hides the window this test exists for: on unix `spawn` used to return as soon
+/// as `forkpty` had forked, i.e. possibly *before* the child had run `setsid` inside
+/// `login_tty`. In that window the child is still in the parent's process group, so
+/// `kill(-pid, SIGKILL)` fails with ESRCH, the child survives and the close reports
+/// `TreeNotEmpty { live: 1 }` -> `HostError::NotReaped`. `spawn` now waits for the child's
+/// readiness report before it returns (`crates/termai-pty/src/unix/pty.rs`, `await_child_ready`,
+/// PTY-READY-1), and the kill path falls back to the pid (PTY-KILL-1), so the window is closed
+/// at the source.
+///
+/// This test must never grow a sleep, a `wait_for_count` or a retry: any of those would make it
+/// pass without the fix and it would stop being evidence.
+#[test]
+fn closing_a_session_immediately_after_open_reaps_its_tree() {
+    let backend = native();
+    let mut host = SessionHost::new(Arc::clone(&backend));
+
+    // The exact command from the failing unit test (one process, no descendants) and the
+    // shell-plus-grandchild command the rest of this file uses, so the acceptance covers both
+    // the reported case and the tree case. Three independent rounds, because the defect being
+    // guarded against is a race: one cycle could pass on the pre-fix code by luck. The
+    // assertion inside a cycle stays exactly "open, then close" - no poll, no sleep, no retry.
+    let commands = [long_lived_single_process(), shell_waiting_on_a_grandchild()];
+    for round in 0..3u128 {
+        for (index, command) in commands.iter().enumerate() {
+            let id = SessionId(40 + round * 10 + index as u128);
+            host.open(id, command, size(), opts())
+                .unwrap_or_else(|err| panic!("open of {} failed: {err}", command.program));
+            let session = host.get(id).expect("session");
+            let tree = session.tree().clone();
+
+            // The measurement: close in the very next statement, no poll and no sleep between.
+            let started = Instant::now();
+            let outcome = host.close(id).unwrap_or_else(|err| {
+                panic!(
+                    "PTY-ORPHAN-1: {} opened and closed back to back was not reaped: {err}",
+                    command.program
+                )
+            });
+            assert!(
+                !outcome.already_closed,
+                "the first close must really close: {outcome:?}"
+            );
+            assert!(
+                outcome.reaped,
+                "the immediate close must report the reap: {outcome:?}"
+            );
+            assert_eq!(
+                outcome.live_children, 0,
+                "PTY-ORPHAN-1: an immediate close of {} left a live process behind (on unix this \
+                 count is kill(-pgid, 0), i.e. the whole process group)",
+                command.program
+            );
+            assert!(
+                outcome.wall <= ORPHAN_BUDGET,
+                "the immediate close took {:?}, AR-30 item 2 allows 2 s",
+                outcome.wall
+            );
+
+            let left = wait_for_empty(
+                &backend,
+                &tree,
+                ORPHAN_BUDGET.saturating_sub(started.elapsed()),
+            );
+            assert!(
+                left.is_empty(),
+                "PTY-ORPHAN-1 / AR-30 item 2: {} still holds {left:?}",
+                command.program
+            );
+            assert!(
+                snapshot(&backend, &tree).is_empty(),
+                "the closed session must leave a readable and empty tree"
+            );
+            assert_eq!(
+                session.live_children(),
+                0,
+                "PTY-ORPHAN-1: {} still reports a live child after the immediate close",
+                command.program
+            );
+            assert!(session.is_closed(), "the pty must be released");
+        }
+    }
+}
+
 /// Control 1: a second session that is NOT closed still has its child alive at the same
 /// moment - this is what proves the reaper kills a tree on close rather than everything.
 #[test]
