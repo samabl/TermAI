@@ -26,15 +26,36 @@ use std::time::{Duration, Instant};
 
 use termai_core::SessionId;
 use termai_pty::{
-    Command, KillMode, ProcEntry, ProcessTree, PtyBackend, PtyError, PtyHandle, ResizeEffect,
-    SpawnOpts, WaitTimeout, WinSize,
+    Command, ExitInfo, KillMode, ProcEntry, ProcessTree, PtyBackend, PtyError, PtyHandle,
+    ResizeEffect, SpawnOpts, WaitTimeout, WinSize,
 };
 
 /// The bound the close path waits for a reaped tree.
 ///
 /// AR-30 item 2 allows 2 s from session close to a clean process tree; the budget sits below
-/// that so the kill, the wait and the handle release all fit inside the acceptance bound.
+/// that so the kill, the wait, the post-wait liveness poll and the handle release all fit
+/// inside the acceptance bound. The deadline is taken **once** when the close starts, so the
+/// poll below shares the remaining budget instead of opening a second one.
 pub const REAP_BUDGET: WaitTimeout = WaitTimeout::Millis(1_500);
+
+/// How often the post-wait liveness probe is re-read inside [`REAP_BUDGET`].
+///
+/// The probe is not free (unix: `kill(-pgid, 0)`; Windows: a Job Object listing), so it is
+/// re-read at a small but non-zero interval instead of spinning.
+const REAP_POLL_INTERVAL: Duration = Duration::from_millis(5);
+
+/// The reap budget as a `Duration`.
+///
+/// `WaitTimeout` carries no public conversion (each backend keeps its own private copy), and
+/// the close path needs the same number as a deadline it can share between the bounded wait
+/// and the liveness poll.
+const fn budget_duration(budget: WaitTimeout) -> Duration {
+    match budget {
+        WaitTimeout::Zero => Duration::ZERO,
+        WaitTimeout::Millis(ms) => Duration::from_millis(ms),
+        WaitTimeout::Infinite => Duration::MAX,
+    }
+}
 
 /// Why a host operation failed. Structured - no panic crosses this boundary
 /// (AGENTS section 6).
@@ -87,10 +108,12 @@ pub struct CloseOutcome {
     /// open at all). This is the idempotent repeat-close answer.
     pub already_closed: bool,
     /// True when the bounded wait returned with the tree reaped (kernel/02 section 3.1
-    /// invariant 2: `wait` returning means reaped).
+    /// invariant 2: `wait` returning means reaped) **and** the liveness probe read zero at
+    /// the end of the shared budget: the tree really came down inside [`REAP_BUDGET`].
     pub reaped: bool,
-    /// Processes still live in the tree when the close finished. PTY-ORPHAN-1 / AR-30 item 2
-    /// require 0.
+    /// Processes still live in the tree at the **end** of the bounded wait, as answered by
+    /// the platform's own probe. PTY-ORPHAN-1 / AR-30 item 2 require 0, and a non-zero answer
+    /// here is reported as [`HostError::NotReaped`] rather than as a success.
     pub live_children: u32,
     /// Exit code of the root process, when the platform reported one; a forced kill normally
     /// reports a signal instead.
@@ -132,6 +155,57 @@ impl CloseOutcome {
 struct CloseState {
     handle: Option<PtyHandle>,
     done: Option<CloseOutcome>,
+}
+
+/// Poll a liveness probe until it reports an empty tree, or `deadline` passes.
+///
+/// One instantaneous sample is not evidence on unix. `live_children()` there is
+/// `kill(-pgid, 0)` (`crates/termai-pty/src/unix/pty.rs:438-447`), and a SIGKILLed descendant
+/// whose zombie init/launchd has not collected yet still answers that probe - so a healthy
+/// close could report `1` purely by sampling at the wrong microsecond. Re-reading the probe
+/// inside the same budget turns that race into a bounded wait for the group to actually
+/// empty. The returned value is the probe's **last** answer: a tree that is still alive when
+/// the deadline passes is reported as it is, never rounded down to zero (PTY-ORPHAN-1 /
+/// AR-20). The probe is a parameter so the loop itself is testable without a real process
+/// tree.
+fn poll_until_reaped(deadline: Instant, interval: Duration, mut probe: impl FnMut() -> u32) -> u32 {
+    loop {
+        let live = probe();
+        if live == 0 {
+            return live;
+        }
+        let now = Instant::now();
+        if now >= deadline {
+            return live;
+        }
+        // Never sleep past the deadline: the budget is the acceptance bound.
+        std::thread::sleep(interval.min(deadline.saturating_duration_since(now)));
+    }
+}
+
+/// Turn the platform results plus the final live count into the close verdict.
+///
+/// Precedence, deliberately: a bounded wait that timed out and a `kill` that reported a
+/// non-empty tree are `NotReaped` (the leak AR-30 item 2 measures); any other platform
+/// failure is reported as such; and a successful kill+wait whose tree is **still** occupied
+/// at the end of the budget is `NotReaped` too, never a success carrying
+/// `live_children > 0`. That last arm is the point of the poll: the count is read at the end
+/// of the bounded wait, so a non-zero answer means the tree really was alive when the budget
+/// ran out, and claiming otherwise would hide an orphan (AR-20).
+fn reap_verdict(
+    kill: Result<ExitInfo, PtyError>,
+    wait: Result<ExitInfo, PtyError>,
+    outcome: CloseOutcome,
+) -> Result<CloseOutcome, HostError> {
+    let live = outcome.live_children;
+    match (kill, wait) {
+        (_, Err(PtyError::Timeout { .. })) | (Err(PtyError::TreeNotEmpty { .. }), _) => {
+            Err(HostError::NotReaped { live })
+        }
+        (Err(err), _) | (_, Err(err)) => Err(HostError::Pty(err)),
+        (Ok(_), Ok(_)) if live > 0 => Err(HostError::NotReaped { live }),
+        (Ok(_), Ok(_)) => Ok(outcome),
+    }
 }
 
 /// One daemon-owned child process and its tree.
@@ -226,12 +300,27 @@ impl PtySession {
     }
 
     /// Tear this session down: `KillMode::Force` on the whole tree, then a wait bounded by
-    /// [`REAP_BUDGET`], then release the pty exactly once.
+    /// [`REAP_BUDGET`], then a bounded poll of the platform's liveness probe, then release the
+    /// pty exactly once.
     ///
     /// Idempotent: a session that was already closed returns `already_closed` and touches no
     /// platform state. A failed reap is retryable - the tree handle is kept, so calling
     /// again re-attempts the kill instead of leaking an orphan.
     pub fn close(&self) -> Result<CloseOutcome, HostError> {
+        self.close_within(REAP_BUDGET, &mut || self.tree.live_children())
+    }
+
+    /// [`PtySession::close`] with the reap budget and the liveness probe injected.
+    ///
+    /// The seam exists so the reap loop and its verdict can be proved on any platform: the
+    /// probe is the only thing the close path reads out of the platform, and a deliberately
+    /// non-empty probe exercises the real order (kill -> wait -> poll -> release) plus the
+    /// real leak verdict, without needing a process tree that cannot be killed.
+    fn close_within(
+        &self,
+        budget: WaitTimeout,
+        probe: &mut dyn FnMut() -> u32,
+    ) -> Result<CloseOutcome, HostError> {
         {
             let state = lock(&self.state);
             if let Some(done) = state.done {
@@ -241,9 +330,16 @@ impl PtySession {
         // Fixed order: force the tree down, then wait for the reap. Never the other way
         // round, and never only PtyBackend::close (which does not kill - kernel/02 3.1).
         let started = Instant::now();
+        // One deadline for the whole reap window: the poll shares it instead of opening a
+        // fresh budget, so two sequential full-length waits can never approach AR-30 item
+        // 2's 2 s.
+        let deadline = started + budget_duration(budget);
         let kill = self.backend.kill(&self.tree, KillMode::Force);
-        let wait = self.backend.wait(&self.tree, REAP_BUDGET);
-        let live = self.tree.live_children();
+        let wait = self.backend.wait(&self.tree, budget);
+        // Poll the platform's own probe until it reports an empty tree or the shared budget
+        // is spent. Sampling it once here is what let a healthy unix close report `1`
+        // (`kill(-pgid, 0)` still answers for a not-yet-collected zombie).
+        let live = poll_until_reaped(deadline, REAP_POLL_INTERVAL, probe);
         let release = {
             let handle = lock(&self.state).handle.take();
             match handle {
@@ -253,18 +349,12 @@ impl PtySession {
         };
         let outcome = CloseOutcome {
             already_closed: false,
-            reaped: wait.as_ref().is_ok_and(|info| info.reaped),
+            reaped: wait.as_ref().is_ok_and(|info| info.reaped) && live == 0,
             live_children: live,
             exit_code: wait.as_ref().ok().and_then(|info| info.code),
             wall: started.elapsed(),
         };
-        let primary = match (kill, wait) {
-            (_, Err(PtyError::Timeout { .. })) | (Err(PtyError::TreeNotEmpty { .. }), _) => {
-                Err(HostError::NotReaped { live })
-            }
-            (Err(err), _) | (_, Err(err)) => Err(HostError::Pty(err)),
-            (Ok(_), Ok(_)) => Ok(outcome),
-        };
+        let primary = reap_verdict(kill, wait, outcome);
         match (primary, release) {
             (Err(err), _) => Err(err),
             (Ok(_), Err(err)) => Err(HostError::Pty(err)),
@@ -404,6 +494,8 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+
     use super::*;
 
     /// A long-lived command with no descendants, so the pipe fallback's single-process
@@ -516,5 +608,75 @@ mod tests {
             assert_eq!(outcome.live_children, 0);
         }
         assert!(host.is_empty());
+    }
+
+    /// The unix zombie race, on the smallest possible budget: a probe that only settles on
+    /// its fourth answer must be polled until it does, so the close does not report the
+    /// transient count.
+    #[test]
+    fn the_reap_poll_re_reads_the_probe_instead_of_sampling_it_once() {
+        let calls = Cell::new(0u32);
+        let live = poll_until_reaped(
+            Instant::now() + Duration::from_millis(500),
+            Duration::from_millis(1),
+            || {
+                let seen = calls.get() + 1;
+                calls.set(seen);
+                if seen < 4 {
+                    1
+                } else {
+                    0
+                }
+            },
+        );
+        assert_eq!(
+            live, 0,
+            "a probe that settles on zero must be seen settling"
+        );
+        assert!(
+            calls.get() >= 4,
+            "the poll loop must be entered more than once, saw {} probe(s)",
+            calls.get()
+        );
+    }
+
+    /// A tree that never empties is a leak, and it must be reported as one - the poll may
+    /// not invent a zero to make a close look healthy. The budget is small on purpose: the
+    /// loop's semantics do not depend on its length, and the close path is not slowed down
+    /// by a 1.5 s test.
+    #[test]
+    fn a_tree_that_is_still_alive_when_the_budget_expires_is_not_reaped() {
+        let backend = pipes();
+        let session = PtySession::spawn(Arc::clone(&backend), &idle_command(), size(), opts())
+            .expect("spawn");
+        let mut probes = 0u32;
+        let err = session
+            .close_within(WaitTimeout::Millis(30), &mut || {
+                probes += 1;
+                1
+            })
+            .expect_err("a tree still alive at the end of the budget must not be reaped");
+        match err {
+            HostError::NotReaped { live } => assert_eq!(live, 1, "the last probe answer is kept"),
+            other => panic!("a live tree must be reported as NotReaped, got {other:?}"),
+        }
+        assert!(
+            probes > 1,
+            "a stuck tree must be polled repeatedly, saw {probes} probe(s)"
+        );
+
+        // The failed reap kept the entry and released the handle exactly once, so the close
+        // is retryable: the second attempt runs the real probe and succeeds.
+        assert!(
+            session.is_closed(),
+            "the pty is released even on a failed reap"
+        );
+        let retried = session.close().expect("the retry must re-attempt the reap");
+        assert!(!retried.already_closed);
+        assert!(
+            retried.reaped,
+            "the retry must report the reap: {retried:?}"
+        );
+        assert_eq!(retried.live_children, 0);
     }
 }

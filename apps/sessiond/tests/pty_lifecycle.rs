@@ -5,8 +5,11 @@
 //!
 //! The measurement always polls the process tree; it never sleeps a fixed 2 s and then
 //! asserts. Windows/ConPTY is the production path (DC-16: Job Object process trees), so the
-//! grandchild evidence is asserted there; the unix tree ops report the process group leader
-//! only, which is why the expected process count differs per platform.
+//! **named descendant** evidence is asserted there. Unix reports the process-group leader only,
+//! so the unix half proves the same acceptance item with the evidence that platform actually
+//! has ([`expected_tree_processes`] cites the exact source of the difference) - and where an
+//! assertion is impossible on unix the test prints one explicit line instead of skipping
+//! silently (`unix_report_limitation`).
 
 use std::sync::Arc;
 use std::thread;
@@ -23,16 +26,88 @@ const ORPHAN_BUDGET: Duration = Duration::from_secs(2);
 /// measurement, so it is deliberately generous.
 const SETUP_LIMIT: Duration = Duration::from_secs(10);
 
-/// Processes a live two-process tree is expected to list. Windows/ConPTY enumerates the
-/// whole Job (cmd.exe + the ping it waits on); the unix backend lists the group leader only.
+/// Processes a live two-process tree is expected to list on Windows/ConPTY, which enumerates
+/// the whole Job Object: cmd.exe plus the `ping` it waits on.
 #[cfg(windows)]
-const TREE_PROCESSES: usize = 2;
+const WINDOWS_TREE_PROCESSES: usize = 2;
+
+/// Processes a live two-process tree is expected to list on unix, where the tree ops report
+/// the process group leader only.
 #[cfg(unix)]
-const TREE_PROCESSES: usize = 1;
+const UNIX_TREE_PROCESSES: usize = 1;
+
+/// The platform's honest expectation for a live session tree, per platform, instead of one
+/// global count that would encode the Windows Job Object view everywhere.
+///
+/// **Windows/ConPTY** enumerates the whole Job Object, so the shell and the descendant it is
+/// waiting on are both listed: `WINDOWS_TREE_PROCESSES`.
+///
+/// **unix** lists the leader only. `TreeOps::snapshot` for `UnixTree` at
+/// `crates/termai-pty/src/unix/pty.rs:417-436` does `waitpid(WNOHANG)` on the single pid
+/// `forkpty` returned and then returns exactly **one** `ProcEntry` for that leader, or an empty
+/// vector once it is gone:
+///
+/// ```text
+/// 418    fn snapshot(&self) -> Result<Vec<ProcEntry>, PtyError> {
+/// 419        if lock(&self.reaped).is_some() {
+/// 420            return Ok(Vec::new());
+/// 421        }
+/// 422        match waitpid_nohang(self.pid)? {
+/// 423            WaitState::Running => Ok(vec![ProcEntry {
+/// 424                pid: self.pid as u32,
+/// 425                ppid: 0,
+/// 426                name: self.program.clone(),
+/// ...
+/// 430            WaitState::Exited(status) => { ... Ok(Vec::new()) }
+/// 434            WaitState::Gone => Ok(Vec::new()),
+/// ```
+///
+/// WHY the leader only: `forkpty` puts the child in its own session *and* process group, so
+/// `kill(-pgid, sig)` reaches the whole group (`kill_group`, same file lines 102-106) and the
+/// `live_children()` probe can ask whether the **group** is still occupied (`kill(-pid, 0)` in
+/// `group_alive`, lines 108-111, used by `live_children` at lines 438-447). What the unix
+/// backend does not own is any primitive that *enumerates* that group: there is no Job Object
+/// equivalent on this side (DC-16 makes the Job Object the Windows path), and walking a group
+/// needs `/proc` on Linux and `sysctl(KERN_PROC)` on macOS - two new platform code paths, not
+/// something a test may assume. The snapshot face therefore reports what it can prove: the
+/// leader.
+fn expected_tree_processes() -> usize {
+    #[cfg(windows)]
+    {
+        WINDOWS_TREE_PROCESSES
+    }
+    #[cfg(unix)]
+    {
+        UNIX_TREE_PROCESSES
+    }
+}
 
 /// The grandchild's name in a Windows job listing.
 #[cfg(windows)]
 const GRANDCHILD_NAME: &str = "ping";
+
+/// The one explicit line every unix test prints where it cannot make a *named descendant*
+/// assertion. A silent skip is forbidden: this says which assertion is missing, why, and which
+/// evidence replaces it.
+///
+/// Unix cannot name the `sleep 300` behind `/bin/sh -c "sleep 300 & wait"` because
+/// `TreeOps::snapshot` for `UnixTree` returns the process-group leader only
+/// (`crates/termai-pty/src/unix/pty.rs:417-436`). The group itself is still killed and probed:
+/// `kill(-pgid, ...)` at `crates/termai-pty/src/unix/pty.rs:102-111` and 449-471, and the
+/// `kill(-pid, 0)` group probe behind `live_children()` at lines 438-447 - so
+/// `live_children() == 0` after the close is evidence about the whole group, grandchild
+/// included, not about the shell alone.
+#[cfg(unix)]
+fn unix_report_limitation(context: &str) {
+    println!(
+        "unix: {context}: no named-grandchild assertion is possible on this platform - \
+         TreeOps::snapshot for UnixTree returns the process-group leader only \
+         (crates/termai-pty/src/unix/pty.rs:417-436, waitpid(WNOHANG) on the single forkpty \
+         pid), so a descendant can never be listed by name here. The whole group is still \
+         signalled and probed via kill(-pgid, ...) \
+         (crates/termai-pty/src/unix/pty.rs:102-111, 438-447)."
+    );
+}
 
 fn native() -> Arc<dyn PtyBackend> {
     Arc::from(termai_pty::native_backend())
@@ -152,6 +227,22 @@ fn wait_for_empty(
     }
 }
 
+/// Poll the platform's own liveness probe until it reports no live process, or the limit
+/// passes. On unix that probe is `kill(-pgid, 0)`, i.e. the whole process group
+/// (`crates/termai-pty/src/unix/pty.rs:438-447`), so a zero here is evidence about the group
+/// and not only about the leader. AR-30 item 2 gives 2 s, so this is a bounded liveness
+/// question and not a single instantaneous sample.
+fn wait_for_zero_live_children(session: &PtySession, limit: Duration) -> u32 {
+    let deadline = Instant::now() + limit;
+    loop {
+        let live = session.live_children();
+        if live == 0 || Instant::now() >= deadline {
+            return live;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
 /// Open a session, keep a clone of its tree for post-close polling and start its pump.
 fn open_watched(host: &mut SessionHost, id: SessionId) -> ProcessTree {
     host.open(id, &shell_waiting_on_a_grandchild(), size(), opts())
@@ -162,8 +253,10 @@ fn open_watched(host: &mut SessionHost, id: SessionId) -> ProcessTree {
     tree
 }
 
-/// Primary: after closing the session, the direct child and the grandchild it spawned are
-/// both gone within 2 s - polled, never a fixed sleep.
+/// Primary, Windows/ConPTY (DC-16: the production path): after closing the session, the direct
+/// child and the grandchild it spawned are both gone within 2 s - polled, never a fixed sleep.
+/// The grandchild assertions here are the strongest form of AR-30 item 2 and are deliberately
+/// Windows-only: they are the reason the unix tests below cannot simply be deleted.
 #[cfg(windows)]
 #[test]
 fn closing_a_session_reaps_its_child_and_grandchild_within_two_seconds() {
@@ -176,9 +269,9 @@ fn closing_a_session_reaps_its_child_and_grandchild_within_two_seconds() {
     let session_a = host.get(a).expect("session A");
 
     // The tree must really hold a descendant before the measurement means anything.
-    let before = wait_for_count(&backend, &tree_a, TREE_PROCESSES, SETUP_LIMIT);
+    let before = wait_for_count(&backend, &tree_a, expected_tree_processes(), SETUP_LIMIT);
     assert!(
-        before.len() >= TREE_PROCESSES,
+        before.len() >= expected_tree_processes(),
         "expected cmd.exe + ping inside the job, saw {before:?}"
     );
     assert!(
@@ -190,9 +283,9 @@ fn closing_a_session_reaps_its_child_and_grandchild_within_two_seconds() {
     let pids: Vec<u32> = before.iter().map(|entry| entry.pid).collect();
 
     // Control 1, before: the session that stays open owns a live tree right now.
-    let control_before = wait_for_count(&backend, &tree_b, TREE_PROCESSES, SETUP_LIMIT);
+    let control_before = wait_for_count(&backend, &tree_b, expected_tree_processes(), SETUP_LIMIT);
     assert!(
-        control_before.len() >= TREE_PROCESSES,
+        control_before.len() >= expected_tree_processes(),
         "the control session must be live before the close: {control_before:?}"
     );
 
@@ -219,7 +312,7 @@ fn closing_a_session_reaps_its_child_and_grandchild_within_two_seconds() {
     // Control 1, at the same moment: closing A must not have touched B.
     let control_after = snapshot(&backend, &tree_b);
     assert!(
-        control_after.len() >= TREE_PROCESSES,
+        control_after.len() >= expected_tree_processes(),
         "the reaper must kill one tree, not every tree: {control_after:?}"
     );
 
@@ -250,6 +343,137 @@ fn closing_a_session_reaps_its_child_and_grandchild_within_two_seconds() {
     host.close(b).expect("close session B");
 }
 
+/// Primary, unix. Same AR-30 item 2 acceptance, with the evidence this platform layer can
+/// actually produce (see [`expected_tree_processes`]): the leader is alive and its group is
+/// occupied before the close, `close()` reports `reaped` with `live_children == 0`, the tree is
+/// empty after the close, and the closed leader's pid is gone. Control 1 (the unclosed session
+/// is live at that same moment) and Control 2 (idempotent close) are the two shared tests
+/// below, which run on both platforms.
+///
+/// The `live_children == 0` assertion is not a weaker substitute for the Windows grandchild
+/// assertion: on unix that number is the answer to `kill(-pgid, 0)`
+/// (`crates/termai-pty/src/unix/pty.rs:438-447`), i.e. "is any process still in this process
+/// group?" - and `sleep 300` inherits the group of the `sh` that `forkpty` made the leader. A
+/// zero therefore covers the grandchild, but it cannot *name* it, which is why
+/// [`unix_report_limitation`] is printed here rather than the test pretending to know more.
+#[cfg(unix)]
+#[test]
+fn closing_a_session_reaps_its_process_group_within_two_seconds() {
+    let backend = native();
+    let mut host = SessionHost::new(Arc::clone(&backend));
+    let (a, b) = (SessionId(1), SessionId(2));
+
+    let tree_a = open_watched(&mut host, a);
+    let tree_b = open_watched(&mut host, b);
+    let session_a = host.get(a).expect("session A");
+
+    // The leader must be there before the measurement means anything. Unix lists the leader
+    // only, so the honest expectation is exactly one entry, and it must be the forked program.
+    let before = wait_for_count(&backend, &tree_a, expected_tree_processes(), SETUP_LIMIT);
+    assert!(
+        !before.is_empty(),
+        "the unix backend must list the live group leader before the close: {before:?}"
+    );
+    assert_eq!(
+        before.len(),
+        UNIX_TREE_PROCESSES,
+        "unix lists the process-group leader only, never a descendant: {before:?}"
+    );
+    let leader = before.first().expect("the leader entry");
+    // Assert against the program this test itself spawned, never a hardcoded path: the name
+    // the tree reports is `Command::program` verbatim (UnixTree.program,
+    // crates/termai-pty/src/unix/pty.rs:258-260), so the expected value is the one the test
+    // chose above and not a platform literal a rename or a different shell would break.
+    assert_eq!(
+        leader.name,
+        shell_waiting_on_a_grandchild().program,
+        "the single unix entry must be the program the test spawned: {before:?}"
+    );
+    let pids: Vec<u32> = before.iter().map(|entry| entry.pid).collect();
+
+    // The group is occupied: on unix `live_children()` is `kill(-pgid, 0)`, so >= 1 here means
+    // the group still holds the `sh` *and* the `sleep 300` it is waiting on.
+    assert!(
+        session_a.live_children() >= 1,
+        "the unix process group must be occupied before the close"
+    );
+
+    // Control 1, before: the session that stays open owns a live group right now.
+    let control_before = wait_for_count(&backend, &tree_b, expected_tree_processes(), SETUP_LIMIT);
+    assert!(
+        !control_before.is_empty(),
+        "the control session must be live before the close: {control_before:?}"
+    );
+
+    // The assertion this platform cannot make, stated out loud (never a silent skip).
+    unix_report_limitation("closing_a_session_reaps_its_process_group_within_two_seconds");
+
+    let started = Instant::now();
+    let outcome = host.close(a).expect("close session A");
+    assert!(
+        !outcome.already_closed,
+        "the first close must really close: {outcome:?}"
+    );
+    assert!(
+        outcome.reaped,
+        "kill(Force) plus the bounded wait must report the group reaped: {outcome:?}"
+    );
+    assert_eq!(
+        outcome.live_children, 0,
+        "PTY-ORPHAN-1: on unix this is the whole process group (kill(-pgid, 0), \
+         crates/termai-pty/src/unix/pty.rs:438-447), so 0 covers the grandchild too"
+    );
+    assert!(
+        outcome.wall <= ORPHAN_BUDGET,
+        "the close path took {:?}, AR-30 item 2 allows 2 s",
+        outcome.wall
+    );
+
+    // Control 1, at the same moment: closing A must not have touched B's group.
+    let control_after = snapshot(&backend, &tree_b);
+    assert!(
+        !control_after.is_empty(),
+        "the reaper must kill one process group, not every group: {control_after:?}"
+    );
+
+    // Primary: poll with the deadline measured from the moment the close began.
+    let left = wait_for_empty(
+        &backend,
+        &tree_a,
+        ORPHAN_BUDGET.saturating_sub(started.elapsed()),
+    );
+    assert!(
+        left.is_empty(),
+        "PTY-ORPHAN-1 / AR-30 item 2: processes still live {left:?}"
+    );
+    // A failed snapshot must make this test fail, never look like an empty tree.
+    let final_a = snapshot(&backend, &tree_a);
+    assert!(
+        final_a.is_empty(),
+        "PTY-ORPHAN-1 / AR-30 item 2: the closed session still holds {final_a:?}"
+    );
+    for pid in &pids {
+        assert!(
+            !final_a.iter().any(|entry| entry.pid == *pid),
+            "the group leader pid {pid} survived the session close: {final_a:?}"
+        );
+    }
+    // The platform's own group probe, polled inside the same 2 s budget.
+    assert_eq!(
+        wait_for_zero_live_children(&session_a, ORPHAN_BUDGET.saturating_sub(started.elapsed())),
+        0,
+        "PTY-ORPHAN-1: the closed process group still has a live process"
+    );
+    assert_eq!(session_a.live_children(), 0);
+    assert_eq!(
+        session_a.root_pid(),
+        None,
+        "a closed session must not report a root process any more"
+    );
+
+    host.close(b).expect("close session B");
+}
+
 /// Control 1: a second session that is NOT closed still has its child alive at the same
 /// moment - this is what proves the reaper kills a tree on close rather than everything.
 #[test]
@@ -260,20 +484,22 @@ fn closing_one_session_leaves_an_open_session_running() {
 
     let tree_a = open_watched(&mut host, a);
     let tree_b = open_watched(&mut host, b);
+    let session_a = host.get(a).expect("session A");
 
-    let live_before = wait_for_count(&backend, &tree_b, TREE_PROCESSES, SETUP_LIMIT);
+    let live_before = wait_for_count(&backend, &tree_b, expected_tree_processes(), SETUP_LIMIT);
     assert!(
-        live_before.len() >= TREE_PROCESSES,
+        live_before.len() >= expected_tree_processes(),
         "the control session must be live before the close: {live_before:?}"
     );
 
+    let started = Instant::now();
     let outcome = host.close(a).expect("close session A");
     assert!(!outcome.already_closed);
     assert_eq!(outcome.live_children, 0);
 
     let live_after = snapshot(&backend, &tree_b);
     assert!(
-        live_after.len() >= TREE_PROCESSES,
+        live_after.len() >= expected_tree_processes(),
         "closing A left the open session B without its child: {live_after:?}"
     );
 
@@ -285,6 +511,13 @@ fn closing_one_session_leaves_an_open_session_running() {
     assert!(
         snapshot(&backend, &tree_a).is_empty(),
         "the closed session's tree must be readable and empty"
+    );
+    // The platform's own liveness probe, not only the listing: on unix this is the whole
+    // process group, so it must not need more than the remaining AR-30 budget to read zero.
+    assert_eq!(
+        wait_for_zero_live_children(&session_a, ORPHAN_BUDGET.saturating_sub(started.elapsed())),
+        0,
+        "PTY-ORPHAN-1: the closed session still reports a live child"
     );
 
     host.close(b).expect("close session B");
@@ -298,9 +531,9 @@ fn closing_a_session_twice_does_not_error_or_panic() {
     let id = SessionId(21);
 
     let tree = open_watched(&mut host, id);
-    let before = wait_for_count(&backend, &tree, TREE_PROCESSES, SETUP_LIMIT);
+    let before = wait_for_count(&backend, &tree, expected_tree_processes(), SETUP_LIMIT);
     assert!(
-        before.len() >= TREE_PROCESSES,
+        before.len() >= expected_tree_processes(),
         "the session must own a real tree before it is closed: {before:?}"
     );
 
