@@ -15,6 +15,8 @@
 4. **绝不在仓库内建探针包，也绝不对仓库内的 manifest 跑 cargo**（第 260 轮事故）：在仓库根下 `cargo new target/<probe>` 会让 cargo 把它**自动加进根 `Cargo.toml` 的 `members`**，并把**整棵依赖树写进根 `Cargo.lock`**——本轮实测 **`Cargo.lock` +2574 行**。而 **ADR-0027 明文禁止这些 crate 在准入前进入 workspace 依赖图**，K3/K4 也会随之改变行为。**做法**：探针放到**仓库外**（如 `$env:TEMP\<probe>`），并在其 `Cargo.toml` 末尾加一个空的 `[workspace]` 使其自成 workspace；每次 cargo 调用后跑一次 `git diff --stat -- Cargo.toml Cargo.lock`，**必须为空**。**判据**：`git status` 里出现根 `Cargo.toml`/`Cargo.lock` 的改动，就是这条被违反了。
 5. **提交按显式路径，不用 `git add -A`**（第 268 轮事故）：我把 GPU 切片的提交写成 `git add -A`，而**被中断的 subagent 仍在步进边界写文件**，于是它的 70 行 `crates/termai-vt/src/grid.rs`（反绕实现）**被卷进 `feat(gpu)`、提交信息里没有它**，我也没复核它。**做法**：`git add <显式路径…>`；**在 subagent 可能仍在写文件时绝不 `git add -A`**；提交前逐条说出每个改动文件的来路。**判据**：提交信息里的文件清单与你 `git status` 时理解的一致——否则就是被卷走了。
 
+6. **并行切片绝不执行破坏性 git 命令**（第 272 轮事故，代价是别人已通过的实现被整体回退）：`git checkout -- <path>`、`git restore`、`git stash`、`git reset`、`git clean` **一律禁止**——**包括对自己改过的文件**。本会话同一 checkout 内同时有 2–3 条切片在写；其中一条为了还原**自己的**临时注入执行了路径级 checkout，把另一条切片**刚实现并通过测试**的 `apps/sessiond/src/restore.rs`、`crates/termai-session/src/checkpoint.rs`、`apps/sessiond/tests/session_rebuild.rs` 整体回退，对方只能从 `%TEMP%` 的补丁副本重建。**做法**：① 还原自己的注入用**反向编辑**（edit 工具）或从 `$env:TEMP` 拷回，**不碰索引、不碰别人的路径**；② 提交只按显式路径（见第 5 条）；③ 不确定某个文件是否属于自己时**先问负责人**；④ 派单时必须写明这条，并要求回报中列出本轮执行过的 git 命令。
+
 ## 1. 门禁（随时可跑）
 
 ```powershell
